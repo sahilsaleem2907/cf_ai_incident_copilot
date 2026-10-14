@@ -20,9 +20,9 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-01 Scaffold (started 00:29)
-- **Next:** WP-02 Spike
-- **Hours today:** 0 / 14.75 h (Day 1)
+- **Current:** none (WP-01 done)
+- **Next:** WP-02 Spike (needs `wrangler login` for Workers AI / AI Gateway)
+- **Hours today:** 0.25 / 14.75 h (Day 1)
 - **Blockers / risks:** none
 
 ---
@@ -31,7 +31,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 | WP | Task | Est | Deps | Status | Started | Done | Commit / notes |
 |---|---|---|---|---|---|---|---|
-| 01 | Scaffold | 1.0 | — | 🔄 | 00:29 | | |
+| 01 | Scaffold | 1.0 | — | ✅ | 00:29 | 00:37 | `867d8d6` |
 | 02 | Spike: LLM shapes, streaming, `waitForApproval`, subrequests | 0.75 | 01 | ⬜ | | | |
 | 03 | D1 + workspace cookie + session/health + target parser | 0.75 | 01 | ⬜ | | | |
 | 04 | Safety core: SSRF, reader, origin pin, budget | 1.0 | 01 | ⬜ | | | |
@@ -102,15 +102,15 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-01</b> Scaffold</summary>
 
-- [ ] `git init`, pnpm, single package
-- [ ] Vite + `@cloudflare/vite-plugin` with `auxiliaryWorkers` (demo-service)
-- [ ] TypeScript, ESLint, Vitest (`vitest-pool-workers`)
-- [ ] `wrangler.jsonc` (main) + `demo-service/wrangler.jsonc`
-- [ ] Kumo (exact pin), Tailwind v4, fonts, tokens in `styles.css`
-- [ ] Run `npx @cloudflare/kumo ls` and read `node_modules/@cloudflare/kumo/ai/USAGE.md` for exact props
-- [ ] `theme.ts` (`data-mode` from `prefers-color-scheme`, listens for changes)
-- [ ] `AppShell` skeleton: header (wordmark "Incident Copilot", GitHub link), left sidebar, main area, right column that collapses below `lg`, footer "Built on Cloudflare" (no Cloudflare logo)
-- [ ] **Done when:** `pnpm dev` serves the shell in light and dark; `typecheck`, `lint`, `test` pass
+- [x] `git init`, pnpm, single package
+- [x] Vite + `@cloudflare/vite-plugin` with `auxiliaryWorkers` (demo-service)
+- [x] TypeScript, ESLint, Vitest (`@cloudflare/vitest-plugin`, the renamed `vitest-pool-workers`)
+- [x] `wrangler.jsonc` (main) + `demo-service/wrangler.jsonc`
+- [x] Kumo (exact pin), Tailwind v4, fonts, tokens in `styles.css`
+- [x] Run `npx @cloudflare/kumo ls` and read `node_modules/@cloudflare/kumo/ai/USAGE.md` for exact props
+- [x] `theme.ts` (`data-mode` from `prefers-color-scheme`, listens for changes)
+- [x] `AppShell` skeleton: header (wordmark "Incident Copilot", GitHub link), left sidebar, main area, right column that collapses below `lg`, footer "Built on Cloudflare" (no Cloudflare logo)
+- [x] **Done when:** `pnpm dev` serves the shell in light and dark; `typecheck`, `lint`, `test` pass
 </details>
 
 <details>
@@ -396,8 +396,9 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
+| 2026-10-15 00:33 | 01 | Use `@cloudflare/vitest-plugin` 1.4 (`cloudflareTest()`), not `@cloudflare/vitest-pool-workers` 0.23. Integration tests run the main Worker with an inline **stub** demo Worker behind `DEMO`; the real demo service has its own `demo` Vitest project | `vitest-pool-workers` is deprecated and renamed. The test runtime can't start with an unresolved service binding, and a stub lets WP-12 assert `setMode` calls |
 | 2026-10-15 00:29 | 01 | Prompt log is `PROMPTS.md`, updated every turn (user message + answers to Claude's questions). WP-16 curates it. | User asked for a prompt history; reuse the PRD §14 deliverable instead of adding a new file |
-| 2026-10-15 00:29 | 01 | Pin `vitest` 4.1.x and `typescript` 6.0.x (not latest 5.x / 7.x); add `echarts` ^6 | `vitest-pool-workers` 0.23 needs vitest ^4.1; `typescript-eslint` needs TS < 6.1; `echarts` is a Kumo 2.14 peer |
+| 2026-10-15 00:29 | 01 | Pin `vitest` 4.1.x and `typescript` 6.0.x (not latest 5.x / 7.x); add `echarts` ^6 | `vitest-pool-workers` 0.23 needs vitest ^4.1 (its replacement `vitest-plugin` 1.4 also allows 5.x, so this can be lifted later); `typescript-eslint` needs TS < 6.1; `echarts` is a Kumo 2.14 peer |
 | 2026-10-15 00:29 | 01 | Private GitHub repo `cf_ai_incident_copilot` created now; commit + push after each WP | Offsite backup from hour one |
 | 2026-10-15 00:29 | 01 | `wrangler.jsonc` grows per WP (only bind what exists). D1 created with `wrangler d1 create` in WP-03; Terraform imports it in WP-25 if built (deviation from D15) | Bound classes must exist for `pnpm dev`; Terraform is below the cut line |
 
