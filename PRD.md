@@ -343,7 +343,7 @@ The whole product runs on the free Workers plan. The binding constraint is the W
 
 ### 11.1 Tests
 - **Unit:** SSRF guard (IP range table tests), DNS/HTTP result parsers, failure classification rules, evidence-reference post-check, webhook allowlist and encryption.
-- **Integration** (`@cloudflare/vitest-pool-workers`, real Workers runtime): IncidentAgent state transitions, D1 queries (due watches), DiagnosisWorkflow with a **mocked LLM** (scripted tool calls), approval → action → verify path, demo service modes.
+- **Integration** (`@cloudflare/vitest-plugin`, the renamed `vitest-pool-workers`, real Workers runtime): IncidentAgent state transitions, D1 queries (due watches), DiagnosisWorkflow with a **mocked LLM** (scripted tool calls), approval → action → verify path, demo service modes.
 
 ### 11.2 CI/CD (GitHub Actions)
 - On PR: install, typecheck, lint, unit and integration tests.

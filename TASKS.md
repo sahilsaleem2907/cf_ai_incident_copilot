@@ -1,6 +1,6 @@
 # Incident Copilot: Task Board
 
-Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §17](TDD.md#17-build-plan-2-days); requirements are in [`PRD.md`](PRD.md). This file changes as work moves; the TDD does not.
+Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §17](TDD.md#17-build-plan-2-days); requirements are in [`PRD.md`](PRD.md). This file changes as work moves. The TDD and PRD change only when a logged decision is folded back into them.
 
 | | |
 |---|---|
@@ -20,10 +20,10 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** none (WP-01 done)
-- **Next:** WP-02 Spike (needs `wrangler login` for Workers AI / AI Gateway)
-- **Hours today:** 0.25 / 14.75 h (Day 1)
-- **Blockers / risks:** none
+- **Current:** none (WP-01 ✅ 00:37, doc fold-ins done 00:50)
+- **Next:** WP-02 Spike
+- **Hours today:** 0.4 / 14.75 h (Day 1)
+- **Blockers / risks:** WP-02 needs Cloudflare auth. `wrangler whoami` says not authenticated; run `pnpm exec wrangler login` first. WP-03 and WP-04 don't need it and can go first if login is delayed.
 
 ---
 
@@ -31,7 +31,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 | WP | Task | Est | Deps | Status | Started | Done | Commit / notes |
 |---|---|---|---|---|---|---|---|
-| 01 | Scaffold | 1.0 | — | ✅ | 00:29 | 00:37 | `867d8d6` |
+| 01 | Scaffold | 1.0 | — | ✅ | 00:29 | 00:37 | `867d8d6` (+ docs `58bb6ec`, PRD fold-in). 0.4 h vs 1.0 est |
 | 02 | Spike: LLM shapes, streaming, `waitForApproval`, subrequests | 0.75 | 01 | ⬜ | | | |
 | 03 | D1 + workspace cookie + session/health + target parser | 0.75 | 01 | ⬜ | | | |
 | 04 | Safety core: SSRF, reader, origin pin, budget | 1.0 | 01 | ⬜ | | | |
@@ -396,7 +396,7 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
-| 2026-10-15 00:33 | 01 | Tests use `@cloudflare/vitest-plugin` 1.4 (`cloudflareTest()`) with `vitest` 4.1, instead of `@cloudflare/vitest-pool-workers` 0.23. Three projects: `unit`, `integration` (main Worker plus an inline **stub** demo Worker behind `DEMO`), and `demo` (the real demo service). **Folded into TDD §2, §4, §14.** | `vitest-pool-workers` is deprecated and was renamed. The test runtime can't start with an unresolved service binding, and the stub lets WP-12 assert `setMode` calls. Vitest 5 is allowed by the plugin, so the 4.1 pin can be lifted later |
+| 2026-10-15 00:33 | 01 | Tests use `@cloudflare/vitest-plugin` 1.4 (`cloudflareTest()`) with `vitest` 4.1, instead of `@cloudflare/vitest-pool-workers` 0.23. Three projects: `unit`, `integration` (main Worker plus an inline **stub** demo Worker behind `DEMO`), and `demo` (the real demo service). **Folded into TDD §2, §4, §14 and PRD §11.1.** | `vitest-pool-workers` is deprecated and was renamed. The test runtime can't start with an unresolved service binding, and the stub lets WP-12 assert `setMode` calls. Vitest 5 is allowed by the plugin, so the 4.1 pin can be lifted later |
 | 2026-10-15 00:29 | 01 | Prompt log is `PROMPTS.md`, updated every turn (user message + answers to Claude's questions). WP-16 curates it. | User asked for a prompt history; reuse the PRD §14 deliverable instead of adding a new file |
 | 2026-10-15 00:29 | 01 | Pin `typescript` 6.0.x (not 7.x); add `echarts` ^6. **Folded into TDD §2.** | `typescript-eslint` needs TS < 6.1; `echarts` is a Kumo 2.14 peer |
 | 2026-10-15 00:29 | 01 | Private GitHub repo `cf_ai_incident_copilot` created now; commit + push after each WP | Offsite backup from hour one |
@@ -407,9 +407,9 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 ## Daily wrap-up
 
 ### Day 1 (2026-10-15)
-- **Done:**
+- **Done:** WP-01 (plus the package change folded into TDD and PRD)
 - **Moved / slipped:**
-- **Hours:** / 14.75 h
+- **Hours:** 0.4 / 14.75 h
 - **Transcript exported to `prompts/`:** ⬜
 
 ### Day 2 (2026-10-16)

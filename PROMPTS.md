@@ -28,3 +28,9 @@ Answers to Claude's questions (grill-me):
 > Fold the package change in the @TDD.md and @TASKS.md
 
 (Folded the `@cloudflare/vitest-plugin` rename, the three Vitest projects and the demo stub into TDD §2, §4 and §14, and merged the matching TASKS decision rows.)
+
+### 00:51 · WP-01 follow-up (docs)
+
+> Yes, lets update the @PRD.md and also update the task status in @TASKS.md
+
+(PRD §11.1 now names `@cloudflare/vitest-plugin`. TASKS: WP-01 row, "Now" section, Day 1 wrap-up and hours updated; WP-02 is marked as needing `wrangler login`.)
