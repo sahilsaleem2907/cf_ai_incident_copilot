@@ -87,3 +87,15 @@ Answers to Claude's questions:
 > Update the @TASKS.md with our progress.
 
 (TASKS updated with the review setup: `dev` branch, PR #1 closed unmerged, Sift workflows waiting on `main`, and the `main`/`dev` divergence.)
+
+> remove my upload commit, it was by mistake.
+
+(Upload commit `6cfd23c` (`sift-workflows.zip`, which held the same two workflow files) dropped from `main`. The workflow commit was rebased onto `28de1e4`.)
+
+> does contain 28de1e4?
+
+(Yes. `main`, `dev` and `origin/dev` all contain `28de1e4`.)
+
+> all commits from WP-01 to 05 should go via the dev PR. Only the workflow files added should be going to main for now.
+
+(`main` was rebuilt locally as one fresh commit `f5707d2` holding only `.github/workflows/`. Not pushed yet.)
