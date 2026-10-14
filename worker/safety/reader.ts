@@ -50,6 +50,8 @@ export async function readOnce(fetchFn: Fetch, url: string, method: Method = "GE
     };
   } catch (e) {
     const err = e as Error;
+    // Running out of subrequest budget is not a property of the target; let the caller handle it.
+    if (err.name === "BudgetExceededError") throw err;
     const timeout = err.name === "TimeoutError" || err.name === "AbortError";
     return { ok: false, url, error: timeout ? "timeout" : "network", message: err.message, totalMs: now() - start };
   }

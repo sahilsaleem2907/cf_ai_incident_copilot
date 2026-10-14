@@ -61,3 +61,10 @@ Answers to Claude's questions:
 ### 01:26 · WP-04 Safety core
 
 > Continue to WP-04.
+
+### 01:38 · WP-05 Tools
+
+> Continue to WP-05
+
+Answers to Claude's questions:
+- **DNS mismatch:** Only real disagreements (one resolver says the name exists and the other doesn't, or one fails). Different address lists are information only.

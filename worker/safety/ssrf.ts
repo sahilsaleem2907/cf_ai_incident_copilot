@@ -87,6 +87,7 @@ export async function resolveAndCheck(fetchFn: Fetch, host: string): Promise<Gua
       .filter((a) => a.type === RR_TYPES.A || a.type === RR_TYPES.AAAA)
       .map((a) => a.data);
   } catch (e) {
+    if ((e as Error).name === "BudgetExceededError") throw e;
     return fail("dns_error", `Couldn't resolve ${host} safely: ${(e as Error).message}`);
   }
   if (addresses.length === 0) return fail("no_addresses", `${host} has no A or AAAA records.`);

@@ -280,15 +280,15 @@ markRead() · getEvidence(evidenceId)
 
 | Tool | Input | Digest (what the LLM sees, ≤ 1.5 KB) | Max subrequests |
 |---|---|---|---|
-| `dns_lookup` | `{hostname, types?: ("A"\|"AAAA"\|"CNAME"\|"NS"\|"MX"\|"TXT")[] = ["A","AAAA"]}` | For each resolver (1.1.1.1 `cloudflare-dns.com/dns-query`, 8.8.8.8 `dns.google/resolve`, both DoH JSON): status, answers and TTLs, the CNAME chain, a `mismatch` flag, and `ssrf_blocked` if any answer is private | 2 × types |
-| `http_probe` | `{url, method?: "GET"\|"HEAD" = "GET"}` | For each of 3 samples: status, TTFB and total ms. Also the hop list (≤ 5, `redirect: "manual"`, each hop SSRF-checked), selected headers (`server`, `cf-ray`, `cf-cache-status`, `cache-control`, `content-type`, `location`, `set-cookie` as present or absent), a `<untrusted>` snippet of ≤ 500 chars, and an `asset` sub-probe (D10) with its URL, status, `cache-control` and whether `set-cookie` was present | 3 × (1 + 5) + 1, plus 2 SSRF DoH lookups (A + AAAA) per distinct host, cached for the whole tool call |
+| `dns_lookup` | `{hostname, types?: ("A"\|"AAAA"\|"CNAME"\|"NS"\|"MX"\|"TXT")[] = ["A","AAAA"]}` | For each resolver (1.1.1.1 `cloudflare-dns.com/dns-query`, 8.8.8.8 `dns.google/resolve`, both DoH JSON): status, answers and TTLs, the CNAME chain, a `mismatch` flag (the resolvers disagree on the response code or on whether the name has any address), `addressesDiffer` (different address sets; informational, normal for geo/CDN DNS), and `ssrfBlocked` if any answer is private | 2 × types |
+| `http_probe` | `{url, method?: "GET"\|"HEAD" = "GET"}` | For each of 3 samples: status, TTFB and total ms. Also the hop list (≤ 5, `redirect: "manual"`, each hop SSRF-checked), selected headers (`server`, `cf-ray`, `cf-cache-status`, `cache-control`, `content-type`, `location`, `set-cookie` as present or absent), a `<untrusted>` snippet of ≤ 500 chars, and an `asset` sub-probe (D10) with its URL, status, `cache-control` and whether `set-cookie` was present | Capped at **20** with `countingFetch` (2 guard DoH lookups + 3 × (1 + 5)). The asset sub-probe and extra hosts in a redirect chain only run if room is left, and samples 2–3 are skipped after a loop, hop cap or refusal. Hitting the cap gives a partial result (`partial: "budget"`), not an error. |
 | `cert_info` | `{hostname}` | Up to 3 unexpired certificates: issuer, notBefore, notAfter, daysToExpiry, `sanMatch`. Labeled "CT logs, best effort". On error: `status: "unavailable"`. | 1 |
 | `provider_status` | `{providers: ("cloudflare"\|"github"\|"aws")[]}` | Active incidents per provider. Statuspage `/api/v2/incidents/unresolved.json` for Cloudflare and GitHub (small payloads). AWS health is best effort. | ≤ 3 |
 | `submit_findings` | `{category, confidence, evidence: string[≥1], cause: string≤300, next_steps: string[≤4], actions: ActionId[≤1]}` | Not a check. It ends planning (D5). | 0 |
 
 **Origin pin (D6):** `safety/origin.ts` `assertInScope(tool, args, incident)`. A failure counts as an invalid call (FR-12).
 
-**`quickCheck(url)`** (cron, monitor ticks and verify): the SSRF guard's DoH A + AAAA lookups (the A answer also serves as the DNS check), plus 1 GET following up to 5 hops. A pass means a final 2xx/3xx under `HIGH_LATENCY_MS`. It costs 8 subrequests, plus 2 for each other host a redirect leads to. Cron's `countingFetch` stops before 50 (D12).
+**`quickCheck(url)`** (cron, monitor ticks and verify): the SSRF guard's DoH A + AAAA lookups (the A answer also serves as the DNS check), plus 1 GET following up to 5 hops. A pass means a final 2xx/3xx under `HIGH_LATENCY_MS`. It costs 3 subrequests for a direct 200 and is capped at 10 (`QUICKCHECK_CAP`). Cron's `countingFetch` stops before 50 (D12).
 
 ### 7.4 LLM adapter (`llm/client.ts`)
 
@@ -476,7 +476,7 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | 6 | `origin_5xx` | Two or more samples return a status ≥ 500 | high (3/3) / medium |
 | 7 | `high_latency` | Median total ≥ 2000 ms or median TTFB ≥ 1500 ms | high |
 | 8 | `cache_misconfiguration` | The asset sub-probe shows `no-store` or `private`, or `set-cookie` on a static asset | high |
-| 9 | `dns_mismatch` | The two resolvers' A/AAAA sets differ (and nothing above matched) | medium |
+| 9 | `dns_mismatch` | `dns_lookup.mismatch`: the resolvers disagree on the response code, or one has A/AAAA answers and the other has none (and nothing above matched). Different address sets alone (`addressesDiffer`) are **not** a mismatch. | medium |
 | 10 | `healthy` | All samples end in 2xx/3xx, and none of the above | high |
 | 11 | `inconclusive` | Anything else (timeouts with good DNS, 4xx, …) | low |
 
