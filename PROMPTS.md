@@ -51,3 +51,9 @@ Answers to Claude's questions:
 ### 01:16 · WP-03 D1 and workspace
 
 > Sounds good, lets continue to WP-03.
+
+### 01:23 · WP-03 follow-up (open question for WP-11)
+
+> OQ for WP-11 in local environment (set via env) we can allow that url as well, in others (prod only for our case) we can let it be blocked naturally.
+
+(Recorded as a dev-only `SSRF_DEV_ALLOW_ORIGIN` exact-origin exception in TDD §11. It's built in WP-04 and set in WP-11.)

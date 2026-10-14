@@ -23,7 +23,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 - **Current:** none (WP-03 ✅ 01:18)
 - **Next:** WP-04 Safety core
 - **Hours today:** 0.9 / 14.75 h (Day 1)
-- **Blockers / risks:** none. Watch gpt latency in WP-09: a forced `submit_findings` turn took 19 s once (TDD §7.4.1). WP-11 must decide how local probes reach the demo, since it has no public URL locally and the SSRF guard blocks localhost.
+- **Blockers / risks:** none. Watch gpt latency in WP-09: a forced `submit_findings` turn took 19 s once (TDD §7.4.1). Local demo probing is decided: the `SSRF_DEV_ALLOW_ORIGIN` exception, built in WP-04 and set in WP-11.
 
 ---
 
@@ -144,7 +144,8 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 - [ ] `reader.ts` (16 KB cap, 10 s abort, manual redirects)
 - [ ] `origin.ts` (`assertInScope`)
 - [ ] Budget / subrequest counter
-- [ ] `ssrf.test.ts` (40+ cases), `origin.test.ts`
+- [ ] Dev-only `SSRF_DEV_ALLOW_ORIGIN`: an exact origin match skips the guard; unset in prod (TDD §11)
+- [ ] `ssrf.test.ts` (40+ cases, including the allow-origin on/off/near-miss cases), `origin.test.ts`
 - [ ] **Done when:** SSRF and origin unit tables pass
 </details>
 
@@ -232,6 +233,7 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 - [ ] `DemoState` DO
 - [ ] `DemoAdmin` RPC entrypoint
 - [ ] `/api/demo` + `/api/demo/mode`
+- [ ] Local demo URL: `.dev.vars` sets `DEMO_BASE_URL` to the local demo origin and `SSRF_DEV_ALLOW_ORIGIN` to the same origin
 - [ ] `DemoPanel` (right column): mode picker (`Select`/`Radio`) and the demo URL (`ClipboardText`)
 - [ ] `demo.test.ts`
 - [ ] **Done when:** each mode behaves as in TDD §7.5; demo test passes
@@ -396,6 +398,7 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
+| 2026-10-15 01:23 | 03→04/11 | Local probes reach the demo through a dev-only `SSRF_DEV_ALLOW_ORIGIN` (one exact origin, set only in `.dev.vars`). Production leaves it unset, so private and loopback targets stay blocked. **Folded into TDD §11.** | User decision. Locally the demo has no public URL and the SSRF guard blocks localhost |
 | 2026-10-15 01:18 | 03 | Unit tests for Worker code live in `test/unit/` (type-checked with `tsconfig.worker.json`); browser unit tests live in `test/unit/web/` (`tsconfig.web.json`) | The Worker and DOM type libraries can't share one project |
 | 2026-10-15 01:18 | 03 | `budgetMode` returns `"ai"` until WP-17; `DEMO_BASE_URL` keeps `<sub>` until WP-13 | Guard and workers.dev subdomain don't exist yet |
 | 2026-10-15 01:10 | 02 | Planning turns send `tool_choice:"required"`; glm always runs with `enable_thinking:false`; `usage.ts` sums `usage.neurons`. **Folded into TDD §7.4.1.** | Spike: without it, gpt answered in prose and skipped `submit_findings`. glm thinking took 12–21 s and once returned no content. Workers AI reports neurons per call |

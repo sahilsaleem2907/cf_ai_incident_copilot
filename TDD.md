@@ -506,6 +506,7 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
   - Reject IP literals and `localhost`/`.local`/`.internal`.
   - Resolve the host with DoH before fetching and reject it if **any** A or AAAA answer is in a blocked range: 0/8, 10/8, 100.64/10, 127/8, 169.254/16, 172.16/12, 192.0.0/24, 192.0.2/24, 192.168/16, 198.18/15, 198.51.100/24, 203.0.113/24, 224/4, 240/4, ::/128, ::1, fc00::/7, fe80::/10, ff00::/8, ::ffff:0:0/96 (checked against the embedded v4 address), 64:ff9b::/96, 2001:db8::/32.
   - Apply the same check to every redirect hop.
+  - **Dev-only exception:** when `SSRF_DEV_ALLOW_ORIGIN` is set, that one exact origin (scheme, host and port, for example the local demo service) skips the checks above. It's set only in `.dev.vars` for local work and never in `wrangler.jsonc` `vars`, so in production the demo is reached through its public `workers.dev` URL and everything private stays blocked. There's no wildcard and no partial match.
   - Defense in depth: `global_fetch_strictly_public`. A DNS-rebinding race can't be fully closed, and the README says so.
 - **Open proxy:** GET/HEAD only. No headers, bodies or cookies from the user. `reader.ts` caps reads at 16 KB, aborts after 10 s, and never follows redirects automatically. Origin pin (D6).
 - **Probe rate:** `PROBE_LIMIT.limit({key: hostname})` runs before every probe sample. If it's exceeded, the probe returns `unavailable: rate_limited`.
