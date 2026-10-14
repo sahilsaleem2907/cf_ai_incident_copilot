@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initTheme } from "../../web/theme";
+import { initTheme } from "../../../web/theme";
 
 function fakeMedia(matches: boolean) {
   const listeners = new Set<(e: MediaQueryListEvent) => void>();

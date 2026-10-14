@@ -1,4 +1,4 @@
-import { cloudflareTest } from "@cloudflare/vitest-plugin";
+import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
 
 // Stand-in for the demo Worker behind the main Worker's DEMO binding. Integration tests assert on
@@ -17,16 +17,21 @@ export default defineConfig({
       },
       {
         plugins: [
-          cloudflareTest({
+          cloudflareTest(async () => ({
             wrangler: { configPath: "./wrangler.jsonc" },
             miniflare: {
+              bindings: { TEST_MIGRATIONS: await readD1Migrations("./migrations") },
               workers: [
                 { name: "incident-copilot-demo", modules: true, script: demoStub, compatibilityDate: "2026-10-01" },
               ],
             },
-          }),
+          })),
         ],
-        test: { name: "integration", include: ["test/integration/**/*.test.ts"] },
+        test: {
+          name: "integration",
+          include: ["test/integration/**/*.test.ts"],
+          setupFiles: ["./test/integration/setup.ts"],
+        },
       },
       {
         plugins: [cloudflareTest({ wrangler: { configPath: "./demo-service/wrangler.jsonc" } })],

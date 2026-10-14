@@ -1,4 +1,4 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../env";
 
-export const health = new Hono<AppEnv>().get("/", (c) => c.json({ ok: true }));
+export const health = new Hono<AppEnv>().get("/", (c) => c.json({ ok: true, version: c.env.CF_VERSION_METADATA.id }));
