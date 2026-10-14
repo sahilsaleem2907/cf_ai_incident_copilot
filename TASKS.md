@@ -20,9 +20,9 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-04 Safety core (started 01:26)
+- **Current:** none (WP-04 ✅ 01:30)
 - **Next:** WP-05 Tools
-- **Hours today:** 0.9 / 14.75 h (Day 1)
+- **Hours today:** 1.15 / 14.75 h (Day 1)
 - **Blockers / risks:** none. Watch gpt latency in WP-09: a forced `submit_findings` turn took 19 s once (TDD §7.4.1). Local demo probing is decided: the `SSRF_DEV_ALLOW_ORIGIN` exception, built in WP-04 and set in WP-11.
 
 ---
@@ -34,7 +34,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 01 | Scaffold | 1.0 | — | ✅ | 00:29 | 00:37 | `867d8d6` (+ docs `58bb6ec`, PRD fold-in). 0.4 h vs 1.0 est |
 | 02 | Spike: LLM shapes, streaming, `waitForApproval`, subrequests | 0.75 | 01 | ✅ | 01:00 | 01:10 | `a030286`. 0.25 h vs 0.75 est. About 20 live calls, about 250 neurons |
 | 03 | D1 + workspace cookie + session/health + target parser | 0.75 | 01 | ✅ | 01:16 | 01:18 | `9d691c6`. 0.25 h vs 0.75 est |
-| 04 | Safety core: SSRF, reader, origin pin, budget | 1.0 | 01 | 🔄 | 01:26 | | |
+| 04 | Safety core: SSRF, reader, origin pin, budget | 1.0 | 01 | ✅ | 01:26 | 01:30 | `4dbe27d`. 0.25 h vs 1.0 est |
 | 05 | Tools: `dns_lookup`, `http_probe`, `quickCheck`, registry | 1.5 | 04 | ⬜ | | | |
 | 06 | Rules: `classify.ts`, `template.ts` | 0.5 | 05 | ⬜ | | | |
 | 07 | LLM layer: adapter, fallback, usage, prompts, mock, citations, streaming | 1.5 | 02 | ⬜ | | | |
@@ -398,7 +398,7 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
-| 2026-10-15 01:31 | 04 | The SSRF DoH check (A + AAAA) is cached per host for one tool call and counted against the budget. `http_probe` and `quickCheck` cost estimates are raised to match (quickCheck about 8). Extra blocked ranges: ::/96, 100::/64, 6to4. Single-label hosts and credential URLs are refused. **Folded into TDD §7.3 and §11.** | The TDD estimates didn't count the guard's own DNS lookups. The extra ranges close IPv6 ways to reach private IPv4 addresses |
+| 2026-10-15 01:30 | 04 | The SSRF DoH check (A + AAAA) is cached per host for one tool call and counted against the budget. `http_probe` and `quickCheck` cost estimates are raised to match (quickCheck about 8). Extra blocked ranges: ::/96, 100::/64, 6to4. Single-label hosts and credential URLs are refused. **Folded into TDD §7.3 and §11.** | The TDD estimates didn't count the guard's own DNS lookups. The extra ranges close IPv6 ways to reach private IPv4 addresses |
 | 2026-10-15 01:23 | 03→04/11 | Local probes reach the demo through a dev-only `SSRF_DEV_ALLOW_ORIGIN` (one exact origin, set only in `.dev.vars`). Production leaves it unset, so private and loopback targets stay blocked. **Folded into TDD §11.** | User decision. Locally the demo has no public URL and the SSRF guard blocks localhost |
 | 2026-10-15 01:18 | 03 | Unit tests for Worker code live in `test/unit/` (type-checked with `tsconfig.worker.json`); browser unit tests live in `test/unit/web/` (`tsconfig.web.json`) | The Worker and DOM type libraries can't share one project |
 | 2026-10-15 01:18 | 03 | `budgetMode` returns `"ai"` until WP-17; `DEMO_BASE_URL` keeps `<sub>` until WP-13 | Guard and workers.dev subdomain don't exist yet |
@@ -417,9 +417,9 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 ## Daily wrap-up
 
 ### Day 1 (2026-10-15)
-- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03
+- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03, WP-04
 - **Moved / slipped:**
-- **Hours:** 0.9 / 14.75 h
+- **Hours:** 1.15 / 14.75 h
 - **Transcript exported to `prompts/`:** ⬜
 
 ### Day 2 (2026-10-16)
