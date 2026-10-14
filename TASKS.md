@@ -20,10 +20,10 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-03 D1 and workspace (started 01:16)
+- **Current:** none (WP-03 ✅ 01:18)
 - **Next:** WP-04 Safety core
-- **Hours today:** 0.65 / 14.75 h (Day 1)
-- **Blockers / risks:** none. Watch gpt latency in WP-09: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
+- **Hours today:** 0.9 / 14.75 h (Day 1)
+- **Blockers / risks:** none. Watch gpt latency in WP-09: a forced `submit_findings` turn took 19 s once (TDD §7.4.1). WP-11 must decide how local probes reach the demo, since it has no public URL locally and the SSRF guard blocks localhost.
 
 ---
 
@@ -33,7 +33,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 |---|---|---|---|---|---|---|---|
 | 01 | Scaffold | 1.0 | — | ✅ | 00:29 | 00:37 | `867d8d6` (+ docs `58bb6ec`, PRD fold-in). 0.4 h vs 1.0 est |
 | 02 | Spike: LLM shapes, streaming, `waitForApproval`, subrequests | 0.75 | 01 | ✅ | 01:00 | 01:10 | `a030286`. 0.25 h vs 0.75 est. About 20 live calls, about 250 neurons |
-| 03 | D1 + workspace cookie + session/health + target parser | 0.75 | 01 | 🔄 | 01:16 | | |
+| 03 | D1 + workspace cookie + session/health + target parser | 0.75 | 01 | ✅ | 01:16 | 01:18 | `9d691c6`. 0.25 h vs 0.75 est |
 | 04 | Safety core: SSRF, reader, origin pin, budget | 1.0 | 01 | ⬜ | | | |
 | 05 | Tools: `dns_lookup`, `http_probe`, `quickCheck`, registry | 1.5 | 04 | ⬜ | | | |
 | 06 | Rules: `classify.ts`, `template.ts` | 0.5 | 05 | ⬜ | | | |
@@ -396,8 +396,8 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
-| 2026-10-15 01:20 | 03 | Unit tests for Worker code live in `test/unit/` (type-checked with `tsconfig.worker.json`); browser unit tests live in `test/unit/web/` (`tsconfig.web.json`) | The Worker and DOM type libraries can't share one project |
-| 2026-10-15 01:20 | 03 | `budgetMode` returns `"ai"` until WP-17; `DEMO_BASE_URL` keeps `<sub>` until WP-13 | Guard and workers.dev subdomain don't exist yet |
+| 2026-10-15 01:18 | 03 | Unit tests for Worker code live in `test/unit/` (type-checked with `tsconfig.worker.json`); browser unit tests live in `test/unit/web/` (`tsconfig.web.json`) | The Worker and DOM type libraries can't share one project |
+| 2026-10-15 01:18 | 03 | `budgetMode` returns `"ai"` until WP-17; `DEMO_BASE_URL` keeps `<sub>` until WP-13 | Guard and workers.dev subdomain don't exist yet |
 | 2026-10-15 01:10 | 02 | Planning turns send `tool_choice:"required"`; glm always runs with `enable_thinking:false`; `usage.ts` sums `usage.neurons`. **Folded into TDD §7.4.1.** | Spike: without it, gpt answered in prose and skipped `submit_findings`. glm thinking took 12–21 s and once returned no content. Workers AI reports neurons per call |
 | 2026-10-15 01:08 | 02 | AI Gateway `incident-copilot` created by hand in the dashboard (user). WP-25 imports it if the provider supports it | Only `default` is created automatically; any other ID fails with error 2001 |
 | 2026-10-15 01:06 | 02 | Approval handling: `WorkflowRejectedError` → rejected, any other error from the wait → expired; the UI never relies on the SDK's `getWorkflow` status; use `this.workflowId`, not `this.instanceId`. **Folded into TDD §8.2.** | Local spike: a timeout throws a plain `Error`; a reject marks the SDK tracking row `errored` even though the run continues; `this.instanceId` is undefined in agents 0.28.1 |
@@ -413,9 +413,9 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 ## Daily wrap-up
 
 ### Day 1 (2026-10-15)
-- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02
+- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03
 - **Moved / slipped:**
-- **Hours:** 0.65 / 14.75 h
+- **Hours:** 0.9 / 14.75 h
 - **Transcript exported to `prompts/`:** ⬜
 
 ### Day 2 (2026-10-16)
