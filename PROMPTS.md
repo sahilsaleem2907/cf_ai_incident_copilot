@@ -57,3 +57,7 @@ Answers to Claude's questions:
 > OQ for WP-11 in local environment (set via env) we can allow that url as well, in others (prod only for our case) we can let it be blocked naturally.
 
 (Recorded as a dev-only `SSRF_DEV_ALLOW_ORIGIN` exact-origin exception in TDD §11. It's built in WP-04 and set in WP-11.)
+
+### 01:26 · WP-04 Safety core
+
+> Continue to WP-04.

@@ -281,14 +281,14 @@ markRead() · getEvidence(evidenceId)
 | Tool | Input | Digest (what the LLM sees, ≤ 1.5 KB) | Max subrequests |
 |---|---|---|---|
 | `dns_lookup` | `{hostname, types?: ("A"\|"AAAA"\|"CNAME"\|"NS"\|"MX"\|"TXT")[] = ["A","AAAA"]}` | For each resolver (1.1.1.1 `cloudflare-dns.com/dns-query`, 8.8.8.8 `dns.google/resolve`, both DoH JSON): status, answers and TTLs, the CNAME chain, a `mismatch` flag, and `ssrf_blocked` if any answer is private | 2 × types |
-| `http_probe` | `{url, method?: "GET"\|"HEAD" = "GET"}` | For each of 3 samples: status, TTFB and total ms. Also the hop list (≤ 5, `redirect: "manual"`, each hop SSRF-checked), selected headers (`server`, `cf-ray`, `cf-cache-status`, `cache-control`, `content-type`, `location`, `set-cookie` as present or absent), a `<untrusted>` snippet of ≤ 500 chars, and an `asset` sub-probe (D10) with its URL, status, `cache-control` and whether `set-cookie` was present | 3 × (1 + 5) + 1 |
+| `http_probe` | `{url, method?: "GET"\|"HEAD" = "GET"}` | For each of 3 samples: status, TTFB and total ms. Also the hop list (≤ 5, `redirect: "manual"`, each hop SSRF-checked), selected headers (`server`, `cf-ray`, `cf-cache-status`, `cache-control`, `content-type`, `location`, `set-cookie` as present or absent), a `<untrusted>` snippet of ≤ 500 chars, and an `asset` sub-probe (D10) with its URL, status, `cache-control` and whether `set-cookie` was present | 3 × (1 + 5) + 1, plus 2 SSRF DoH lookups (A + AAAA) per distinct host, cached for the whole tool call |
 | `cert_info` | `{hostname}` | Up to 3 unexpired certificates: issuer, notBefore, notAfter, daysToExpiry, `sanMatch`. Labeled "CT logs, best effort". On error: `status: "unavailable"`. | 1 |
 | `provider_status` | `{providers: ("cloudflare"\|"github"\|"aws")[]}` | Active incidents per provider. Statuspage `/api/v2/incidents/unresolved.json` for Cloudflare and GitHub (small payloads). AWS health is best effort. | ≤ 3 |
 | `submit_findings` | `{category, confidence, evidence: string[≥1], cause: string≤300, next_steps: string[≤4], actions: ActionId[≤1]}` | Not a check. It ends planning (D5). | 0 |
 
 **Origin pin (D6):** `safety/origin.ts` `assertInScope(tool, args, incident)`. A failure counts as an invalid call (FR-12).
 
-**`quickCheck(url)`** (cron, monitor ticks and verify): 1 DoH A query plus 1 GET following up to 5 hops. A pass means a final 2xx/3xx under `HIGH_LATENCY_MS`. Costs at most 7 subrequests.
+**`quickCheck(url)`** (cron, monitor ticks and verify): the SSRF guard's DoH A + AAAA lookups (the A answer also serves as the DNS check), plus 1 GET following up to 5 hops. A pass means a final 2xx/3xx under `HIGH_LATENCY_MS`. It costs 8 subrequests, plus 2 for each other host a redirect leads to. Cron's `countingFetch` stops before 50 (D12).
 
 ### 7.4 LLM adapter (`llm/client.ts`)
 
@@ -503,8 +503,8 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 
 - **SSRF (`safety/ssrf.ts`, `iprange.ts`):**
   - Only `http` and `https` schemes, and only port 80/443 (an empty port is allowed).
-  - Reject IP literals and `localhost`/`.local`/`.internal`.
-  - Resolve the host with DoH before fetching and reject it if **any** A or AAAA answer is in a blocked range: 0/8, 10/8, 100.64/10, 127/8, 169.254/16, 172.16/12, 192.0.0/24, 192.0.2/24, 192.168/16, 198.18/15, 198.51.100/24, 203.0.113/24, 224/4, 240/4, ::/128, ::1, fc00::/7, fe80::/10, ff00::/8, ::ffff:0:0/96 (checked against the embedded v4 address), 64:ff9b::/96, 2001:db8::/32.
+  - Reject IP literals, `localhost`/`*.localhost`/`.local`/`.internal`, single-label hosts and URLs with credentials.
+  - Resolve the host with DoH before fetching and reject it if **any** A or AAAA answer is in a blocked range: 0/8, 10/8, 100.64/10, 127/8, 169.254/16, 172.16/12, 192.0.0/24, 192.0.2/24, 192.168/16, 198.18/15, 198.51.100/24, 203.0.113/24, 224/4, 240/4, ::/128, ::1, fc00::/7, fe80::/10, ff00::/8, ::ffff:0:0/96 (checked against the embedded v4 address), 64:ff9b::/96, 2001:db8::/32. WP-04 also blocks ::/96 (IPv4-compatible), 100::/64, and 6to4 `2002::/16` checked against its embedded v4 address. Anything that doesn't parse is blocked.
   - Apply the same check to every redirect hop.
   - **Dev-only exception:** when `SSRF_DEV_ALLOW_ORIGIN` is set, that one exact origin (scheme, host and port, for example the local demo service) skips the checks above. It's set only in `.dev.vars` for local work and never in `wrangler.jsonc` `vars`, so in production the demo is reached through its public `workers.dev` URL and everything private stays blocked. There's no wildcard and no partial match.
   - Defense in depth: `global_fetch_strictly_public`. A DNS-rebinding race can't be fully closed, and the README says so.

@@ -1,1 +1,4 @@
 LLM_MODE=mock
+# WP-11: one exact origin (scheme://host:port) the SSRF guard lets through locally, e.g. the local demo.
+# Never set this in wrangler.jsonc vars (TDD §11).
+# SSRF_DEV_ALLOW_ORIGIN=http://localhost:8788
