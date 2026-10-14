@@ -68,3 +68,10 @@ Answers to Claude's questions:
 
 Answers to Claude's questions:
 - **DNS mismatch:** Only real disagreements (one resolver says the name exists and the other doesn't, or one fails). Different address lists are information only.
+
+### 01:47 · Branching for review
+
+> lets push this code from a new branch (dev). ill then run sift code review by raising a PR to master.
+
+Answers to Claude's questions:
+- **PR base:** `master` at the first commit (`867d8d6`, WP-01 scaffold); `dev` at the latest commit. The PR shows WP-02 to WP-05 plus doc changes; main is unchanged.
