@@ -403,7 +403,7 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
-| 2026-10-15 02:05 | review | Sift CI workflows prepared for `main` (`61b5aef`, local worktree, unpushed until the user confirms). The zip upload (`6cfd23c`) is a binary in the repo and can be removed once the YAML files are in | Sift reviews PRs through GitHub Actions on the default branch |
+| 2026-10-15 01:59 | review | Sift CI workflows prepared for `main` (`61b5aef`, local worktree, unpushed until the user confirms). The zip upload (`6cfd23c`) is a binary in the repo and can be removed once the YAML files are in | Sift reviews PRs through GitHub Actions on the default branch |
 | 2026-10-15 01:57 | review | The review target is `main` (the default branch), not `master`. PR #1 `dev` → `main` was closed unmerged. `master` (at `867d8d6`) stays as the first review base but is unused | User raised PR #1 against `main`. Sift runs from `main`'s workflows |
 | 2026-10-15 01:50 | review | All work moves to a `dev` branch; changes reach the main line only through a reviewed PR | User wants a Sift code review before work counts as merged |
 | 2026-10-15 01:44 | 05 | `dns_lookup.mismatch` means the resolvers disagree on the response code or on whether the name exists. Different address lists are `addressesDiffer` (info only). **Folded into TDD §7.3 and §9.3 rule 9.** | User decision. Geo/CDN DNS (for example google.com) returns different addresses per resolver, and those healthy sites would otherwise be classed `dns_mismatch` |
