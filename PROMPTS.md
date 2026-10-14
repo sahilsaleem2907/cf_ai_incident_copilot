@@ -34,3 +34,16 @@ Answers to Claude's questions (grill-me):
 > Yes, lets update the @PRD.md and also update the task status in @TASKS.md
 
 (PRD §11.1 now names `@cloudflare/vitest-plugin`. TASKS: WP-01 row, "Now" section, Day 1 wrap-up and hours updated; WP-02 is marked as needing `wrangler login`.)
+
+### 01:00 · WP-02 Spike
+
+> Done, Lets start WP-02 from the @TASKS.md .
+
+Answers to Claude's questions:
+- **Live test of the subrequest limit:** No, local only + docs (no throwaway deploy).
+- **Spike code:** Throw it away; commit only findings and recorded responses.
+- **AI Gateway:** Create `incident-copilot` in the dashboard (rather than using `default`). User created it.
+
+> try again.
+
+(After the gateway was created: the retry through `incident-copilot` succeeded.)

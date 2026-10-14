@@ -1,0 +1,12 @@
+{
+  "gateway_not_configured": {
+    "name": "AiGatewayError",
+    "ctor": "InferenceUpstreamError",
+    "message": "2001: Please configure AI Gateway in the Cloudflare dashboard"
+  },
+  "no_such_model": {
+    "name": "AiError",
+    "message": "5007: No such model @cf/openai/does-not-exist or task",
+    "ctor": "InferenceUpstreamError"
+  }
+}

@@ -147,7 +147,7 @@ test/         unit/*.test.ts integration/*.test.ts demo/*.test.ts fixtures/
 | `MAX_TOOL_CALLS` | 6 |
 | `MAX_PLAN_TURNS` | 3 (plus 1 narrate turn, so 4 LLM turns total) |
 | `RUN_DEADLINE_MS` | 60 000 |
-| `SUBREQUEST_BUDGET` | 45. Counts every outbound fetch **and** every Agent RPC from the Workflow (assume both count, verify in WP-02). Worst-case cost is reserved before each tool runs. |
+| `SUBREQUEST_BUDGET` | 45. Counts every outbound fetch, every LLM call **and** every Agent RPC or D1 call from the Workflow. Worst-case cost is reserved before each tool runs. *WP-02:* the Workers limits page lists "subrequests per invocation: 50" and a separate "subrequests to internal services: 1,000" on Free, but its definition of a subrequest also names "Cloudflare services like R2, KV, or D1", and Workflows count per instance. This wasn't verified live (no deploy, by choice), so the conservative count stays. |
 | `HTTP_SAMPLES` | 3 |
 | `MAX_HOPS` | 5 |
 | `READ_CAP` | 16 KB |
@@ -299,10 +299,23 @@ callLlm(env, req): Promise<LlmResult>            // primary → fallback model o
 streamLlm(env, req, onDelta): Promise<LlmResult>
 ```
 
-- Models are called through `env.AI.run(model, input, { gateway: { id: env.AI_GATEWAY_ID } })`. `models.ts` holds the per-model request and response mappers. **The exact gpt-oss-120b input and tool-call shape is fixed in spike WP-02.**
-- After each call, `usage.ts` adds to the neuron estimate: gpt-oss-120b uses ≈ 0.032 neurons per input token and 0.068 per output token, and the glm rates are to be confirmed in WP-02.
+- Models are called through `env.AI.run(model, input, { gateway: { id: env.AI_GATEWAY_ID } })`. Both models use the **OpenAI chat-completions format**, so `client.ts` has one request builder and one response mapper. `models.ts` only adds per-model extras (below). Shapes were confirmed in spike WP-02.
+- After each call, `usage.ts` adds **`usage.neurons`**, which Workers AI reports on every response. If it's missing, it falls back to the token rates: gpt-oss-120b 31,818 / 68,182 neurons per M input/output tokens (≈ 0.0318 / 0.0682 per token), and glm-4.7-flash 5,500 / 36,400 per M (≈ 0.0055 / 0.0364).
 - A Workers AI "daily allocation exceeded" error sets the day to `NEURON_DAILY`.
-- When `LLM_MODE=mock`, `mock.ts` returns scripted turns keyed by target pattern (demo modes, `cloudflare.com`, generic) and streams canned text.
+- When `LLM_MODE=mock`, `mock.ts` returns scripted turns keyed by target pattern (demo modes, `cloudflare.com`, generic) and streams canned text. Its responses are built from the real recorded responses in `test/fixtures/llm/`.
+
+#### 7.4.1 Spike findings (WP-02, 2026-10-15, live calls from `wrangler dev`)
+
+| Topic | Finding | Consequence for the build |
+|---|---|---|
+| Request | `{messages, tools, max_tokens, tool_choice?, stream?}`. Tools use the OpenAI shape `{type:"function", function:{name, description, parameters}}`. A tool result goes back as `{role:"tool", tool_call_id, content}` after the assistant message that holds `tool_calls`. | One mapper for both models. gpt-oss-120b also accepts the Responses format, but it rejected these tool definitions and offers nothing extra, so it isn't used. |
+| Response | `choices[0].message.{content, tool_calls[], reasoning, reasoning_content}` and `finish_reason` (`tool_calls` or `stop`). `tool_calls[i] = {id, type:"function", function:{name, arguments}}`, where **`arguments` is a JSON string**. | `JSON.parse` the arguments, then validate with zod. A parse failure counts as an invalid call (FR-12). `reasoning*` is **never** shown, stored or sent back to the model. |
+| `submit_findings` | With the default `tool_choice`, gpt answered in prose after the tool result and **didn't** call `submit_findings`. glm called it, but put whole sentences in `evidence[]`. `tool_choice:"required"` made gpt call it. Naming the tool in `tool_choice` was ignored. | Planning turns send **`tool_choice:"required"`**. The schema says `evidence` holds IDs only (`dns-1`); zod accepts `[dns-1]` or `dns-1` and rejects anything else. Prose `content` on a tool turn is ignored. |
+| glm thinking | On by default. It took 12–21 s, and once returned `content: null` because reasoning used the whole `max_tokens`. With `chat_template_kwargs:{enable_thinking:false}` it takes about 2 s. | glm is **always** called with thinking off. |
+| gpt reasoning | Can't be turned off; `reasoning_effort` low/medium/high (default medium). Text took about 3 s, a tool turn 1.4–1.7 s, but the forced `submit_findings` turn took **19 s** once. | Watch latency against `RUN_DEADLINE_MS` in WP-09. Use `reasoning_effort:"low"` if turns run slow. |
+| Streaming | `stream:true` returns an SSE `ReadableStream`, and it works through the gateway binding. Chunks are `chat.completion.chunk` with `choices[0].delta.{content \| reasoning \| reasoning_content \| tool_calls[{index, id?, function:{name?, arguments fragment}}]}`. Per-chunk `usage` is partial. The last data line is `{"response":"","usage":{…,"neurons"}}`, then `[DONE]`. Chunks carry a `p` padding field. | `stream.ts` forwards only `delta.content` and takes usage from the final summary line. Narration doesn't use tools, so tool-call fragments aren't reassembled. |
+| AI Gateway | Only the `default` ID is created automatically. Any other ID fails with `AiGatewayError` "2001: Please configure AI Gateway in the Cloudflare dashboard" until it exists. **`incident-copilot` was created in the dashboard** (2026-10-15). | This is a configuration error, not an outage: both models fail the same way, so it maps to `LlmUnavailable` (rule path) and is logged as an error. Terraform (WP-25) imports the gateway if the provider supports it (R1). |
+| Errors | Thrown as `InferenceUpstreamError` with `name` `AiError` or `AiGatewayError` and a numeric code at the start of `message` (`5007: No such model …`, `2001: …`). 429 and "allocation exceeded" weren't observed. | `client.ts` parses the code from the message. Rate-limit and allocation errors are matched by message as planned. Fixture: `test/fixtures/llm/errors.json`. |
 
 ### 7.5 Demo service
 
@@ -367,6 +380,14 @@ RULE_PATH: run dns, http, cert, provider (those not already run) → classify �
 ```
 
 Tool steps retry with `{limit: 2}` because each retry spends subrequest budget. LLM steps have the model fallback inside the step. `finishRun` runs before the approval wait, so the input is enabled again while waiting (D13).
+
+**`waitForApproval` behaviour (WP-02, local Workflows, `agents` 0.28.1):**
+- **Approve:** returns the `metadata` passed to `approveWorkflow`.
+- **Reject:** throws `WorkflowRejectedError` ("Workflow rejected: <reason>").
+- **Timeout:** throws a plain `Error` ("Execution timed out after <ms> ms"). It can be caught in `run()`, and the Workflow carries on to later steps. The catch rule is: `WorkflowRejectedError` → rejected, **any other error from the wait → expired**. Don't match on the message text, which may differ in production.
+- **Late or repeated calls:** calling `approveWorkflow` after the timeout, or a second time, doesn't throw. D13's idempotency is still enforced through the `approvals` table.
+- **The SDK's built-in tracking (`getWorkflow`) isn't a source of truth:** a rejection calls `step.reportError` and shows `errored` even though the run continues, and other runs stay `queued` unless `step.reportComplete` is called. The UI reads the `approvals` and `runs` tables only.
+- Inside `AgentWorkflow.run()`, the instance ID is **`this.workflowId`** (or `event.instanceId`). The documented `this.instanceId` is `undefined` in 0.28.1.
 
 ### 8.3 Approval
 
@@ -646,8 +667,8 @@ The estimates are focused hours with heavy AI help. **Day 1 is heavy (about 14 h
 
 | Risk | Mitigation |
 |---|---|
-| The gpt-oss-120b tool-call format on Workers AI differs from what's expected | The WP-02 spike, per-model mappers in `models.ts`, and the mock |
-| `waitForApproval` timeout semantics, or whether DO RPC counts toward subrequests | Verified in WP-02. Budget set to 45 with conservative counting. |
+| The gpt-oss-120b tool-call format on Workers AI differs from what's expected | *Resolved in WP-02 (§7.4.1):* both models use chat completions. Remaining risk: gpt skips `submit_findings` unless `tool_choice:"required"` is sent, and a forced turn can take about 19 s. |
+| `waitForApproval` timeout semantics, or whether DO RPC counts toward subrequests | Timeout checked locally in WP-02 (§8.2): it throws a catchable error. Subrequest counting is from the docs only, so the budget stays at 45 with conservative counting. |
 | Kumo 2.x changes quickly | Pin the exact version and read `ai/USAGE.md` before building UI |
 | Day 1 runs over | WP-12/13 move to the start of Day 2, and the cut line absorbs the difference |
 | The URL is exposed before WP-17 (D2) | Don't share it. `LLM_MODE` can be set to `mock` on the deployed Worker if abuse shows up. |

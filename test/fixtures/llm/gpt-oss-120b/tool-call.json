@@ -1,0 +1,46 @@
+{
+  "choices": [
+    {
+      "finish_reason": "tool_calls",
+      "index": 0,
+      "logprobs": null,
+      "message": {
+        "annotations": null,
+        "audio": null,
+        "content": null,
+        "function_call": null,
+        "reasoning": "We need to perform DNS lookup for example.com A records. Use dns_lookup function.",
+        "reasoning_content": "We need to perform DNS lookup for example.com A records. Use dns_lookup function.",
+        "refusal": null,
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{\"hostname\": \"example.com\", \"types\": [\"A\"]}",
+              "name": "dns_lookup"
+            },
+            "id": "chatcmpl-tool-b86235859654596a",
+            "type": "function"
+          }
+        ]
+      },
+      "routed_experts": null,
+      "stop_reason": 200012
+    }
+  ],
+  "created": 1792006363,
+  "id": "chatcmpl-02c96ecc-84a0-4f27-8079-1b05f92c6a84",
+  "metrics": null,
+  "model": "@cf/openai/gpt-oss-120b",
+  "object": "chat.completion",
+  "service_tier": null,
+  "usage": {
+    "prompt_tokens": 331,
+    "completion_tokens": 54,
+    "total_tokens": 385,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "neurons": 14.213574409484863
+  }
+}

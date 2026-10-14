@@ -1,0 +1,45 @@
+{
+  "id": "chatcmpl-b64c14033622c984",
+  "object": "chat.completion",
+  "created": 1792006363,
+  "model": "@cf/zai-org/glm-4.7-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "tool_calls": [
+          {
+            "id": "chatcmpl-tool-82ff1bd2030d96fe",
+            "type": "function",
+            "function": {
+              "name": "dns_lookup",
+              "arguments": "{\"hostname\": \"example.com\", \"types\": [\"A\"]}"
+            }
+          }
+        ],
+        "reasoning": null,
+        "reasoning_content": null
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls",
+      "stop_reason": 154829
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": null,
+  "usage": {
+    "prompt_tokens": 517,
+    "completion_tokens": 20,
+    "total_tokens": 537,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "neurons": 3.5714999999999995
+  }
+}
