@@ -13,6 +13,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 **Rules**
 - Only one WP is 🔄 at a time.
 - Commit after each WP and record the short hash below.
+- Work happens on `dev`. Review is a PR from `dev` into `main`, checked by Sift (GitHub Actions). Nothing goes to `main` directly without the user's OK.
 - At the end of each day, export the session transcript to `prompts/`.
 - Don't share the deployed URL until WP-17 is ✅ (D2).
 
@@ -20,10 +21,14 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** none (WP-05 ✅ 01:44)
+- **Current:** none (WP-05 ✅ 01:44). Setting up code review (below).
 - **Next:** WP-06 Rules
-- **Hours today:** 1.4 / 14.75 h (Day 1)
-- **Blockers / risks:** none. Watch gpt latency in WP-09: a forced `submit_findings` turn took 19 s once (TDD §7.4.1). Local demo probing is decided: the `SSRF_DEV_ALLOW_ORIGIN` exception, built in WP-04 and set in WP-11.
+- **Hours today:** 1.4 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
+- **Review status (WP-01 to WP-05):**
+  - Branches: `dev` = all work (`5041859`); `main` = WP-05 + `sift-workflows.zip` upload (`6cfd23c`); `master` = WP-01 scaffold (`867d8d6`, the first review base, now unused).
+  - PR #1 `dev` → `main` was opened and then **closed unmerged** (2026-10-15 01:57), with no Sift comments yet.
+  - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are committed on local `main` as `61b5aef` in a separate worktree. **Not pushed: waiting for the user's OK.** Once pushed, reopen or raise a `dev` → `main` PR for Sift to review.
+- **Blockers / risks:** Sift review hasn't run yet (needs the workflows on `main`). `main` and `dev` have diverged (the upload commit and the Sift workflows are only on `main`), so merge `main` into `dev` or rebase before the next PR. Watch gpt latency in WP-09: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
 
 ---
 
@@ -276,7 +281,7 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-15</b> CI/CD</summary>
 
-- [ ] `ci.yml` (typecheck, lint, test, terraform fmt/validate)
+- [ ] `ci.yml` (typecheck, lint, test, terraform fmt/validate), alongside the existing Sift workflows; PR trigger on `main`
 - [ ] `deploy.yml` (migrations, build, deploy demo then main, smoke)
 - [ ] Smoke script (`?smoke=rule` option)
 - [ ] GitHub secrets
@@ -398,6 +403,9 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
+| 2026-10-15 02:05 | review | Sift CI workflows prepared for `main` (`61b5aef`, local worktree, unpushed until the user confirms). The zip upload (`6cfd23c`) is a binary in the repo and can be removed once the YAML files are in | Sift reviews PRs through GitHub Actions on the default branch |
+| 2026-10-15 01:57 | review | The review target is `main` (the default branch), not `master`. PR #1 `dev` → `main` was closed unmerged. `master` (at `867d8d6`) stays as the first review base but is unused | User raised PR #1 against `main`. Sift runs from `main`'s workflows |
+| 2026-10-15 01:50 | review | All work moves to a `dev` branch; changes reach the main line only through a reviewed PR | User wants a Sift code review before work counts as merged |
 | 2026-10-15 01:44 | 05 | `dns_lookup.mismatch` means the resolvers disagree on the response code or on whether the name exists. Different address lists are `addressesDiffer` (info only). **Folded into TDD §7.3 and §9.3 rule 9.** | User decision. Geo/CDN DNS (for example google.com) returns different addresses per resolver, and those healthy sites would otherwise be classed `dns_mismatch` |
 | 2026-10-15 01:44 | 05 | Hard per-tool caps: `http_probe` 20 and `quickCheck` 10 via `countingFetch`. Samples 2–3 are skipped after a loop, hop cap or refusal. A partial result is used rather than an error. **Folded into TDD §7.3.** | Keeps one probe from eating the 45-call run budget. Live: cloudflare.com used 10 (301 to www), github.com 8 |
 | 2026-10-15 01:44 | 05 | Live check used a temporary `/api/dev/probe` route, removed before the commit. Finding: real sites (cloudflare.com, github.com) load assets from other origins, so the asset sub-probe (D10) mostly fires on the demo, as intended | `redirect: "manual"` and DoH work in the Workers runtime as expected |
@@ -420,7 +428,7 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 ## Daily wrap-up
 
 ### Day 1 (2026-10-15)
-- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03, WP-04, WP-05
+- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03, WP-04, WP-05. Review setup: `dev` branch, PR #1 (closed), Sift workflows prepared on `main` (unpushed)
 - **Moved / slipped:**
 - **Hours:** 1.4 / 14.75 h
 - **Transcript exported to `prompts/`:** ⬜

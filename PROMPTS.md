@@ -75,3 +75,15 @@ Answers to Claude's questions:
 
 Answers to Claude's questions:
 - **PR base:** `master` at the first commit (`867d8d6`, WP-01 scaffold); `dev` at the latest commit. The PR shows WP-02 to WP-05 plus doc changes; main is unchanged.
+
+### 02:00 · Sift CI workflows on main
+
+> Add both workflow files into mains workflow folder for the CI to function and call the sift code review. Push directly to main after I confirm only.
+
+(Two pasted files: `sift-review.yml` (runs on PR opened/reopened/synchronize) and `sift-feedback.yml` (runs on PR closed). Both call the reusable workflows in `sahilsaleem2907/sift` and only pass `${{ secrets.* }}` references. No secret values.)
+
+### 01:59 · Board update
+
+> Update the @TASKS.md with our progress.
+
+(TASKS updated with the review setup: `dev` branch, PR #1 closed unmerged, Sift workflows waiting on `main`, and the `main`/`dev` divergence.)
