@@ -1,0 +1,19 @@
+// Main Worker. Bindings are added by the WP that builds each piece (TASKS.md decisions log);
+// the full target config is TDD §5.1.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "incident-copilot",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/agents/*"]
+  },
+  "observability": { "enabled": true },
+  "services": [{ "binding": "DEMO", "service": "incident-copilot-demo", "entrypoint": "DemoAdmin" }],
+  "vars": {
+    "DEMO_BASE_URL": "https://incident-copilot-demo.<sub>.workers.dev",
+    "LLM_MODE": "live"
+  }
+}

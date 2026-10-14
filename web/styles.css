@@ -1,0 +1,31 @@
+@source "../node_modules/@cloudflare/kumo/dist/**/*.{js,jsx,ts,tsx}";
+@import "@cloudflare/kumo/styles/tailwind";   /* must precede tailwindcss */
+@import "tailwindcss";
+@import "@fontsource-variable/hanken-grotesk";
+@import "@fontsource-variable/jetbrains-mono";
+
+@theme {
+  --font-sans:    "STK Bureau Sans", "Hanken Grotesk Variable", system-ui, sans-serif;
+  --font-display: "FT Kunst Grotesk", "Hanken Grotesk Variable", system-ui, sans-serif;
+  --font-mono:    "Apercu Mono Pro", "JetBrains Mono Variable", ui-monospace, monospace;
+  --color-cf-orange: #ff5e1f;  --color-cf-orange-hover: #ff7038;  --color-cf-orange-muted: #bf4c14;
+  --radius-xs: .125rem; --radius-sm: .25rem; --radius-md: .375rem; --radius-lg: .5rem; --radius-xl: .75rem;
+}
+:root {
+  --cf-bg-100: light-dark(#ffffff, #151414);  --cf-bg-200: light-dark(#fdfdfc, #191817);
+  --cf-bg-300: light-dark(#f9f7f6, #2a2927);  --cf-fg: light-dark(#262626, #f0e3de);
+  --cf-fg-muted: light-dark(#737373, #a3a3a3); --cf-border: light-dark(#f0e3de, #f0e3de20);
+}
+#root { isolation: isolate; }
+
+/* Page defaults: theming goes through light-dark() and data-mode only (TDD §12.4). */
+@layer base {
+  :root { color-scheme: light; }
+  :root[data-mode="dark"] { color-scheme: dark; }
+  body {
+    background-color: var(--cf-bg-100);
+    color: var(--cf-fg);
+    font-family: var(--font-sans);
+  }
+  h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 500; }
+}

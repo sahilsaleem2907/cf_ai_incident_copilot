@@ -1,0 +1,11 @@
+allowBuilds:
+  core-js-pure: false
+  esbuild: true
+  workerd: true
+minimumReleaseAgeExclude:
+  - '@cloudflare/vite-plugin@1.64.0'
+  - '@cloudflare/vitest-plugin@1.4.2'
+  - miniflare@5.20261012.0-beta
+  - react-dom@19.3.1
+  - react@19.3.1
+  - wrangler@4.151.0

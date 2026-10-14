@@ -1,0 +1,418 @@
+# Incident Copilot: Task Board
+
+Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §17](TDD.md#17-build-plan-2-days); requirements are in [`PRD.md`](PRD.md). This file changes as work moves; the TDD does not.
+
+| | |
+|---|---|
+| **Day 1** | 2026-10-15: M1 + M2 (all Must), WP-01 to WP-13, 14.75 h planned |
+| **Day 2** | 2026-10-16: remaining Musts, then Shoulds, WP-14 to WP-26, 8.25 h above the cut line + 3.25 h below |
+| **Minimum to submit** | WP-01 to WP-16 (PRD §12) |
+
+**Legend:** ⬜ todo · 🔄 doing · ✅ done · ⛔ blocked · ✂️ cut
+
+**Rules**
+- Only one WP is 🔄 at a time.
+- Commit after each WP and record the short hash below.
+- At the end of each day, export the session transcript to `prompts/`.
+- Don't share the deployed URL until WP-17 is ✅ (D2).
+
+---
+
+## Now
+
+- **Current:** WP-01 Scaffold (started 00:29)
+- **Next:** WP-02 Spike
+- **Hours today:** 0 / 14.75 h (Day 1)
+- **Blockers / risks:** none
+
+---
+
+## Day 1: M1 + M2 (all Must)
+
+| WP | Task | Est | Deps | Status | Started | Done | Commit / notes |
+|---|---|---|---|---|---|---|---|
+| 01 | Scaffold | 1.0 | — | 🔄 | 00:29 | | |
+| 02 | Spike: LLM shapes, streaming, `waitForApproval`, subrequests | 0.75 | 01 | ⬜ | | | |
+| 03 | D1 + workspace cookie + session/health + target parser | 0.75 | 01 | ⬜ | | | |
+| 04 | Safety core: SSRF, reader, origin pin, budget | 1.0 | 01 | ⬜ | | | |
+| 05 | Tools: `dns_lookup`, `http_probe`, `quickCheck`, registry | 1.5 | 04 | ⬜ | | | |
+| 06 | Rules: `classify.ts`, `template.ts` | 0.5 | 05 | ⬜ | | | |
+| 07 | LLM layer: adapter, fallback, usage, prompts, mock, citations, streaming | 1.5 | 02 | ⬜ | | | |
+| 08 | IncidentAgent: schema, state, roles, RPC, transitions, narrate | 1.5 | 03, 07 | ⬜ | | | |
+| 09 | DiagnosisWorkflow: planning loop, bounds, rule path | 1.5 | 05, 06, 08 | ⬜ | | | |
+| 10 | Chat UI | 1.75 | 08 | ⬜ | | | |
+| 11 | Demo service + `DemoPanel` | 1.0 | 03 | ⬜ | | | |
+| 12 | Act: actions, approval, verify, monitor, `ApprovalCard` | 1.5 | 09, 11 | ⬜ | | | |
+| 13 | Deploy 1 + live walkthrough + SSRF/CPU checks | 0.5 | 12 | ⬜ | | | |
+
+> **Slip rule:** if Day 1 runs over, WP-12 and WP-13 move to the start of Day 2, ahead of every Should item.
+
+## Day 2: remaining Musts, then Shoulds
+
+| WP | Task | Est | Deps | Status | Started | Done | Commit / notes |
+|---|---|---|---|---|---|---|---|
+| 14 | Tests (Must): fill coverage gaps | 1.25 | 12 | ⬜ | | | |
+| 15 | CI/CD (Must): `ci.yml`, `deploy.yml`, smoke | 0.75 | 14 | ⬜ | | | |
+| 16 | README + PROMPTS (Must, **protected time**) | 1.0 | — | ⬜ | | | |
+| 17 | Limits + budget guard | 1.0 | 15 | ⬜ | | | |
+| 18 | Watch: API, panel, cron, `WatchWorkflow` | 2.0 | 17 | ⬜ | | | |
+| 19 | Notifications: polling, unread, webhooks, `NotifyWorkflow` | 1.5 | 18 | ⬜ | | | |
+| 20 | Eval: `eval/run.ts` + `results.md` | 0.75 | 15 | ⬜ | | | |
+| — | **✂️ CUT LINE**: anything below that isn't built goes into the README "designed, not built" list | | | | | | |
+| 21 | `cert_info` + `provider_status` | 1.0 | 09 | ⬜ | | | |
+| 22 | Postmortem | 0.5 | 12 | ⬜ | | | |
+| 23 | Voice | 0.75 | 17 | ⬜ | | | |
+| 24 | `recheck_burst` | 0.25 | 12 | ⬜ | | | |
+| 25 | Terraform (local apply) | 0.5 | — | ⬜ | | | |
+| 26 | Demo GIF | 0.25 | 13 | ⬜ | | | |
+
+> WP-16 is protected: start it no later than about 1 h before the end of Day 2, whatever else is still in progress.
+
+---
+
+## UI map
+
+The TDD has no standalone UI task. UI work lives inside these WPs, and the checkboxes in each WP's checklist below track it.
+
+| UI piece (TDD §4, §12) | Built in | Priority |
+|---|---|---|
+| `styles.css` tokens, fonts, `theme.ts`, `AppShell` layout skeleton | WP-01 | Must |
+| `routes.tsx`, `useIncident`, `ChatPane`, `Composer`, `MessageBubble`, `CheckCard`, `StatusBadge`, `EvidenceChip`, incident header + status chip, `IncidentSidebar` (basic), `ReadOnlyBanner` | WP-10 | Must |
+| `DemoPanel` | WP-11 | Must |
+| `ApprovalCard`, Resolve button | WP-12 | Must |
+| `BudgetBanner`, 429 toast | WP-17 | Should, above cut |
+| `WatchlistPanel` | WP-18 | Should, above cut |
+| `useIncidents` polling + unread dot, `useNotifications`, `WebhookSettings` | WP-19 | Should, above cut |
+| `PostmortemDialog`, Postmortem button | WP-22 | Below cut |
+| `VoiceButton`, `useRecorder` | WP-23 | Below cut |
+
+**UI rules that apply to every WP above (TDD §12.4):**
+- Use Kumo components first (`Sidebar`, `Button`, `Badge`, `LayerCard`, `Surface`, `Collapsible`, `Code`, `Loader`, `Banner`, `Toast`, `Dialog`, `ClipboardText`, `Input`, `SensitiveInput`, `Select`/`Radio`, `Table`, `Tooltip`, `Empty`).
+- Never use Tailwind `dark:` variants. Theming goes through `light-dark()` and `data-mode`.
+- Orange is only for primary CTAs (Send, Approve) and highlight rings. Everything else uses Kumo's neutral variants.
+- Headings use `font-display` at weight 500. Hostnames, evidence IDs and raw evidence use `font-mono`.
+- Every control works from the keyboard, and status is never shown by colour alone.
+
+---
+
+## WP checklists
+
+### Day 1
+
+<details>
+<summary><b>WP-01</b> Scaffold</summary>
+
+- [ ] `git init`, pnpm, single package
+- [ ] Vite + `@cloudflare/vite-plugin` with `auxiliaryWorkers` (demo-service)
+- [ ] TypeScript, ESLint, Vitest (`vitest-pool-workers`)
+- [ ] `wrangler.jsonc` (main) + `demo-service/wrangler.jsonc`
+- [ ] Kumo (exact pin), Tailwind v4, fonts, tokens in `styles.css`
+- [ ] Run `npx @cloudflare/kumo ls` and read `node_modules/@cloudflare/kumo/ai/USAGE.md` for exact props
+- [ ] `theme.ts` (`data-mode` from `prefers-color-scheme`, listens for changes)
+- [ ] `AppShell` skeleton: header (wordmark "Incident Copilot", GitHub link), left sidebar, main area, right column that collapses below `lg`, footer "Built on Cloudflare" (no Cloudflare logo)
+- [ ] **Done when:** `pnpm dev` serves the shell in light and dark; `typecheck`, `lint`, `test` pass
+</details>
+
+<details>
+<summary><b>WP-02</b> Spike</summary>
+
+- [ ] gpt-oss-120b request/response + tool-call shape
+- [ ] glm-4.7-flash request/response + tool-call shape
+- [ ] Streaming through the AI Gateway binding
+- [ ] `waitForApproval` timeout behaviour
+- [ ] Do DO RPC and D1 calls count as subrequests?
+- [ ] glm neuron rates
+- [ ] Record fixtures in `test/fixtures/` for `mock.ts`
+- [ ] **Done when:** notes added to TDD §7.4 and §5.2, fixtures committed
+</details>
+
+<details>
+<summary><b>WP-03</b> D1 and workspace</summary>
+
+- [ ] `migrations/0001_init.sql`
+- [ ] `__Host-ws` cookie middleware
+- [ ] Hono router, `/api/session`, `/api/health`
+- [ ] `safety/target.ts` (URL → hostname → "demo" → `need_target`)
+- [ ] `target.test.ts`
+- [ ] **Done when:** cookie is set, session returns `demoUrl`, target tests pass
+</details>
+
+<details>
+<summary><b>WP-04</b> Safety core</summary>
+
+- [ ] `ssrf.ts` + `iprange.ts` (all blocked v4/v6 ranges)
+- [ ] `reader.ts` (16 KB cap, 10 s abort, manual redirects)
+- [ ] `origin.ts` (`assertInScope`)
+- [ ] Budget / subrequest counter
+- [ ] `ssrf.test.ts` (40+ cases), `origin.test.ts`
+- [ ] **Done when:** SSRF and origin unit tables pass
+</details>
+
+<details>
+<summary><b>WP-05</b> Tools</summary>
+
+- [ ] `dns_lookup` (two DoH resolvers, mismatch flag)
+- [ ] `http_probe` (3 samples, hops, headers, snippet, asset sub-probe)
+- [ ] `quickCheck`
+- [ ] Registry, evidence IDs, digests (≤ 1.5 KB)
+- [ ] `dns.test.ts`, `http.test.ts`
+- [ ] **Done when:** parser tests pass and real-host probes work from `wrangler dev`
+</details>
+
+<details>
+<summary><b>WP-06</b> Rules</summary>
+
+- [ ] `classify.ts` (11 rules, first match wins)
+- [ ] `template.ts` (four sections with evidence IDs)
+- [ ] `classify.test.ts` (one fixture per category + precedence)
+- [ ] **Done when:** classification tests pass for every category
+</details>
+
+<details>
+<summary><b>WP-07</b> LLM layer</summary>
+
+- [ ] `client.ts` adapter + `models.ts` mappers
+- [ ] Primary → fallback model on error/429
+- [ ] `usage.ts` neuron accounting
+- [ ] `prompts.ts` (planning + narration)
+- [ ] `submit_findings` tool + zod
+- [ ] `mock.ts` scripted turns
+- [ ] `citations.ts` post-check + `citations.test.ts`
+- [ ] `stream.ts`
+- [ ] **Done when:** mock and live calls return normalized `LlmResult`; citation tests pass
+</details>
+
+<details>
+<summary><b>WP-08</b> IncidentAgent</summary>
+
+- [ ] SQL schema
+- [ ] Synced `IncidentState`
+- [ ] `onConnect` roles (owner / viewer)
+- [ ] RPC methods + owner-only callables
+- [ ] `transitions.ts` (+ `transitions.test.ts`)
+- [ ] `narrate` (streams, idempotent per `runId`)
+- [ ] D1 index sync
+- [ ] **Done when:** agent integration tests for init, roles, narration pass
+</details>
+
+<details>
+<summary><b>WP-09</b> DiagnosisWorkflow</summary>
+
+- [ ] Planning loop (≤ 3 turns, ≤ 6 tools, 60 s, 45 subrequests)
+- [ ] Invalid-call rule (1st → feedback, 2nd → rule path)
+- [ ] Rule path (`LlmUnavailable` / budget mode)
+- [ ] Findings step + narrate step + `finishRun`
+- [ ] `diagnosis.test.ts`
+- [ ] **Done when:** diagnosis integration tests pass with the mock LLM
+</details>
+
+<details>
+<summary><b>WP-10</b> Chat UI</summary>
+
+- [ ] `routes.tsx` (`/`, `/i/:id`)
+- [ ] `useIncident`: wraps `useAgent`, merges `delta` broadcasts into a buffer keyed by `messageId`, exposes callables
+- [ ] `ChatPane`: messages, check cards inline in run order, empty state (`Empty`) with "Use demo service" and "diagnose cloudflare.com" chips
+- [ ] `Composer`: Enter sends, Shift+Enter adds a new line, disabled while `activeRunId` is set, handles 400 `need_target` and 409
+- [ ] `MessageBubble`: streaming buffer replaced by the final stored text; stream region has `aria-live="polite"`
+- [ ] `CheckCard`: tool icon, label, summary, `Collapsible` evidence in `Code` (lazy `getEvidence`)
+- [ ] `StatusBadge`: icon **and** text for Pending, Running (`Loader`), Pass, Fail, Unavailable
+- [ ] `EvidenceChip`: clicking `[http-1]` scrolls to its card and flashes the orange ring
+- [ ] Incident header: target in mono and a status chip that always has text
+- [ ] "New incident for X" button when a follow-up names a host outside the origin pin (§8.6)
+- [ ] `IncidentSidebar`: "New incident" button and a basic list with status badges
+- [ ] `ReadOnlyBanner` for viewer connections
+- [ ] Keyboard pass: every control reachable, nothing shown by colour alone
+- [ ] **Done when:** full chat works end to end in the browser with `LLM_MODE=mock`
+</details>
+
+<details>
+<summary><b>WP-11</b> Demo service</summary>
+
+- [ ] Modes: healthy, slow, errors, redirect_loop, bad_cache
+- [ ] `DemoState` DO
+- [ ] `DemoAdmin` RPC entrypoint
+- [ ] `/api/demo` + `/api/demo/mode`
+- [ ] `DemoPanel` (right column): mode picker (`Select`/`Radio`) and the demo URL (`ClipboardText`)
+- [ ] `demo.test.ts`
+- [ ] **Done when:** each mode behaves as in TDD §7.5; demo test passes
+</details>
+
+<details>
+<summary><b>WP-12</b> Act</summary>
+
+- [ ] Action catalog + proposable checks
+- [ ] Propose / supersede / dedupe
+- [ ] `waitForApproval`, approve/reject callables
+- [ ] Execute + verify + `afterAction`
+- [ ] Monitor ticks (15 s × 10, 3 passes → resolved)
+- [ ] `ApprovalCard`: action title, why it's proposed (cause + refs), real `<button>`s for Approve (orange) and Reject; shows approved, rejected, expired or superseded; buttons hidden for viewers
+- [ ] Resolve button in the incident header
+- [ ] `approval.test.ts`
+- [ ] **Done when:** approval test passes; local walkthrough break → approve → resolved works
+</details>
+
+<details>
+<summary><b>WP-13</b> Deploy 1</summary>
+
+- [ ] `wrangler deploy` both Workers
+- [ ] Live PRD §13 steps 1–5
+- [ ] SSRF refusals: `169.254.169.254`, `localhost`, `10.0.0.1`
+- [ ] CPU time check in Workers Logs
+- [ ] **Done when:** live URL passes the walkthrough (**don't share it yet**)
+</details>
+
+### Day 2
+
+<details>
+<summary><b>WP-14</b> Tests</summary>
+
+- [ ] Fill unit coverage gaps
+- [ ] Fill integration gaps (`transitions`, `cron` stubs)
+- [ ] **Done when:** `pnpm test` is green and the approval path is covered
+</details>
+
+<details>
+<summary><b>WP-15</b> CI/CD</summary>
+
+- [ ] `ci.yml` (typecheck, lint, test, terraform fmt/validate)
+- [ ] `deploy.yml` (migrations, build, deploy demo then main, smoke)
+- [ ] Smoke script (`?smoke=rule` option)
+- [ ] GitHub secrets
+- [ ] **Done when:** a PR runs green; merging deploys and passes smoke
+</details>
+
+<details>
+<summary><b>WP-16</b> README and PROMPTS</summary>
+
+- [ ] Architecture + Agents SDK explanation
+- [ ] Security section with accepted risks (D2, D7, single location, DNS rebinding)
+- [ ] Terraform / wrangler split
+- [ ] "Designed, not built" list (from cut items in this file)
+- [ ] `PROMPTS.md` + `prompts/` transcripts, secrets removed
+- [ ] **Done when:** docs complete, no secrets
+</details>
+
+<details>
+<summary><b>WP-17</b> Limits and budget guard</summary>
+
+- [ ] `PROBE_LIMIT`, `RUN_LIMIT`, `VOICE_LIMIT` bindings
+- [ ] `quota.ts` (D1 fixed window)
+- [ ] `usage.ts` wired to the guard (≥ 9000 → rule_based)
+- [ ] `BudgetBanner` in the header, driven by `budgetMode` from `/api/session`
+- [ ] 429 UX: `Toast` showing the time until reset
+- [ ] **Done when:** 4 runs in a minute → 429; forced neuron total → rule-based banner
+</details>
+
+<details>
+<summary><b>WP-18</b> Watch</summary>
+
+- [ ] Watch API + caps (3 per workspace, 30 global)
+- [ ] `WatchlistPanel` (sidebar): add URL, list with last status, delete, cap errors shown
+- [ ] `add_to_watchlist` action
+- [ ] `scheduled()` (LIMIT 6, subrequest counter)
+- [ ] `WatchWorkflow` (2 of 3 confirm)
+- [ ] `reportWatchCheck`
+- [ ] `cron.test.ts`
+- [ ] **Done when:** breaking a watched demo opens an incident in about 2 min; restoring resolves it
+</details>
+
+<details>
+<summary><b>WP-19</b> Notifications</summary>
+
+- [ ] `useIncidents`: polls `GET /api/incidents` every 10 s while the tab is visible
+- [ ] Unread dot and badge in `IncidentSidebar`; `markRead` when an incident is opened
+- [ ] `useNotifications`: browser notification on a new unread row (permission requested from a button click)
+- [ ] Webhook API
+- [ ] `WebhookSettings` (sidebar): `SensitiveInput`, masked hint, remove
+- [ ] `crypto.ts` (AES-GCM) + `webhook.test.ts`
+- [ ] `NotifyWorkflow`
+- [ ] **Done when:** a test Discord webhook fires exactly once per state change
+</details>
+
+<details>
+<summary><b>WP-20</b> Eval</summary>
+
+- [ ] `eval/run.ts` + `cases.ts`
+- [ ] One live run (about 3k neurons)
+- [ ] Commit `eval/results.md`
+- [ ] **Done when:** at least 4 of 5 cases pass
+</details>
+
+<details>
+<summary><b>WP-21</b> cert_info and provider_status</summary>
+
+- [ ] `cert.ts` (crt.sh, Cache API, `unavailable` on error)
+- [ ] `provider.ts` (Statuspage + AWS best effort)
+- [ ] Add both to the rule path
+- [ ] **Done when:** both cards render; crt.sh failure shows `unavailable`
+</details>
+
+<details>
+<summary><b>WP-22</b> Postmortem</summary>
+
+- [ ] `generatePostmortem` (streamed + rule-based template)
+- [ ] `PostmortemDialog` (`Dialog` with copy)
+- [ ] Postmortem button in the incident header, enabled when `resolved`
+- [ ] `generate_postmortem` action
+- [ ] **Done when:** walkthrough step 6 produces stored, copyable markdown
+</details>
+
+<details>
+<summary><b>WP-23</b> Voice</summary>
+
+- [ ] `useRecorder` + `VoiceButton`
+- [ ] `/api/voice` (size cap, limit, whisper)
+- [ ] Normalization (" dot ", " slash ", hostname lowercasing)
+- [ ] **Done when:** "is demo dot example dot com down" fills the input and isn't sent
+</details>
+
+<details>
+<summary><b>WP-24</b> recheck_burst</summary>
+
+- [ ] Monitor kind `burst` (60 s × 15)
+- [ ] **Done when:** timeline shows ticks once a minute
+</details>
+
+<details>
+<summary><b>WP-25</b> Terraform</summary>
+
+- [ ] `infra/` with D1 (+ AI Gateway if the provider supports it)
+- [ ] One local `apply`
+- [ ] **Done when:** `terraform validate` passes in CI and apply has run once
+</details>
+
+<details>
+<summary><b>WP-26</b> Demo GIF</summary>
+
+- [ ] Record the 60-second walkthrough
+- [ ] Add it to the README
+</details>
+
+---
+
+## Decisions and deviations log
+
+Newest first. Record spike findings, anything moved or cut, and estimate overruns over 30 min.
+
+| Date / time | WP | Change | Why |
+|---|---|---|---|
+| 2026-10-15 00:29 | 01 | Prompt log is `PROMPTS.md`, updated every turn (user message + answers to Claude's questions). WP-16 curates it. | User asked for a prompt history; reuse the PRD §14 deliverable instead of adding a new file |
+| 2026-10-15 00:29 | 01 | Pin `vitest` 4.1.x and `typescript` 6.0.x (not latest 5.x / 7.x); add `echarts` ^6 | `vitest-pool-workers` 0.23 needs vitest ^4.1; `typescript-eslint` needs TS < 6.1; `echarts` is a Kumo 2.14 peer |
+| 2026-10-15 00:29 | 01 | Private GitHub repo `cf_ai_incident_copilot` created now; commit + push after each WP | Offsite backup from hour one |
+| 2026-10-15 00:29 | 01 | `wrangler.jsonc` grows per WP (only bind what exists). D1 created with `wrangler d1 create` in WP-03; Terraform imports it in WP-25 if built (deviation from D15) | Bound classes must exist for `pnpm dev`; Terraform is below the cut line |
+
+---
+
+## Daily wrap-up
+
+### Day 1 (2026-10-15)
+- **Done:**
+- **Moved / slipped:**
+- **Hours:** / 14.75 h
+- **Transcript exported to `prompts/`:** ⬜
+
+### Day 2 (2026-10-16)
+- **Done:**
+- **Cut (→ README "designed, not built"):**
+- **Hours:** / 11.5 h
+- **Transcript exported to `prompts/`:** ⬜
