@@ -22,3 +22,9 @@ Answers to Claude's questions (grill-me):
 > explain in simple words
 
 (Asked mid-grilling for the config question to be re-explained in plain language.)
+
+### 00:49 · WP-01 follow-up (docs)
+
+> Fold the package change in the @TDD.md and @TASKS.md
+
+(Folded the `@cloudflare/vitest-plugin` rename, the three Vitest projects and the demo stub into TDD §2, §4 and §14, and merged the matching TASKS decision rows.)
