@@ -20,10 +20,10 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-02 Spike (started 01:00)
+- **Current:** none (WP-02 ✅ 01:10)
 - **Next:** WP-03 D1 and workspace
-- **Hours today:** 0.4 / 14.75 h (Day 1)
-- **Blockers / risks:** none (wrangler logged in). Spike is local only: no deploy, so subrequest counting comes from the docs.
+- **Hours today:** 0.65 / 14.75 h (Day 1)
+- **Blockers / risks:** none. Watch gpt latency in WP-09: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
 
 ---
 
@@ -32,7 +32,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | WP | Task | Est | Deps | Status | Started | Done | Commit / notes |
 |---|---|---|---|---|---|---|---|
 | 01 | Scaffold | 1.0 | — | ✅ | 00:29 | 00:37 | `867d8d6` (+ docs `58bb6ec`, PRD fold-in). 0.4 h vs 1.0 est |
-| 02 | Spike: LLM shapes, streaming, `waitForApproval`, subrequests | 0.75 | 01 | 🔄 | 01:00 | | |
+| 02 | Spike: LLM shapes, streaming, `waitForApproval`, subrequests | 0.75 | 01 | ✅ | 01:00 | 01:10 | `a030286`. 0.25 h vs 0.75 est. About 20 live calls, about 250 neurons |
 | 03 | D1 + workspace cookie + session/health + target parser | 0.75 | 01 | ⬜ | | | |
 | 04 | Safety core: SSRF, reader, origin pin, budget | 1.0 | 01 | ⬜ | | | |
 | 05 | Tools: `dns_lookup`, `http_probe`, `quickCheck`, registry | 1.5 | 04 | ⬜ | | | |
@@ -411,9 +411,9 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 ## Daily wrap-up
 
 ### Day 1 (2026-10-15)
-- **Done:** WP-01 (plus the package change folded into TDD and PRD)
+- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02
 - **Moved / slipped:**
-- **Hours:** 0.4 / 14.75 h
+- **Hours:** 0.65 / 14.75 h
 - **Transcript exported to `prompts/`:** ⬜
 
 ### Day 2 (2026-10-16)
