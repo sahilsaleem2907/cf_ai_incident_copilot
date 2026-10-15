@@ -221,6 +221,17 @@ describe("IncidentAgent: roles over WebSocket (D8)", () => {
     sock.close();
   });
 
+  it("tells each connection its role (for the read-only banner)", async () => {
+    const { id, ws } = await newIncident();
+    const owner = await connect(id, ws);
+    const viewer = await connect(id, newId());
+    await Promise.all([owner.state(), viewer.state()]);
+    expect(await owner.rpc("whoami")).toMatchObject({ success: true, result: { role: "owner" } });
+    expect(await viewer.rpc("whoami")).toMatchObject({ success: true, result: { role: "viewer" } });
+    owner.close();
+    viewer.close();
+  });
+
   it("refuses names that aren't incident IDs, and plain HTTP to agents", async () => {
     const bad = await exports.default.fetch("https://copilot.example.com/agents/incident-agent/not-an-id", { headers: { Upgrade: "websocket" } });
     expect(bad.status).toBe(404);

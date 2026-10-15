@@ -1,4 +1,4 @@
-import { Button, Sidebar } from "@cloudflare/kumo";
+import { LinkButton, Sidebar } from "@cloudflare/kumo";
 import { GithubLogoIcon, PlusIcon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 
@@ -28,17 +28,23 @@ export function AppShell({ sidebar, aside, children }: Props) {
         </a>
       </header>
 
-      <Sidebar.Provider contained defaultOpen collapsible="none" className="min-h-0 flex-1">
+      {/* Below 768px the sidebar becomes a sheet, opened from the trigger at the top of <main>. */}
+      <Sidebar.Provider contained defaultOpen collapsible="offcanvas" mobileBreakpoint={768} className="min-h-0 flex-1">
         <Sidebar aria-label="Incidents">
           <Sidebar.Header>
-            <Button variant="secondary" icon={PlusIcon} className="w-full">
+            <LinkButton href="/" variant="secondary" icon={PlusIcon} className="w-full">
               New incident
-            </Button>
+            </LinkButton>
           </Sidebar.Header>
           <Sidebar.Content>{sidebar}</Sidebar.Content>
         </Sidebar>
 
-        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-(--cf-bg-100)">{children}</main>
+        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-(--cf-bg-100)">
+          <div className="border-b border-(--cf-border) px-2 py-1 md:hidden">
+            <Sidebar.Trigger aria-label="Show incidents" />
+          </div>
+          {children}
+        </main>
 
         <aside
           aria-label="Demo service"

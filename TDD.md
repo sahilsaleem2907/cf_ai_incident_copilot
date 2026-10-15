@@ -614,6 +614,19 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 
 `useIncident(id)` wraps `useAgent<IncidentState>`. It merges `delta` broadcasts into a streaming buffer keyed by `messageId` and exposes the callables. `useIncidents()` polls the list and fires `useNotifications()` when a new unread row appears (Notification API, only after permission is granted from a button click).
 
+*As built (WP-10):*
+- **Pure helpers** in `web/lib/` (unit-tested in `test/unit/web/`):
+  - `stream.ts`: the frame reducer (`stream_start` resets);
+  - `feed.ts`: `buildFeed` lays out each run's question, then its checks (a pending check in the active run shows as Running), then its narration. The live buffer stands in for the narration until the stored one arrives;
+  - `markdown.ts`: the narration subset parsed into a tree and rendered as React elements, never HTML. `[id]` becomes an `EvidenceChip` only for known IDs;
+  - `incident.ts`: `otherHost` (§8.6, reuses `safety/target.ts` `parseTarget`) and `runNote`, which names the limit that ended the last run;
+  - `api.ts`: API errors mapped to plain sentences.
+- **Role:** the agent's `whoami()` callable gives the client its role, because the SDK doesn't tell a client its connection is readonly. Viewers get no composer, a "View only" badge in the sticky header and the `ReadOnlyBanner`.
+- **Shared types:** `tsconfig.web.json` includes the few pure worker files the browser reuses (agent state types, categories, tool types, `safety/target.ts`, `lib/ids.ts`).
+- **Kumo theming:** Kumo's brand token is pointed at `--color-cf-orange` (it's blue by default), so primary buttons and focus rings are orange. Below 768 px the Kumo `Sidebar` becomes an off-canvas sheet with a trigger.
+- **Evidence:** the check card's evidence is a plain disclosure `<button aria-expanded>` that lazy-loads `getEvidence` into `CodeBlock`.
+- **Vite:** `optimizeDeps.include` lists `agents/react` and `wouter`. Otherwise Vite discovered them on the first load and reloaded mid-render ("Invalid hook call").
+
 ### 12.4 Design system (D17)
 
 `web/styles.css`:

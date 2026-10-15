@@ -328,6 +328,12 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     await this.upsertIndex();
   }
 
+  /** The caller's role, for the read-only banner: the SDK doesn't tell a client that its connection is readonly. */
+  whoami(): { role: ConnectionRole } {
+    const { connection } = getCurrentAgent();
+    return { role: (connection?.state as ConnectionInfo | null)?.role ?? "viewer" };
+  }
+
   /** Full evidence for a check card. Open to viewers too: it's what the incident already shows. */
   getEvidence(id: unknown): { evidenceId: string; tool: ToolName; status: string; summary: string; raw: Json } | null {
     if (typeof id !== "string") return null;
@@ -460,7 +466,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
  * WebSocket callables. `@callable()` only records the method in the SDK's registry (its decorator context
  * is unused), so registering by hand avoids a Babel decorator transform in Vite and Vitest.
  */
-for (const name of ["sendMessage", "resolve", "markRead", "getEvidence"] as const) {
+for (const name of ["sendMessage", "resolve", "markRead", "getEvidence", "whoami"] as const) {
   callable()(IncidentAgent.prototype[name] as (...args: unknown[]) => unknown, undefined as unknown as ClassMethodDecoratorContext);
 }
 
