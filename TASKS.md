@@ -22,7 +22,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-18 Watch (started 22:57, D1). WP-17 and WP-17b are done (not deployed yet). **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
+- **Current:** none. WP-17, WP-17b and WP-18 are done (not deployed yet). **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
 - **Next:** WP-19 Notifications
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
@@ -67,7 +67,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 16 | README + PROMPTS (Must, **protected time**) | 1.0 | — | ✅ | 21:31 (D1) | 21:35 (D1) | `857cdb2`. README for reviewers (no live URL until WP-17, D2) + PROMPTS overview by phase; secret sweep clean. Done early, so the README's not-built list is kept current through Day 2 |
 | 17 | Limits + budget guard | 1.0 | 15 | ✅ | 22:29 (D1) | 22:44 (D1) | `f636c10`. 0.25 h vs 1.0 est. 536 tests pass, 3 runs in a row. Local: 4th run → 429 `retryAfter: 60`; forced 9,000 neurons → banner + rule-based run. Live after the next `dev` → `main` merge. Found 2 older issues (first-visit cookie race, cookie-less quota bypass), see the log |
 | 17b | First-visit workspace race + per-IP run limit (found in WP-17) | — | 17 | ✅ | 22:47 (D1) | 22:49 (D1) | `feb4707`. 540 tests pass. Browser: a first visit sets 1 cookie (was 6), the demo URL matches it, and the eager 3+1 check gets 429; a 3rd browser on the same IP was refused from its first run |
-| 18 | Watch: API, panel, cron, `WatchWorkflow` | 2.0 | 17 | 🔄 | 22:57 (D1) | | |
+| 18 | Watch: API, panel, cron, `WatchWorkflow` | 2.0 | 17 | ✅ | 22:57 (D1) | 23:13 (D1) | `ca576d7`. 565 tests pass, 3 runs in a row. Local, real 500 site: incident 34 s after the cron check; resolved after 3 passes. Demo walkthrough on the live site after the next deploy |
 | 19 | Notifications: polling, unread, webhooks, `NotifyWorkflow` | 1.5 | 18 | ⬜ | | | |
 | 20 | Eval: `eval/run.ts` + `results.md` | 0.75 | 15 | ⬜ | | | |
 | — | **✂️ CUT LINE**: anything below that isn't built goes into the README "designed, not built" list | | | | | | |

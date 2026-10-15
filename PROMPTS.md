@@ -352,3 +352,5 @@ Answers to Claude's questions:
 **Answer:** for broken real (non-demo) sites; approving it links the watch to the incident so it resolves itself once the site passes 3 checks in a row.
 
 (Plan approved: watch API with caps, `WatchlistPanel`, a cron every minute, `WatchWorkflow` confirming 2 of 3 failures and opening an incident, `reportWatchCheck` resolving it.)
+
+(WP-18 built: the watch API, a cron every minute, `WatchWorkflow` and the watchlist panel. 565 tests pass. Locally, a watched site returning 500 opened an incident by itself 34 s after the cron check, and 3 passing checks resolved it. The demo version runs on the live site after the next deploy.)
