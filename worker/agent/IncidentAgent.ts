@@ -18,6 +18,7 @@ import type { DnsRaw } from "../tools/dns";
 import { quickCheck, type QuickCheckResult } from "../tools/quickcheck";
 import { evidenceId, toolLabel } from "../tools/registry";
 import { canWatch, releaseIncident } from "../watch/store";
+import { startNotify } from "../workflows/notify";
 import type { ToolName, ToolResult } from "../tools/types";
 import { MONITOR_MAX_TICKS, MONITOR_TICK_S, tick } from "./monitor";
 import { SCHEMA } from "./schema.sql";
@@ -448,7 +449,11 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       this.sql`DELETE FROM monitor WHERE id = 1`;
       if (r.to !== "resolved") this.event("monitor_ended", { reason: "out of ticks" });
     }
-    if (r.to) await this.transition(r.to, r.to === "resolved" ? "3 passing checks in a row" : v.pass ? "recovered" : "failing again");
+    if (r.to) {
+      // Automatic changes are new activity for the sidebar's unread dot (FR-50); the user's own aren't.
+      this.sql`UPDATE incident SET unread = 1 WHERE id = ${this.name}`;
+      await this.transition(r.to, r.to === "resolved" ? "3 passing checks in a row" : v.pass ? "recovered" : "failing again");
+    }
     else {
       this.touch();
       this.syncState();
@@ -466,7 +471,10 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     this.event("watch_check", { pass, passes: consecutivePasses, summary });
     const monitorRunning = this.sql`SELECT 1 FROM monitor WHERE id = 1`.length > 0;
     const r = monitorRunning ? { to: null } : tick({ ticksLeft: 2, passes: Math.max(0, consecutivePasses - 1) }, incident.status, pass);
-    if (r.to) await this.transition(r.to, r.to === "resolved" ? "3 passing watch checks in a row" : pass ? "watch check passed" : "watch check failing again");
+    if (r.to) {
+      this.sql`UPDATE incident SET unread = 1 WHERE id = ${this.name}`;
+      await this.transition(r.to, r.to === "resolved" ? "3 passing watch checks in a row" : pass ? "watch check passed" : "watch check failing again");
+    }
     else {
       this.touch();
       this.syncState();
@@ -576,7 +584,8 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     this.syncState();
     await this.upsertIndex();
     if (to === "resolved") await this.releaseWatch();
-    // WP-19: NotifyWorkflow for watch incidents on mitigated/resolved (D18).
+    // Webhooks for any watched incident on mitigated/resolved (D18, widened by user decision in WP-19).
+    if ((to === "mitigated" || to === "resolved") && this.mustIncident().watch_id) await startNotify(this.env, this.name, to);
   }
 
   /** Frees the incident's watch so its next failure can open a new incident. Logged, never thrown. */

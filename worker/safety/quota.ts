@@ -11,7 +11,7 @@ const HOUR_MS = 3_600_000;
  * Fixed-window counter in D1 `usage_counters` (TDD §11). One atomic upsert per call, so two requests can't
  * both read the old count. Every call counts, refused ones too; the window still ends on time.
  */
-export async function takeWindow(db: D1Database, workspaceId: string, kind: "run" | "voice", limit: number, windowMs: number, now: number): Promise<Quota> {
+export async function takeWindow(db: D1Database, workspaceId: string, kind: "run" | "voice" | "webhook_test", limit: number, windowMs: number, now: number): Promise<Quota> {
   const windowStart = Math.floor(now / windowMs) * windowMs;
   const row = await db
     .prepare(

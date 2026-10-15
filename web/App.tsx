@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { AppShell } from "./components/AppShell";
 import { DemoPanel } from "./components/DemoPanel";
 import { IncidentSidebar } from "./components/IncidentSidebar";
+import { NotificationSettings } from "./components/NotificationSettings";
 import { WatchlistPanel } from "./components/WatchlistPanel";
 import { firstSession, getSession, INCIDENTS_CHANGED, type Session } from "./lib/api";
 import { AppRoutes } from "./routes";
@@ -41,6 +42,7 @@ export function App() {
               <>
                 <IncidentSidebar />
                 <WatchlistPanel demoUrl={session?.demoUrl} />
+                <NotificationSettings />
               </>
             )
           }

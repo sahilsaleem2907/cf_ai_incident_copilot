@@ -354,3 +354,18 @@ Answers to Claude's questions:
 (Plan approved: watch API with caps, `WatchlistPanel`, a cron every minute, `WatchWorkflow` confirming 2 of 3 failures and opening an incident, `reportWatchCheck` resolving it.)
 
 (WP-18 built: the watch API, a cron every minute, `WatchWorkflow` and the watchlist panel. 565 tests pass. Locally, a watched site returning 500 opened an incident by itself 34 s after the cron check, and 3 passing checks resolved it. The demo version runs on the live site after the next deploy.)
+
+### 23:45 · WP-19 plan
+
+> Ive tested the demo walkthrough its worked. Lets build WP-19.
+
+**Claude asked:** when should the "opened" Slack/Discord message go out, given the diagnosis is still running?
+**Answer:** after the first diagnosis (at most about 90 s), so it carries the likely cause.
+
+**Claude asked:** should chat incidents that became watched (approved "Add to watchlist") also send webhooks when they recover?
+**Answer:** yes, any incident with a watch attached.
+
+**Claude asked:** who sets the production `WEBHOOK_KEY` secret?
+**Answer:** the user runs a one-line command Claude provides.
+
+(Plan approved: sidebar polling every 10 s with unread dots and `markRead`, browser notifications from a button, Slack/Discord webhooks encrypted with AES-GCM, and `NotifyWorkflow` sending at most once per state change.)

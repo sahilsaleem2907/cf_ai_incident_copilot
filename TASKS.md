@@ -22,8 +22,8 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** none. WP-17, WP-17b and WP-18 are done (not deployed yet). **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
-- **Next:** WP-19 Notifications
+- **Current:** WP-19 Notifications (started 23:45, D1). WP-17, WP-17b and WP-18 are done; the user tested the demo watch walkthrough and it worked. **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
+- **Next:** WP-20 Eval
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
@@ -68,7 +68,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 17 | Limits + budget guard | 1.0 | 15 | ✅ | 22:29 (D1) | 22:44 (D1) | `f636c10`. 0.25 h vs 1.0 est. 536 tests pass, 3 runs in a row. Local: 4th run → 429 `retryAfter: 60`; forced 9,000 neurons → banner + rule-based run. Live after the next `dev` → `main` merge. Found 2 older issues (first-visit cookie race, cookie-less quota bypass), see the log |
 | 17b | First-visit workspace race + per-IP run limit (found in WP-17) | — | 17 | ✅ | 22:47 (D1) | 22:49 (D1) | `feb4707`. 540 tests pass. Browser: a first visit sets 1 cookie (was 6), the demo URL matches it, and the eager 3+1 check gets 429; a 3rd browser on the same IP was refused from its first run |
 | 18 | Watch: API, panel, cron, `WatchWorkflow` | 2.0 | 17 | ✅ | 22:57 (D1) | 23:13 (D1) | `ca576d7`. 565 tests pass, 3 runs in a row. Local, real 500 site: incident 34 s after the cron check; resolved after 3 passes. Demo walkthrough on the live site after the next deploy |
-| 19 | Notifications: polling, unread, webhooks, `NotifyWorkflow` | 1.5 | 18 | ⬜ | | | |
+| 19 | Notifications: polling, unread, webhooks, `NotifyWorkflow` | 1.5 | 18 | 🔄 | 23:45 (D1) | | |
 | 20 | Eval: `eval/run.ts` + `results.md` | 0.75 | 15 | ⬜ | | | |
 | — | **✂️ CUT LINE**: anything below that isn't built goes into the README "designed, not built" list | | | | | | |
 | 21 | `cert_info` + `provider_status` | 1.0 | 09 | ⬜ | | | |
@@ -335,14 +335,14 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-19</b> Notifications</summary>
 
-- [ ] `useIncidents`: polls `GET /api/incidents` every 10 s while the tab is visible
-- [ ] Unread dot and badge in `IncidentSidebar`; `markRead` when an incident is opened
-- [ ] `useNotifications`: browser notification on a new unread row (permission requested from a button click)
-- [ ] Webhook API
-- [ ] `WebhookSettings` (sidebar): `SensitiveInput`, masked hint, remove
-- [ ] `crypto.ts` (AES-GCM) + `webhook.test.ts`
-- [ ] `NotifyWorkflow`
-- [ ] **Done when:** a test Discord webhook fires exactly once per state change
+- [x] `useIncidents`: polls `GET /api/incidents` every 10 s while the tab is visible (and on return to the tab)
+- [x] Unread dot, "New" and a count badge in `IncidentSidebar`; `markRead` when an incident is opened and on new activity while visible
+- [x] `useNotifications`: browser notification on a new unread row (permission requested from a button click)
+- [x] Webhook API (+ `POST /api/webhook/test`, 5 an hour)
+- [x] `NotificationSettings` (the TDD's `WebhookSettings`, sidebar): `SensitiveInput`, masked hint, send test, remove
+- [x] `crypto.ts` (AES-GCM) + `webhook.test.ts`
+- [x] `NotifyWorkflow` (opened waits for the diagnosis; mitigated/resolved for any watched incident)
+- [x] **Done when:** a test Discord webhook fires exactly once per state change (integration test with a recorded fake Discord: 3 events → 3 messages, repeats ignored; a real Discord check needs the production `WEBHOOK_KEY`, which the user sets)
 </details>
 
 <details>
@@ -412,6 +412,7 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
+| 2026-10-15 23:56 | 19 | **Notifications as built.** (1) The "opened" webhook waits for the first diagnosis (up to 9 × 10 s) so it names the likely cause (user decision). (2) Mitigated/resolved webhooks for **any incident with a watch attached**, including chat incidents with an approved "Add to watchlist" (user decision, widens D18). (3) Migration `0002` adds `webhooks.app_origin`, recorded on save, for incident links without committing the URL (D2). (4) `POST /api/webhook/test` (5 an hour) so a user can check the URL. (5) `WEBHOOK_KEY` isn't declared in wrangler: without it webhooks are off and the UI says so; the **user sets it in production** (user decision). (6) Automatic status changes set unread; `IncidentView` marks read on open and on new activity while visible. (7) `GET /api/webhook` returns `{available, webhook}`. **Local check (5181; the old 5173 server is still broken):** an auto-opened watch incident showed "New" + "1 new" 40 s after the cron check, raised exactly one browser notification (stubbed Notification API), and cleared on open; light, dark and 390 px screenshots. The local `.dev.vars` key wasn't added (the safety check gave no verdict on writing a secret), so the save/test UI wasn't run locally; the integration tests cover it. **Folded into TDD §5.1, §6.1, §7.1, §11, §12.3, §14 and the README.** | The PRD wants the diagnosis ready when the user is notified. A user who asked to watch an incident wants to hear when it recovers |
 | 2026-10-15 23:13 | 18 | **Watch as built.** (1) **Own demo checked every 60 s** (user decision), real sites 5–60 min. (2) **`add_to_watchlist` is a rule card for broken real sites** (user decision): approving links the new watch to the incident, so passes resolve it; no verify check, the card says "Approved and done"; `restore_demo_service` always wins when it fits. (3) WatchWorkflow confirms on the first failed re-check (saves 30 s) and claims the watch before `init`, so one failure opens one incident. (4) While the post-action monitor runs, it decides; watch checks are only recorded. (5) `WatchlistPanel` polls every 15 s and refreshes the incident list when a watch opens an incident (stands in until WP-19's polling). (6) `WatchView` lives in `worker/watch/types.ts` so the web build can import it. (7) Diagnosis tests expire approval cards at once, since a broken real site now gets a card. **Local check:** the 5173 dev server was broken ("fetch failed" on every request; started 21:28, before this session) and wasn't touched, so the demo walkthrough wasn't run locally. On 5181 with a real 500 site: the incident opened 34 s after the cron check, then mitigated → resolved after 3 passes, and the watch was released; in the browser, the panel and the incident list showed it within 45 s with no reload. **Folded into TDD §5.2, §7.1, §7.2, §7.6, §8.4, §8.5, §14 and the README.** | The done-when needs the demo in about 2 min, and the PRD's 5-minute minimum would take up to 6. Rule card: the model rarely proposes watching on its own |
 | 2026-10-15 22:49 | 17b | **Fixed both WP-17 findings (user: "fix the older problems").** (1) The app makes one `firstSession()` call per page load and renders the sidebar, demo panel and routes after it, so a first visit creates one workspace (was up to 6 in dev). (2) Per-IP run limit next to the workspace one: 6 a minute (new binding `RUN_IP_LIMIT`, namespace 1004) and 20 an hour (D1, key `ip:<SHA-256 prefix>`); the agent keeps the key from `onConnect` for follow-ups. The 429 text no longer names numbers, since either limit can trip. **Folded into TDD §5.1, §11, §14 and the README.** | Per-IP limits are looser than per workspace so a shared network (an office, a reviewer team) isn't blocked. An unsalted hash of an IPv4 address can be brute-forced, but it stays in our own D1 and isn't shown anywhere |
 | 2026-10-15 22:39 | 17 | **Limits as built.** (1) **Own demo exempt from `PROBE_LIMIT`** (user decision); the dev allow-origin too. (2) Run quota in `POST /api/incidents` after target parsing, and in `sendMessage` after the `run_active` check, so neither a target-less message nor a send during a run is charged; the agent throws `rate_limited:<s>`. (3) A burst refusal says 60 s (the binding doesn't report its reset); the D1 hour gives exact seconds. (4) Guard in `startRun`, before the synchronous check-and-insert. (5) Everything fails open (logged). (6) `quickCheck` isn't probe-limited (demo only, after an approved action). (7) Integration tests raise `PROBE_LIMIT` to 10,000 in the miniflare options. Locally verified: 4th run in a minute → 429 `retryAfter: 60` (5 of 5 with curl, 8 of 8 in the browser); forced 9,000 → banner and a 0-LLM run; screenshots in light, dark and at 390 px. **Folded into TDD §7.1, §8.1, §11, §14.** | Every workspace's demo shares one hostname, so a per-host limit would make users block each other. **Found while checking (older than WP-17; fixed in WP-17b):** (a) a first visit mints a workspace per parallel API call (`/api/session`, `/api/incidents`, `/api/demo`; ×2 under StrictMode in dev) and the last `Set-Cookie` wins, so early browser checks that sent before the page settled spread runs over several workspaces and never hit 429; the DemoPanel can also show a demo URL for a workspace that isn't the final cookie. (b) The run quota is per workspace, so a client that drops the cookie gets a new workspace each time; the global caps are the neuron guard (cost) and the per-host probe limit |

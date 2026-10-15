@@ -1,32 +1,43 @@
-import { Sidebar } from "@cloudflare/kumo";
+import { Badge, Sidebar } from "@cloudflare/kumo";
 import { EyeIcon } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { useCallback } from "react";
 import { useLocation } from "wouter";
-import { INCIDENTS_CHANGED, listIncidents, type IncidentRow } from "../lib/api";
+import { useIncidents } from "../hooks/useIncidents";
+import { showIncidentNotification } from "../hooks/useNotifications";
+import type { IncidentRow } from "../lib/api";
 import { STATUS_TEXT } from "../lib/incident";
 
-/** The workspace's incidents; watch-opened ones say so. Reloads on navigation and on changes; polling and unread dots are WP-19. */
+/**
+ * The workspace's incidents (D16, FR-50): polled every 10 s while the tab is visible. Unread ones get a dot
+ * and the word "New"; watch-opened ones say "Watch". A row that turns unread raises a browser notification
+ * (if allowed), unless it's the incident already open in a visible tab.
+ */
 export function IncidentSidebar() {
-  const [location] = useLocation();
-  const [rows, setRows] = useState<IncidentRow[] | null>(null);
+  const [location, navigate] = useLocation();
 
-  useEffect(() => {
-    let live = true;
-    const load = () => void listIncidents().then((r) => live && setRows(r));
-    load();
-    window.addEventListener(INCIDENTS_CHANGED, load);
-    return () => {
-      live = false;
-      window.removeEventListener(INCIDENTS_CHANGED, load);
-    };
-  }, [location]);
+  const onNewUnread = useCallback(
+    (rows: IncidentRow[]) => {
+      for (const r of rows) {
+        if (location === `/i/${r.id}` && document.visibilityState === "visible") continue;
+        showIncidentNotification(r, (id) => navigate(`/i/${id}`));
+      }
+    },
+    [location, navigate],
+  );
+  const rows = useIncidents(location, onNewUnread);
 
   if (rows === null) return null;
   if (rows.length === 0) return <p className="px-3 py-2 text-sm text-(--cf-fg-muted)">No incidents yet.</p>;
+  const unread = rows.filter((r) => r.unread).length;
 
   return (
     <Sidebar.Group>
-      <Sidebar.GroupLabel>Incidents</Sidebar.GroupLabel>
+      <Sidebar.GroupLabel>
+        <span className="flex items-center gap-1.5">
+          Incidents
+          {unread > 0 && <Badge variant="secondary">{unread} new</Badge>}
+        </span>
+      </Sidebar.GroupLabel>
       <Sidebar.Menu>
         {rows.map((r) => {
           const host = safeHost(r.target);
@@ -34,8 +45,12 @@ export function IncidentSidebar() {
             <Sidebar.MenuItem key={r.id}>
               <Sidebar.MenuButton href={`/i/${r.id}`} active={location === `/i/${r.id}`} className="h-auto py-1.5">
                 <span className="flex min-w-0 flex-col">
-                  <span className="truncate font-mono text-xs">{host}</span>
+                  <span className={`flex items-center gap-1.5 truncate font-mono text-xs ${r.unread ? "font-semibold" : ""}`}>
+                    {r.unread && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-(--cf-fg)" />}
+                    <span className="truncate">{host}</span>
+                  </span>
                   <span className="flex items-center gap-1 text-xs text-(--cf-fg-muted)">
+                    {r.unread && <span className="font-medium text-(--cf-fg)">New ·</span>}
                     {STATUS_TEXT[r.status]}
                     {r.origin === "watch" && (
                       <>

@@ -20,7 +20,8 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["IncidentAgent"] }],
   "workflows": [
     { "name": "diagnosis", "binding": "DIAGNOSIS_WORKFLOW", "class_name": "DiagnosisWorkflow" },
-    { "name": "watch", "binding": "WATCH_WORKFLOW", "class_name": "WatchWorkflow" }
+    { "name": "watch", "binding": "WATCH_WORKFLOW", "class_name": "WatchWorkflow" },
+    { "name": "notify", "binding": "NOTIFY_WORKFLOW", "class_name": "NotifyWorkflow" }
   ],
   // Due watches are checked every minute (TDD §8.5, D12).
   "triggers": { "crons": ["* * * * *"] },

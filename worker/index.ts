@@ -5,6 +5,7 @@ import { runWatchTick } from "./watch/cron";
 
 export { IncidentAgent } from "./agent/IncidentAgent";
 export { DiagnosisWorkflow } from "./workflows/diagnosis";
+export { NotifyWorkflow } from "./workflows/notify";
 export { WatchWorkflow } from "./workflows/watch";
 
 const notFound = () => new Response("Not found", { status: 404 });

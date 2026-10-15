@@ -3,6 +3,7 @@ import { CheckCircleIcon, EyeIcon, InfoIcon, PulseIcon, RobotIcon } from "@phosp
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useIncident } from "../hooks/useIncident";
+import { usePageVisible } from "../hooks/usePageVisible";
 import { useRateLimitToast } from "../hooks/useRateLimitToast";
 import { MONITOR_PASSES } from "../../worker/agent/monitor";
 import { createIncident, DEMO_CHANGED, ERROR_TEXT, notifyIncidentsChanged, parseRateLimited } from "../lib/api";
@@ -12,7 +13,7 @@ import { Composer } from "./Composer";
 import { IncidentStatusBadge } from "./StatusBadge";
 
 export function IncidentView({ id }: { id: string }) {
-  const { state, feed, role, notFound, send, getEvidence, decide, resolve } = useIncident(id);
+  const { state, feed, role, notFound, send, getEvidence, decide, resolve, markRead } = useIncident(id);
   const [, navigate] = useLocation();
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -25,10 +26,20 @@ export function IncidentView({ id }: { id: string }) {
   const [resolving, setResolving] = useState(false);
   const rateLimited = useRateLimitToast();
 
-  // Keep the sidebar's badge in step with the open incident.
+  // Seen it (FR-50): the owner marks the incident read on open and whenever new activity arrives while the tab
+  // is visible; then the sidebar reloads, which also keeps its status badge in step.
+  const visible = usePageVisible();
+  const replies = state?.messages.filter((m) => m.role === "assistant").length ?? 0;
   useEffect(() => {
-    if (status) notifyIncidentsChanged();
-  }, [status]);
+    if (!status) return;
+    if (role !== "owner" || !visible) {
+      notifyIncidentsChanged();
+      return;
+    }
+    markRead()
+      .catch(() => undefined)
+      .finally(notifyIncidentsChanged);
+  }, [status, replies, role, visible, markRead]);
 
   // A finished demo restore changed the demo's mode: the DemoPanel reloads it.
   const restored = state?.approvals.filter((a) => a.actionId === "restore_demo_service" && a.outcome && a.status === "approved").length ?? 0;

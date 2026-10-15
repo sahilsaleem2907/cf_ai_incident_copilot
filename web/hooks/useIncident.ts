@@ -50,6 +50,7 @@ export function useIncident(id: string) {
   const getEvidence = useCallback(async (evidenceId: string) => (await agent.call("getEvidence", [evidenceId])) as Evidence | null, [agent]);
   const decide = useCallback(async (approvalId: string, decision: "approve" | "reject") => agent.call(decision, [approvalId]), [agent]);
   const resolve = useCallback(async () => agent.call("resolve"), [agent]);
+  const markRead = useCallback(async () => agent.call("markRead"), [agent]);
 
-  return { state, feed, role, notFound, send, getEvidence, decide, resolve };
+  return { state, feed, role, notFound, send, getEvidence, decide, resolve, markRead };
 }

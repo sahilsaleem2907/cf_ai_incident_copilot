@@ -5,6 +5,7 @@ import { devAllowOrigin } from "../safety/ssrf";
 import { quickCheck } from "../tools/quickcheck";
 import type { WatchParams } from "../watch/cron";
 import { claimIncident, getWatch } from "../watch/store";
+import { startNotify } from "./notify";
 
 /** Re-checks after cron's failure: one more failure confirms it (2 of 3, FR-42). */
 const RECHECKS = 2;
@@ -13,8 +14,8 @@ const RECHECK_GAP = "30 seconds";
 export type WatchOutcome = { confirmed: false; reason: "gone" | "recovered" | "already_open" } | { confirmed: true; incidentId: string };
 
 /**
- * Confirm → open (TDD §8.5). A plain WorkflowEntrypoint (D3): cron starts it, nothing waits on it. The incident's
- * diagnosis starts from `init`; notifying (WP-19) will be a step after "open".
+ * Confirm → open → notify (TDD §8.5). A plain WorkflowEntrypoint (D3): cron starts it, nothing waits on it. The
+ * incident's diagnosis starts from `init`; the webhook (if any) goes out from a NotifyWorkflow.
  */
 export class WatchWorkflow extends WorkflowEntrypoint<Env, WatchParams> {
   override async run(event: WorkflowEvent<WatchParams>, step: WorkflowStep): Promise<WatchOutcome> {
@@ -50,7 +51,8 @@ export class WatchWorkflow extends WorkflowEntrypoint<Env, WatchParams> {
       await (await incidentAgent(env, incidentId)).init({ workspaceId: watch.workspaceId, target: watch.url, origin: "watch", watchId: watch.id });
       return true;
     });
-    // WP-19: step.do("notify") → NOTIFY_WORKFLOW notify-<incidentId>-opened (D18).
+    // The message goes out once the diagnosis is in (NotifyWorkflow waits for it); its ID makes it once only.
+    if (opened) await step.do("notify", async () => startNotify(env, incidentId, "opened"));
     return opened ? { confirmed: true, incidentId } : { confirmed: false, reason: "already_open" };
   }
 }

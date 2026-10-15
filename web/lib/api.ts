@@ -147,6 +147,40 @@ export async function deleteWatch(id: string, f: Fetch = fetch): Promise<boolean
   }
 }
 
+export type WebhookInfo = { kind: "slack" | "discord"; hint: string };
+export type WebhookState = { available: boolean; webhook: WebhookInfo | null };
+export type WebhookError = "invalid_webhook" | "webhooks_unavailable" | "rate_limited" | "send_failed" | "network" | "server";
+
+export const WEBHOOK_ERROR_TEXT: Record<WebhookError, string> = {
+  invalid_webhook: "Use a Slack (hooks.slack.com) or Discord (discord.com/api/webhooks/…) webhook URL.",
+  webhooks_unavailable: "Webhooks aren't set up on this deployment.",
+  rate_limited: "That's enough tests for now (5 an hour). Try again later.",
+  send_failed: "The test didn't go through. Check the webhook still exists in Slack or Discord.",
+  network: ERROR_TEXT.network,
+  server: ERROR_TEXT.server,
+};
+
+type WebhookResult<T> = { ok: true; value: T } | { ok: false; error: WebhookError; message?: string };
+
+async function webhookCall<T>(f: Fetch, path: string, init: RequestInit | undefined, parse: (res: Response) => Promise<T>): Promise<WebhookResult<T>> {
+  let res: Response;
+  try {
+    res = await f(`/api/webhook${path}`, init);
+  } catch {
+    return { ok: false, error: "network" };
+  }
+  if (res.ok) return { ok: true, value: await parse(res) };
+  const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+  const error = (Object.keys(WEBHOOK_ERROR_TEXT) as WebhookError[]).find((k) => k === body.error) ?? "server";
+  return { ok: false, error, ...(typeof body.message === "string" ? { message: body.message } : {}) };
+}
+
+export const getWebhook = (f: Fetch = fetch) => webhookCall(f, "", undefined, async (r) => (await r.json()) as WebhookState);
+export const saveWebhook = (url: string, f: Fetch = fetch) =>
+  webhookCall(f, "", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) }, async (r) => (await r.json()) as WebhookInfo);
+export const removeWebhook = (f: Fetch = fetch) => webhookCall(f, "", { method: "DELETE" }, async () => null);
+export const testWebhook = (f: Fetch = fetch) => webhookCall(f, "/test", { method: "POST" }, async () => null);
+
 /** Tells the DemoPanel to reload its modes, e.g. after an approved restore (WP-12). */
 export const DEMO_CHANGED = "demo:changed";
 

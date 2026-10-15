@@ -6,6 +6,7 @@ import { health } from "./health";
 import { incidents } from "./incidents";
 import { session } from "./session";
 import { watches } from "./watches";
+import { webhook } from "./webhook";
 
 export const api = new Hono<AppEnv>().basePath("/api");
 
@@ -17,5 +18,6 @@ api.route("/session", session);
 api.route("/incidents", incidents);
 api.route("/demo", demo);
 api.route("/watches", watches);
+api.route("/webhook", webhook);
 
 api.notFound((c) => c.json({ error: "not_found" }, 404));

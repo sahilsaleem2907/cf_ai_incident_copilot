@@ -62,6 +62,8 @@ flowchart LR
 
 **Watching (WP-18):** a workspace can watch up to 3 URLs for 24 hours (30 across the app). A Cron Trigger runs every minute and quick-checks the watches that are due (every 5 minutes, or every minute for your own demo), with no LLM. When a check fails, a `WatchWorkflow` re-checks 30 s later. If it fails again (2 of 3), the Workflow opens an incident on its own, and the diagnosis is waiting when the user looks. Later passing checks move it to mitigated and then resolve it after 3 in a row. A broken real site also gets an "Add to watchlist" card, which links the new watch to that incident.
 
+**Notifications (WP-19):** the sidebar polls the incident list every 10 s while the tab is visible. New activity (a diagnosis, or a status change the user didn't make) shows as an unread dot with the word "New", and raises a browser notification if the user turned them on. Opening the incident marks it read. A workspace can also save one Slack or Discord webhook. A `NotifyWorkflow` posts to it when a watched incident opens (after the diagnosis, so the message names the likely cause), starts recovering, and is resolved. Its instance ID `notify-<incident>-<event>` means each event posts at most once.
+
 ## How the Agents SDK is used
 
 - **`Agent` (one per incident).** The SQLite tables are the source of truth. A small synced `IncidentState` is rebuilt from them and pushed to every connected client; clients can't write state. `onConnect` tags each connection as `owner` or `viewer` from the workspace cookie, and every mutating callable (`sendMessage`, `approve`, `reject`, `resolve`) checks for `owner`. The agent's scheduler (`this.schedule`) runs the monitor ticks after an action, so no Workflow sits idle for minutes.
@@ -98,6 +100,7 @@ The app fetches URLs that users type in, so it's built so that it can't be used 
 - **Prompt injection:** fetched content goes to the model inside `<untrusted>` tags and is truncated. The model's tool calls are checked with zod and against the origin pin. Actions come only from a fixed catalog, and every action needs a human's approval.
 - **Incident links are view-only** for anyone but the workspace that owns them.
 - **Rate limits and the budget guard (WP-17):** a workspace can start 3 diagnoses a minute (Rate Limiting binding) and 10 an hour (a D1 counter); new incidents and follow-ups both count, and a refusal is a 429 that says when to try again. Because dropping the cookie gives a new workspace, each visitor IP is also limited, to 6 a minute and 20 an hour (only a hash of the IP is stored). Probes are limited to 10 a minute per hostname, so the app can't be used to hammer a site; the app's own demo service is exempt, since every workspace's demo shares one hostname. Once today's estimated Workers AI use reaches 9,000 neurons (of the 10,000 free), new runs use the rule engine instead of the LLM and the header says so. These checks fail open: if the binding or D1 errors, the run goes ahead, and the LLM path still falls back to rules when Workers AI reports the daily allocation is used up.
+- **Webhooks (WP-19):** only `https://hooks.slack.com/…` and `https://discord.com/api/webhooks/…` (or `discordapp.com`) are accepted. The URL is encrypted with AES-GCM using the `WEBHOOK_KEY` Worker secret, with the workspace ID as additional data, and is only ever shown masked. It's never logged and never sent to the LLM. Without the secret, webhooks are switched off.
 - **The smoke flag:** `POST /api/incidents?smoke=rule` runs a diagnosis without the LLM, for the deploy check. It's public, but it can only make a run cheaper.
 
 **Accepted risks:**
@@ -150,6 +153,7 @@ pnpm dev                         # http://localhost:5173
 4. `pnpm build`, then `wrangler deploy -c dist/incident_copilot_demo/wrangler.json`.
 5. Set `DEMO_BASE_URL` in `wrangler.jsonc` to the demo's URL.
 6. `pnpm build`, then `wrangler deploy`.
+7. For Slack/Discord webhooks, set the encryption key once: `openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`. Without it, webhooks stay off.
 
 ## Terraform and wrangler: who owns what
 
@@ -166,7 +170,6 @@ The full design for each of these is in the TDD. Day 2 of the build is still in 
 
 | WP | Feature | Design |
 |---|---|---|
-| 19 | Notifications: unread badges, browser notifications, and Slack/Discord webhooks (AES-GCM encrypted, sent once per state change by `NotifyWorkflow`) | TDD §8.5, §11 |
 | 20 | LLM eval suite: break the demo each way and score category, citation and proposed action (target ≥ 4/5) | TDD §16 |
 | 21 | `cert_info` (crt.sh) and `provider_status` (status pages) tools | TDD §7.3 |
 | 22 | Postmortem: streamed markdown summary of a resolved incident | TDD §8.7 |

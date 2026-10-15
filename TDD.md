@@ -137,7 +137,7 @@ test/         unit/*.test.ts integration/*.test.ts demo/*.test.ts fixtures/
 }
 ```
 
-- **Secrets:** `WEBHOOK_KEY` (base64, 32 bytes), set with `wrangler secret put`.
+- **Secrets:** `WEBHOOK_KEY` (base64, 32 bytes), set with `wrangler secret put`. *WP-19:* it isn't declared in `wrangler.jsonc`, so a deploy without it still works and webhooks are simply off (`GET /api/webhook` says `available: false`). Set it once: `openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`.
 - **Local:** `.dev.vars` sets `LLM_MODE=mock`, plus `DEMO_BASE_URL` and `SSRF_DEV_ALLOW_ORIGIN` = `http://localhost:5173` for the local demo (§7.5).
 - **Demo wrangler:** `name: incident-copilot-demo`, a `DemoState` DO with a `new_sqlite_classes` migration, and `WorkerEntrypoint` `DemoAdmin` exported alongside the default fetch handler.
 
@@ -189,9 +189,10 @@ CREATE TABLE watches (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, url TEXT 
 CREATE INDEX idx_watches_due ON watches(next_run);
 CREATE TABLE webhooks (workspace_id TEXT PRIMARY KEY, kind TEXT NOT NULL, url_ciphertext BLOB NOT NULL,
   iv BLOB NOT NULL, url_hint TEXT NOT NULL, created_at INTEGER NOT NULL);   -- url_hint = masked display
+-- 0002 (WP-19): ALTER TABLE webhooks ADD COLUMN app_origin TEXT  -- the origin the webhook was saved on, for incident links
 CREATE TABLE llm_usage (day TEXT PRIMARY KEY, neurons_est INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE usage_counters (workspace_id TEXT NOT NULL, kind TEXT NOT NULL, window_start INTEGER NOT NULL,
-  count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (workspace_id, kind, window_start));  -- kind: run | voice
+  count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (workspace_id, kind, window_start));  -- kind: run | voice | webhook_test
 ```
 
 Consistency: the DO is the source of truth. `incidents_index` is upserted after every committed transition and on `onStart` (reconcile).
@@ -268,7 +269,8 @@ Incident, workspace and approval IDs are 128-bit random hex values (`crypto.getR
 | `POST /api/incidents/:id/read` | | 204 | Clears `unread` |
 | `GET /api/demo` · `POST /api/demo/mode` | `{modes}` | `{modes, url}` / 400 `{error:"invalid_modes"}` / 503 `{error:"demo_unavailable"}` | Calls `env.DEMO.getModes` / `setModes(ws, modes)`. `modes` is `["healthy"]` or one problem plus an optional `"slow"` (§7.5). 503 while `DEMO_BASE_URL` holds `<sub>` |
 | `GET/POST /api/watches` · `DELETE /api/watches/:id` | `{url, intervalSec}` | Watch list · 201 watch · 400 `{error:"invalid_url", message}` · 409 `already_watched` / `watch_limit` / `watch_capacity` · 204 / 404 | Per-workspace and global caps. *WP-18:* the URL goes through `parseTarget` ("demo" works) and `checkUrlShape`; the caps are part of the INSERT |
-| `GET/PUT/DELETE /api/webhook` | `{url}` | `{kind, hint}` | Allowlist, then encryption |
+| `GET/PUT/DELETE /api/webhook` | `{url}` | GET `{available, webhook: {kind, hint} \| null}` · PUT `{kind, hint}` / 400 `{error:"invalid_webhook", message}` / 503 `webhooks_unavailable` · DELETE 204 | Allowlist, then encryption. *WP-19:* PUT records the request's origin (`app_origin`) for incident links |
+| `POST /api/webhook/test` | | `{sent: true}` / 404 / 429 / 502 `send_failed` | *WP-19:* sends one test message right away, 5 an hour per workspace (`usage_counters` kind `webhook_test`) |
 | `POST /api/voice` | `audio/webm` body | `{text}` | Size cap, then limit, then whisper, then normalization |
 | `GET /api/health` | | `{ok, version}` | Smoke test |
 
@@ -686,6 +688,11 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
   - `url_hint` is stored masked (`hooks.slack.com/…/••••abcd`).
   - The URL is never sent to the LLM or written to logs.
   - Payload: `{text}` for Slack, `{content}` for Discord. It contains the summary, status and incident link.
+  - *As built (WP-19):*
+    - **Files:** `notify/crypto.ts`, `notify/webhook.ts`, `workflows/notify.ts`, `api/webhook.ts`.
+    - **When:** the "opened" message waits for the first diagnosis (user decision): NotifyWorkflow polls the incident up to 9 × 10 s until `activeRunId` is null, so the message carries the likely cause (evidence refs removed). Mitigated/resolved go out for **any incident with a watch attached** (user decision, widening D18 to chat incidents with an approved "Add to watchlist").
+    - **At most once:** `notify-<incidentId>-<event>`, so a repeat state (a flap back to mitigated) doesn't send again. The send step retries 3 times on 429, 5xx or a network error; a 4xx (a deleted webhook) is final. Redirects aren't followed.
+    - **Links:** the incident link uses `app_origin`, recorded when the webhook was saved, so no deployed URL is committed (D2).
 - **Prompt injection:** `<untrusted>` wrapping, snippet truncation, zod plus origin-pin validation, the fixed action catalog, and human approval for every action.
 - **Accepted risks:** D2 (unprotected for about a day), D7 (workspace ID in the demo URL), probes from a single location (R5).
 
@@ -720,6 +727,13 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 ### 12.3 State
 
 `useIncident(id)` wraps `useAgent<IncidentState>`. It merges `delta` broadcasts into a streaming buffer keyed by `messageId` and exposes the callables. `useIncidents()` polls the list and fires `useNotifications()` when a new unread row appears (Notification API, only after permission is granted from a button click).
+
+*As built (WP-19):*
+- **Polling:** `useIncidents` polls every 10 s while the tab is visible, reloads at once when the tab comes back, on `INCIDENTS_CHANGED`, and on navigation. `newlyUnread` diffs against the previous load and announces nothing on the first one.
+- **Unread:** a dot, bold text and the word "New" on the row, plus a "n new" badge on the group label. Narration and automatic status changes (monitor ticks, watch checks) set unread; the user's own changes don't.
+- **Read:** `IncidentView` (owner) calls the `markRead` callable when it opens, and on new replies or status while the tab is visible.
+- **Browser notifications:** one per newly unread row (`tag` = incident ID), except the incident open in a visible tab. Clicking one focuses the tab and opens the incident.
+- **`NotificationSettings`** (the TDD's `WebhookSettings`, in the sidebar): browser on / turn on / blocked; webhook save (`SensitiveInput`), masked hint, send test, remove; "not set up on this deployment" when there's no key.
 
 *As built (WP-10):*
 - **Pure helpers** in `web/lib/` (unit-tested in `test/unit/web/`):
@@ -784,13 +798,14 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | | `citations.test.ts` | Unknown IDs and uncited factual sentences are removed; `【id】`; well-formed check |
 | | `llm-client.test.ts`, `stream.test.ts`, `findings.test.ts`, `mock.test.ts`, `prompts.test.ts` | Mapper on every recorded fixture, fallback rules with a fake `ai`, SSE parsing of both recorded streams, the `submit_findings` schema (rejects the spike's sentence evidence), mock turns, prompt content |
 | | `transitions.test.ts` | Every legal edge, and illegal edges throw |
-| | `webhook.test.ts` | Allowlist accept/reject, AES-GCM round trip, masking |
+| | `webhook.test.ts` | Allowlist accept/reject, AES-GCM round trip (wrong workspace fails), masking, message text, send retry decisions |
 | | `origin.test.ts` | Origin-pin scope rules |
 | | `probe-limit.test.ts` | Limited per hostname; the demo and dev allow-origin are exempt and uncounted; fails open |
 | | `schema.test.ts`, `cookie.test.ts` | `toolParameters` drops regex `pattern`s at every depth but keeps a property named `pattern`; `workspaceFromCookieHeader` (the WebSocket path) accepts only a well-formed `__Host-ws` |
 | Unit (web) | `approval.test.ts`, `markdown-incident-api.test.ts`, `stream-feed.test.ts`, `theme.test.ts` | Approval card text for every status and outcome ("verified" only after the re-check), `whyText` refs; narration markdown, other-host and limit notes, the API client (429 parsing, a single first-visit session call), stream buffering, theme |
 | Integration (`@cloudflare/vitest-plugin`, main Worker, mocked outbound fetch, `LLM_MODE=mock`) | `agent.test.ts` | `init`, owner/viewer roles over a real WebSocket (`helpers/ws.ts` speaks the SDK's `rpc` / `cf_agent_state` frames), idempotent `addPendingChecks`/`recordCheck`, narration streaming, idempotency and template fallback, limits, index sync |
 | | `incidents.test.ts` | `need_target`, create, list per workspace, owner-only snapshot, read, `?smoke=rule` → a `rule_based` run (any other value stays `ai`) |
+| | `notify.test.ts` | Webhook API (encrypted at rest, masked, origin stored, refused hosts), test sends limited to 5 an hour; NotifyWorkflow: 3 events → 3 messages, repeats ignored, no webhook → none, a chat incident without a watch → none, 5xx retried, 4xx final; unread set by automatic changes and cleared by `markRead` |
 | | `quota.test.ts`, `budget-guard.test.ts` | 4th incident in a minute → 429 with `retryAfter` and `Retry-After`; other workspaces and target-less messages aren't charged; 10 an hour then a countdown (injected clock); per kind; fail open; follow-ups counted, but not while a run is active; per IP across workspaces (6 a minute over HTTP, 20 an hour with an injected clock), a follow-up counted against the IP from its WebSocket, only a hash stored. 8,999 neurons → `ai`; 9,000 → session and new runs `rule_based` |
 | | `diagnosis.test.ts` | Real Workflow, mock LLM, fake internet: tools → findings → narrate; healthy → resolved; `#llm-down` → rules; `#llm-invalid` ×2 → rules; NXDOMAIN; follow-up run; a `rule_based` (smoke) run on the healthy demo with 0 LLM turns |
 | Unit | `plan.test.ts` | The driver with a fake `io`: happy path, invalid once/twice, origin pin, LLM down, tool cap, turn cap, budget, deadline, throwing check, unexpected failure, rule-based mode |

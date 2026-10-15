@@ -7,7 +7,7 @@ import { BudgetBanner } from "./BudgetBanner";
 const REPO_URL = "https://github.com/sahilsaleem2907/cf_ai_incident_copilot";
 
 type Props = {
-  /** Incident list, watchlist and webhook settings (WP-10, WP-18, WP-19). */
+  /** Incident list, watchlist and notification settings (WP-10, WP-18, WP-19). */
   sidebar?: ReactNode;
   /** Right column (DemoPanel). Below `lg` it collapses into a disclosure at the top of <main>. */
   aside?: ReactNode;

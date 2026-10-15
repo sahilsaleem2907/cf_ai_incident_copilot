@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { afterEach, describe, expect, it } from "vitest";
 import { incidentAgent } from "../../worker/agent/stub";
 import { newId } from "../../worker/lib/ids";
+import { notifyWorkflowId } from "../../worker/workflows/notify";
 import type { WatchOutcome } from "../../worker/workflows/watch";
 import { readWatch, seedWatch } from "./helpers/watches";
 
@@ -33,6 +34,8 @@ describe("WatchWorkflow", () => {
     const s = await (await incidentAgent(env, incidentId)).getSnapshot();
     expect(s).toMatchObject({ id: incidentId, target: "https://broken.example.com/", origin: "watch", status: "investigating" });
     expect(s.messages[0]).toMatchObject({ role: "system", content: "Scheduled check failed for https://broken.example.com/" });
+    // The "opened" webhook (WP-19); with no webhook saved it ends without sending.
+    expect((await env.NOTIFY_WORKFLOW.get(notifyWorkflowId(incidentId, "opened"))).id).toBe(`notify-${incidentId}-opened`);
   });
 
   it("opens nothing when the re-checks pass (a blip)", async () => {
