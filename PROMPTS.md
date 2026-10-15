@@ -188,3 +188,5 @@ Answers to Claude's questions:
 > Yes
 
 (Plan approved: the five modes on a `DemoState` Durable Object, `DemoAdmin` RPC, `/api/demo`, and a `DemoPanel` that collapses below `lg`. Locally, the main Worker passes `/w/*` through to the demo service only when `DEMO_BASE_URL` is its own origin, because an auxiliary Worker under Vite has no port of its own.)
+
+(WP-11 done in `09398c0`; 460 tests green. Locally, all five demo modes were diagnosed with the right category through a real Workflow. A headless browser check covered: the mode stays set after a reload, the demo page answers in the chosen mode, arrow keys switch modes, the URL copies, and the panel works on a phone in light and dark. The local `.dev.vars` had `LLM_MODE=live`, so those 12 runs used the live model.)
