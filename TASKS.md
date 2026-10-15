@@ -264,11 +264,11 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-13</b> Deploy 1</summary>
 
-- [ ] `wrangler deploy` both Workers
-- [ ] Live PRD §13 steps 1–5
-- [ ] SSRF refusals: `169.254.169.254`, `localhost`, `10.0.0.1`
-- [ ] CPU time check in Workers Logs
-- [ ] **Done when:** live URL passes the walkthrough (**don't share it yet**)
+- [x] `wrangler deploy` both Workers
+- [x] Live PRD §13 steps 1–5
+- [x] SSRF refusals: `169.254.169.254`, `localhost`, `10.0.0.1`
+- [x] CPU time check in Workers Logs
+- [x] **Done when:** live URL passes the walkthrough (**don't share it yet**)
 </details>
 
 ### Day 2
@@ -406,6 +406,7 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
+| 2026-10-15 19:15 | 13 | **First deploy.** D1 migrated remotely; the demo Worker went first, then `DEMO_BASE_URL` was set, then the main Worker (TDD §15). On the live site, PRD §13 steps 1–5 pass: workspace → cloudflare.com healthy (`dns-1`/`http-1` pass, resolved) → 500 errors → `origin_5xx` citing `[http-1]` with the card → Approve → verified → resolved (30 s). `169.254.169.254`, `localhost` and `10.0.0.1` were refused by the SSRF guard with clear messages, and no fetch was made. CPU: no event was cut off; details in TDD §15. 907 neurons for 5 runs. **Issues found:** (1) **slow** — the card came about 35 s after asking (≈ 5 s Workflow queue, 3 AI turns of 3–10 s, 13 s narration), so the full walkthrough is about 100 s against the PRD's 60 s; (2) the live model asks for **one check per turn**, so every run ends `limit_turns` and the UI shows a turn-limit note; (3) the live narration once left **"Likely cause:" empty** after the citation check removed an uncited sentence. | Found during the WP-13 live walkthrough |
 | 2026-10-15 19:00 | 12 | **Live AI check (one 500-errors run, local, `LLM_MODE=live`).** The model proposed `restore_demo_service` **itself** (the demo hint works; the rule merge wasn't needed). Card at 23.5 s → Approve → verified → resolved at 53 s. Cost 199 neurons (estimate was about 100); the daily local total is 2,855. The run ended `limit_turns` with 3 turns and 1 check: most likely the model's `dns_lookup` of `localhost` was refused (it isn't a public hostname), which cost an extra turn. That's local only; recheck on the deployed `workers.dev` demo in WP-13. | User asked for the live check after WP-12 |
 | 2026-10-15 18:58 | 12 | **Flaky `approval.test.ts` fixed.** It was a race in the test, not a timeout. The Workflow proposes the card one step before `finish`, so a poll could see the card while the run was still active, and the test's `activeRunId: null` check failed. The dedupe test could also have hit `run_active`. The tests now wait for "card shown and run finished" (`cardShown`), and the 20 s wait went back to 8 s. | Caught in 1 of 5 full runs (`approval.test.ts:51`). Polling every 1 ms reproduced it in 4 of 5 runs; with the fix, 8 of 8 passed |
 | 2026-10-15 18:01 | 12 | **Act as built.** (1) **Rule merge** (user decision): `pickAction` adds `restore_demo_service` to the model's actions for any non-healthy category, and the planning prompt says when the target is the user's demo, so a broken demo always gets the card. (2) **Verify and monitor quick checks run inside the agent** (`afterAction`, `monitorTick`), not in the Workflow, so they don't use its 45-subrequest budget; `tailReserve` 4 → 8 for propose, outcome, action and verify. (3) The run finishes before the approval wait (D13), and the tail runs outside the main `try`. (4) Decisions are recorded in the agent first, then the Workflow is told; `expired` overrides an `approved` card that never ran; resolving by hand closes pending cards and stops the monitor. (5) The card says "verified" only after the re-check (`outcome.verified`). **Folded into TDD §6.3, §7.2, §7.6, §8.2–§8.4, §12.2, §14.** | WP-11's live runs showed the model leaving the action out. The browser walkthrough found the card saying "verified" before the re-check ran; fixed. Local walkthrough with the mock LLM: errors, slow, redirect_loop, bad_cache and slow + errors all went break → card → Approve → mitigated → resolved in 32–45 s; reject → investigating; a viewer sees no buttons |

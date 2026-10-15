@@ -780,6 +780,18 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
   - Deploys use `cloudflare/wrangler-action`.
   - The smoke test calls `GET /api/health`, then `GET /api/session`, then `POST /api/demo/mode {modes:["healthy"]}`, then `POST /api/incidents "diagnose demo"`. It polls the snapshot until `activeRunId` is null and expects `category = healthy`. Run it with `LLM_MODE` live but only once per deploy, or skip the LLM with a `?smoke=rule` flag that forces `rule_based`.
 - **Secrets:** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` live in GitHub. `WEBHOOK_KEY` is set once with `wrangler secret put`.
+- **First deploy (WP-13, by hand from `dev`):**
+  1. `wrangler d1 migrations apply DB --remote`.
+  2. `pnpm build`, which writes both Workers to `dist/`.
+  3. **Demo first:** `wrangler deploy -c dist/incident_copilot_demo/wrangler.json`. The main Worker's `DEMO` binding needs the demo to exist.
+  4. Set `DEMO_BASE_URL` in `wrangler.jsonc` to the deployed demo.
+  5. `pnpm build`, then `wrangler deploy`. `.wrangler/deploy/config.json` points it at `dist/incident_copilot/wrangler.json`.
+
+  Results: the main Worker is about 485 KiB gzipped with a 53 ms start-up; the demo is 26 KiB. `.dev.vars` (and with it `SSRF_DEV_ALLOW_ORIGIN`) is never uploaded. The first request after the deploy got one transient `1042`; it didn't happen again.
+- **CPU (R9), from `wrangler tail --format json` during the live walkthrough:** 310 events, none cut off (all `ok`, plus `canceled` for closed sockets and the paused approval wait).
+  - The demo Worker peaked at 2 ms.
+  - The main Worker's HTTP routes stayed ≤ 8 ms.
+  - Inside the Durable Object and the Workflow, CPU went above 10 ms: `narrate` 182 ms (streaming), the Workflow `run` 49 ms, agent init and snapshot calls up to 41 ms, `afterAction` 21 ms, a monitor alarm 13 ms. Nothing failed, but `narrate` is the hottest path; watch it if Error 1102 ever shows up.
 - **Terraform (`infra/`, local state, gitignored):** Cloudflare provider v5 with `cloudflare_d1_database`, plus the AI Gateway resource if the provider supports it. Otherwise the gateway is created in the dashboard and the README says so (R1). The `database_id` output is copied into `wrangler.jsonc` once. Wrangler owns everything else (§5.1).
 
 ## 16. LLM eval (`eval/run.ts`)
