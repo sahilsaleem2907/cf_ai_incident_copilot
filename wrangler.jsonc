@@ -8,7 +8,7 @@
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/agents/*"]
+    "run_worker_first": ["/api/*", "/agents/*", "/w/*"]
   },
   "observability": { "enabled": true },
   "version_metadata": { "binding": "CF_VERSION_METADATA" },

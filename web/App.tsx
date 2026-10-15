@@ -2,6 +2,7 @@ import { LinkProvider, type LinkComponentProps } from "@cloudflare/kumo";
 import { forwardRef, useEffect } from "react";
 import { Link } from "wouter";
 import { AppShell } from "./components/AppShell";
+import { DemoPanel } from "./components/DemoPanel";
 import { IncidentSidebar } from "./components/IncidentSidebar";
 import { getSession } from "./lib/api";
 import { AppRoutes } from "./routes";
@@ -15,7 +16,7 @@ export function App() {
   useEffect(() => void getSession(), []);
   return (
     <LinkProvider component={AppLink}>
-      <AppShell sidebar={<IncidentSidebar />} aside={<h2 className="text-sm text-(--cf-fg-muted)">Demo service</h2>}>
+      <AppShell sidebar={<IncidentSidebar />} aside={<DemoPanel />}>
         <AppRoutes />
       </AppShell>
     </LinkProvider>

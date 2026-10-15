@@ -30,6 +30,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
   - PR #1 was closed unmerged; `master` (`867d8d6`) is unused.
   - **PR #3** `dev` → `main` ("WP-06 to WP-10 …") opened 16:47: https://github.com/sahilsaleem2907/cf_ai_incident_copilot/pull/3. Waiting for Sift review.
 - **Blockers / risks:** none blocking. Watch gpt latency in WP-09: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
+  - **Eval risk (WP-11 local run, live model):** the model proposed `restore_demo_service` only for `errors`; for slow, redirect_loop and bad_cache it returned no actions. The eval's check ③ (TDD §14) needs it, so look at the planning prompt in WP-12 or the eval WP.
 
 ---
 
@@ -237,14 +238,14 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-11</b> Demo service</summary>
 
-- [ ] Modes: healthy, slow, errors, redirect_loop, bad_cache
-- [ ] `DemoState` DO
-- [ ] `DemoAdmin` RPC entrypoint
-- [ ] `/api/demo` + `/api/demo/mode`
-- [ ] Local demo URL: `.dev.vars` sets `DEMO_BASE_URL` to the local demo origin and `SSRF_DEV_ALLOW_ORIGIN` to the same origin
-- [ ] `DemoPanel` (right column): mode picker (`Select`/`Radio`) and the demo URL (`ClipboardText`)
-- [ ] `demo.test.ts`
-- [ ] **Done when:** each mode behaves as in TDD §7.5; demo test passes
+- [x] Modes: healthy, slow, errors, redirect_loop, bad_cache
+- [x] `DemoState` DO
+- [x] `DemoAdmin` RPC entrypoint
+- [x] `/api/demo` + `/api/demo/mode`
+- [x] Local demo URL: `.dev.vars` sets `DEMO_BASE_URL` to the local demo origin and `SSRF_DEV_ALLOW_ORIGIN` to the same origin
+- [x] `DemoPanel` (right column): mode picker (`Select`/`Radio`) and the demo URL (`ClipboardText`)
+- [x] `demo.test.ts`
+- [x] **Done when:** each mode behaves as in TDD §7.5; demo test passes
 </details>
 
 <details>
@@ -406,6 +407,7 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
+| 2026-10-15 17:11 | 11 | **Local demo URL:** under `vite dev` the demo Worker has no port of its own, and a separate `wrangler dev` would keep its own mode state. So the main Worker passes `/w/*` through `env.DEMO.fetch()` only when `DEMO_BASE_URL` is its own origin (local dev), and `.dev.vars` points both `DEMO_BASE_URL` and `SSRF_DEV_ALLOW_ORIGIN` at `http://localhost:5173`. Deployed, `/w/*` on the main Worker is a 404. `DemoAdmin` throws plain `invalid_mode`/`invalid_workspace` (a ZodError loses its message over RPC). Below `lg` the panel is a closed disclosure instead of hidden. **Folded into TDD §4, §5.1, §7.1, §7.5, §12.1, §14.** | Spike: local Workflow probes reach `localhost:5173` despite `global_fetch_strictly_public`. A local run of all five modes gave the right category each time. Note: the local `.dev.vars` had `LLM_MODE=live`, so these 12 runs used the live model; the daily local estimate is 2,656 neurons |
 | 2026-10-15 16:34 | 10 | New `whoami()` callable for the read-only UI. Kumo's brand token is set to Cloudflare orange (it's blue by default). The sidebar becomes an off-canvas sheet below 768 px. The evidence disclosure is a plain `aria-expanded` button rather than Kumo `Collapsible`. Vite pre-bundles `agents/react` and `wouter`. Browser checks used `playwright-core` from the session scratchpad with the cached headless Chromium; nothing was added to the repo. **Folded into TDD §12.3.** | Screenshots found three layout bugs (narrow screens, sticky header lost on scroll, banner off-screen for viewers) and a first-load reload; all fixed |
 | 2026-10-15 15:22 | 09 | The run is a pure driver (`loop/plan.ts`) behind a thin Workflow, so every limit is unit-tested. A finish turn forced by a cap reports that cap even when the model then submits good findings. Past the deadline there are no more LLM turns (rules + salvage). The rule path fills only the checks this run is missing. `finishRun` closes never-run checks as `unavailable`. Integration tests run offline through an inline fake-internet Worker (`outboundService`). `DIAGNOSIS_AUTOSTART=off` is a test-only seam. **Folded into TDD §8.2, §14.** | Determinism under Workflow replay, the user's "limits keep progress" rule, and offline CI |
 | 2026-10-15 14:50 | 08 | Callables are registered with `callable()(fn)` after the class instead of `@callable()` syntax (the decorator only fills a registry), so no Babel transform or ES2021 target is needed. A typed `incidentAgent()` stub wrapper works around `getAgentByName` only typing `unknown`-state agents. Timeline details are flat scalars (recursive JSON broke the RPC stub types). `POST /api/incidents` returns 503 `demo_unavailable` while `DEMO_BASE_URL` has `<sub>`. ESLint allows tagged-template statements (`this.sql`…``). **Folded into TDD §6.2, §6.3, §7.1, §7.2, §14.** | Found while building; the SDK docs require a decorator build step otherwise |

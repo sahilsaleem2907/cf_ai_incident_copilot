@@ -1,9 +1,11 @@
-// Demo Worker (TDD §7.5). The DemoState DO is added in WP-11.
+// Demo Worker (TDD §7.5): public /w/<ws>/ pages, one DemoState DO per workspace, DemoAdmin RPC (binding only).
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "incident-copilot-demo",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  "durable_objects": { "bindings": [{ "name": "DEMO_STATE", "class_name": "DemoState" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DemoState"] }]
 }

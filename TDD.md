@@ -70,7 +70,7 @@ Demo Worker: public /w/<ws>/… (reads DemoState DO) · DemoAdmin WorkerEntrypoi
 | `NotifyWorkflow` | One retried step that sends a webhook (D18) | |
 | Demo Worker | Public demo pages per workspace and mode, `DemoState` DO, `DemoAdmin` RPC | |
 
-**Routing:** `run_worker_first: ["/api/*", "/agents/*"]`, `not_found_handling: "single-page-application"`.
+**Routing:** `run_worker_first: ["/api/*", "/agents/*", "/w/*"]` (`/w/*` for the local demo pass-through, §7.5), `not_found_handling: "single-page-application"`.
 
 ## 4. Repository layout
 
@@ -96,7 +96,7 @@ web/
               ApprovalCard StatusBadge DemoPanel WatchlistPanel WebhookSettings VoiceButton
               PostmortemDialog BudgetBanner ReadOnlyBanner
   hooks/      useIncident.ts useIncidents.ts useNotifications.ts useRecorder.ts
-demo-service/ wrangler.jsonc src/index.ts src/state.ts src/pages.ts
+demo-service/ wrangler.jsonc src/index.ts src/state.ts src/pages.ts src/modes.ts
 migrations/   0001_init.sql
 infra/        main.tf variables.tf outputs.tf
 eval/         run.ts cases.ts results.md
@@ -114,7 +114,7 @@ test/         unit/*.test.ts integration/*.test.ts demo/*.test.ts fixtures/
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-  "assets": { "not_found_handling": "single-page-application", "run_worker_first": ["/api/*", "/agents/*"] },
+  "assets": { "not_found_handling": "single-page-application", "run_worker_first": ["/api/*", "/agents/*", "/w/*"] },
   "observability": { "enabled": true },
   "ai": { "binding": "AI" },
   "d1_databases": [{ "binding": "DB", "database_name": "incident-copilot", "database_id": "<from terraform output>", "migrations_dir": "migrations" }],
@@ -137,7 +137,7 @@ test/         unit/*.test.ts integration/*.test.ts demo/*.test.ts fixtures/
 ```
 
 - **Secrets:** `WEBHOOK_KEY` (base64, 32 bytes), set with `wrangler secret put`.
-- **Local:** `.dev.vars` sets `LLM_MODE=mock`.
+- **Local:** `.dev.vars` sets `LLM_MODE=mock`, plus `DEMO_BASE_URL` and `SSRF_DEV_ALLOW_ORIGIN` = `http://localhost:5173` for the local demo (§7.5).
 - **Demo wrangler:** `name: incident-copilot-demo`, a `DemoState` DO with a `new_sqlite_classes` migration, and `WorkerEntrypoint` `DemoAdmin` exported alongside the default fetch handler.
 
 ### 5.2 Constants (`worker/loop/budget.ts`, `safety/*`)
@@ -263,7 +263,7 @@ Incident, workspace and approval IDs are 128-bit random hex values (`crypto.getR
 | `POST /api/incidents` | `{message}` | `{id}` / 400 `{error:"need_target"}` / 429 `{retryAfter}` / 503 `{error:"demo_unavailable"}` | Target parse (D9), then quota (D14), then `IncidentAgent.init`. 503 while `DEMO_BASE_URL` still holds the `<sub>` placeholder |
 | `GET /api/incidents/:id` | | Snapshot (`IncidentState` + findings) | Owner only. Used by eval and smoke tests. |
 | `POST /api/incidents/:id/read` | | 204 | Clears `unread` |
-| `GET /api/demo` · `POST /api/demo/mode` | `{mode}` | `{mode, url}` | Calls `env.DEMO.setMode(ws, mode)` |
+| `GET /api/demo` · `POST /api/demo/mode` | `{mode}` | `{mode, url}` / 400 `{error:"invalid_mode"}` / 503 `{error:"demo_unavailable"}` | Calls `env.DEMO.getMode` / `setMode(ws, mode)`. 503 while `DEMO_BASE_URL` holds `<sub>` |
 | `GET/POST /api/watches` · `DELETE /api/watches/:id` | `{url, intervalSec}` | Watch list | Per-workspace and global caps |
 | `GET/PUT/DELETE /api/webhook` | `{url}` | `{kind, hint}` | Allowlist, then encryption |
 | `POST /api/voice` | `audio/webm` body | `{text}` | Size cap, then limit, then whisper, then normalization |
@@ -365,6 +365,27 @@ streamLlm(env, req, onDelta): Promise<LlmResult>
 | `bad_cache` | Static files get `cache-control: no-store`, and every response gets `Set-Cookie: demo_session=…` |
 
 `DemoAdmin extends WorkerEntrypoint` has `getMode(ws)` and `setMode(ws, mode)`. Both use `DemoState` (`idFromName(ws)`) and validate the mode with zod. There's no public admin route.
+
+*As built (WP-11):*
+- **Files:**
+  - `demo-service/src/modes.ts` holds the mode list, the zod schema (marked pure, so the web bundle drops zod) and the UI labels. The main Worker and the web client share it.
+  - `state.ts` is `DemoState`, which stores the mode in `ctx.storage.kv` (default `healthy`).
+  - `pages.ts` serves the pages.
+- **Paths:**
+  - `<ws>` must be a 32-hex ID, otherwise the path is a 404 and no Durable Object is created.
+  - Only `/w/<ws>/`, `/w/<ws>/r`, `static/app.css` and `static/app.js` exist.
+  - `/r` always sends a 302 to the page. In `redirect_loop` mode the page sends a 302 back to `/r`, which makes the loop. In `errors` mode every path returns 500.
+  - The `bad_cache` cookie is `demo_session=<uuid>; Path=/w/<ws>/`.
+- **RPC errors:**
+  - Bad input throws `invalid_workspace` or `invalid_mode`. A ZodError would lose its message over RPC.
+  - The methods are `async`, so a throw arrives as a rejected promise.
+  - Tests await the call inside `try`/`catch`: `expect(rpc).rejects` leaves a pipelined RPC promise unhandled.
+- **Local demo URL:** under `vite dev` an auxiliary Worker has **no port of its own**. A separate `wrangler dev` would be a second copy with its own state, so the probes would never see a mode change. Instead:
+  - The main Worker passes `/w/*` through `env.DEMO.fetch()`, which `DemoAdmin.fetch` serves with the same handler. It does this **only when `DEMO_BASE_URL` is its own origin**.
+  - `.dev.vars` sets `DEMO_BASE_URL` and `SSRF_DEV_ALLOW_ORIGIN` to `http://localhost:5173`.
+  - Deployed, `DEMO_BASE_URL` is the demo's `workers.dev` URL, so the main Worker answers `/w/*` with 404.
+  - Spike: probes from the local Workflow reach `localhost:5173` even with `global_fetch_strictly_public`.
+- **Local check:** all five modes, driven through `/api/demo/mode` and a real Workflow, gave the expected category (slow → `high_latency`, errors → `origin_5xx`, redirect_loop → `redirect_loop`, bad_cache → `cache_misconfiguration`, healthy → `healthy`).
 
 ### 7.6 Action catalog (`actions/catalog.ts`)
 
@@ -601,7 +622,7 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 - **Header:** wordmark "Incident Copilot", `BudgetBanner`, and a GitHub link. Don't use the Cloudflare logo; "Built on Cloudflare" in the footer is enough.
 - **Left `Sidebar`:** "New incident" and the incident list (status badge, unread dot, polled every 10 s), followed by `WatchlistPanel` and `WebhookSettings`.
 - **Main area:** `ChatPane`.
-- **Right column:** `DemoPanel`, which collapses below the `lg` breakpoint.
+- **Right column:** `DemoPanel`. Below the `lg` breakpoint it becomes a closed "Demo service" disclosure at the top of `<main>` (an `aria-expanded` button, as for evidence). `useMediaQuery` mounts it in one place only, so the panel keeps a single state.
 
 ### 12.2 Components
 
@@ -685,12 +706,12 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | Unit | `plan.test.ts` | The driver with a fake `io`: happy path, invalid once/twice, origin pin, LLM down, tool cap, turn cap, budget, deadline, throwing check, unexpected failure, rule-based mode |
 | | `approval.test.ts` | Propose → approve → `setMode` called → verify → `mitigated` → 2 ticks → `resolved`. Reject → `investigating`. Supersede. |
 | | `cron.test.ts` | Due-watch query with LIMIT and caps; failure starts WatchWorkflow; duplicate ID ignored |
-| Demo (`@cloudflare/vitest-plugin`, demo Worker) | `demo.test.ts` | Every mode's status, headers and timing, through `exports.default` and the `DemoAdmin` RPC |
+| Demo (`@cloudflare/vitest-plugin`, demo Worker) | `demo.test.ts` | Every mode's status, headers and timing, through `exports.default` and the `DemoAdmin` RPC; per-workspace state; bad input; no admin route |
 
 - **Projects** (`vitest.config.ts`): `unit` runs in node. `integration` loads `wrangler.jsonc` with `LLM_MODE=mock` and a valid test `DEMO_BASE_URL`, and with `remoteBindings: false`, so the AI binding never goes remote: tests need no login and spend no neurons. `demo` loads `demo-service/wrangler.jsonc`.
 - **Fake internet (WP-09):** the integration project's `outboundService` is an inline `fake-internet` Worker. It answers DoH for `*.example.com` (NXDOMAIN for `nxdomain.example.com`), returns 500 for `broken.example.com` and serves HTML for other `*.example.com` hosts, so no integration test touches the real network. `diagnosis.test.ts` runs real local Workflows through `introspectWorkflow`; `plan.test.ts` covers every limit with a fake `io`.
 - Unit tests load the recorded fixtures as JSON imports and the `.sse` files with Vite `?raw` imports (`test/unit/raw.d.ts`), because the worker tsconfig has no Node types.
-- **Demo stub:** the test runtime won't start while a service binding points at a Worker it doesn't know about. So `integration` adds a small inline stand-in `incident-copilot-demo` Worker behind `DEMO`, and `approval.test.ts` asserts what the main Worker asks it to do (e.g. `setMode`). The real demo service is tested only in `demo`.
+- **Demo stub:** the test runtime won't start while a service binding points at a Worker it doesn't know about. So `integration` adds a small inline stand-in `incident-copilot-demo` Worker behind `DEMO`. It keeps modes in memory, records every `setMode`, and exposes the record as `calls(ws)`. `demo-api.test.ts` and `approval.test.ts` assert what the main Worker asks it to do (e.g. `setMode`). The real demo service is tested only in `demo`.
 - Tests use `env` and `exports` from `cloudflare:workers` (the plugin's `cloudflare:test` `env`/`SELF` are deprecated). Workflow tests use the plugin's Workflow introspection APIs. Retrying events with `waitForEvent` and the timeout path are verified in WP-02.
 
 ## 15. CI/CD and IaC

@@ -2,8 +2,8 @@ import { Hono } from "hono";
 import { incidentAgent } from "../agent/stub";
 import type { AppEnv } from "../env";
 import { isId, newId } from "../lib/ids";
-import { parseTarget, type TargetResult } from "../safety/target";
-import { demoUrlFor } from "./session";
+import { parseTarget } from "../safety/target";
+import { demoTarget } from "./session";
 
 type IndexRow = { id: string; target: string; status: string; origin: string; unread: number; updated_at: number };
 
@@ -16,13 +16,9 @@ export const incidents = new Hono<AppEnv>()
     const message = typeof body.message === "string" ? body.message.trim().slice(0, MAX_MESSAGE) : "";
     if (!message) return c.json({ error: "empty_message" }, 400);
     const workspaceId = c.get("workspaceId");
-    let target: TargetResult;
-    try {
-      target = parseTarget(message, demoUrlFor(c.env.DEMO_BASE_URL, workspaceId));
-    } catch {
-      // DEMO_BASE_URL still holds the `<sub>` placeholder (set in WP-11 locally, WP-13 deployed).
-      return c.json({ error: "demo_unavailable" }, 503);
-    }
+    const demoUrl = demoTarget(c.env.DEMO_BASE_URL, workspaceId);
+    const target = parseTarget(message, demoUrl ?? "https://demo.invalid/");
+    if (target.ok && target.source === "demo" && !demoUrl) return c.json({ error: "demo_unavailable" }, 503);
     if (!target.ok) return c.json({ error: target.error }, 400);
     // WP-17: run quota (D14) before init.
     const id = newId();

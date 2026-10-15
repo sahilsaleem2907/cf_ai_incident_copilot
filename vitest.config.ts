@@ -1,11 +1,20 @@
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
 
-// Stand-in for the demo Worker behind the main Worker's DEMO binding. Integration tests assert on
-// what the main Worker asks of it; the real demo service is tested in the "demo" project.
+// Stand-in for the demo Worker behind the main Worker's DEMO binding. Modes live in memory, and every
+// setMode is recorded so tests can assert on what the main Worker asked for (calls()). The real demo
+// service is tested in the "demo" project.
 const demoStub = `
 import { WorkerEntrypoint } from "cloudflare:workers";
-export class DemoAdmin extends WorkerEntrypoint { ping() { return "pong"; } }
+const modes = new Map();
+const calls = [];
+export class DemoAdmin extends WorkerEntrypoint {
+  ping() { return "pong"; }
+  getMode(ws) { return modes.get(ws) ?? "healthy"; }
+  setMode(ws, mode) { calls.push({ ws, mode }); modes.set(ws, mode); return mode; }
+  calls(ws) { return calls.filter((c) => c.ws === ws); }
+  fetch(request) { return new Response("demo stub " + new URL(request.url).pathname); }
+}
 export default { fetch() { return new Response("demo stub"); } };
 `;
 

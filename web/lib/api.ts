@@ -1,3 +1,4 @@
+import type { DemoMode } from "../../demo-service/src/modes";
 import type { IncidentStatus, Origin } from "../../worker/agent/state";
 
 /** Errors the UI explains in words (TDD §7.1). */
@@ -49,6 +50,28 @@ export async function getSession(f: Fetch = fetch): Promise<Session | null> {
     return null;
   }
 }
+
+export type Demo = { mode: DemoMode; url: string };
+export type DemoResult = { ok: true; demo: Demo } | { ok: false; error: "demo_unavailable" | "network" | "server" };
+
+async function demoCall(f: Fetch, init?: RequestInit): Promise<DemoResult> {
+  let res: Response;
+  try {
+    res = await f(init ? "/api/demo/mode" : "/api/demo", init);
+  } catch {
+    return { ok: false, error: "network" };
+  }
+  if (res.ok) return { ok: true, demo: (await res.json()) as Demo };
+  return { ok: false, error: res.status === 503 ? "demo_unavailable" : "server" };
+}
+
+export const getDemo = (f: Fetch = fetch) => demoCall(f);
+
+export const setDemoMode = (mode: DemoMode, f: Fetch = fetch) =>
+  demoCall(f, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode }) });
+
+/** Tells the DemoPanel to reload its mode, e.g. after an approved restore (WP-12). */
+export const DEMO_CHANGED = "demo:changed";
 
 /** Tells the sidebar to reload after something changed (creation, a status change). Polling is WP-19. */
 export const INCIDENTS_CHANGED = "incidents:changed";

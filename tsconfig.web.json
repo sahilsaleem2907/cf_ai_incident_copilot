@@ -16,6 +16,7 @@
     "worker/tools/types.ts",
     "worker/lib/doh.ts",
     "worker/safety/target.ts",
-    "worker/lib/ids.ts"
+    "worker/lib/ids.ts",
+    "demo-service/src/modes.ts"
   ]
 }

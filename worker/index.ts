@@ -13,10 +13,21 @@ function isIncidentPath(request: Request): boolean {
   return prefix === "agents" && agent === "incident-agent" && isId(name) && rest.length === 0;
 }
 
-// Only /api/* and /agents/* reach the Worker (run_worker_first); everything else is served from assets.
+/**
+ * True only when `DEMO_BASE_URL` is this Worker's own origin, i.e. local dev: under Vite the demo Worker has no
+ * port of its own, so `/w/*` is passed through the DEMO binding. Deployed, the demo has its own workers.dev URL
+ * and `/w/*` here is a 404 (TDD §7.5).
+ */
+function isLocalDemo(url: URL, env: Env): boolean {
+  return URL.canParse(env.DEMO_BASE_URL) && new URL(env.DEMO_BASE_URL).origin === url.origin;
+}
+
+// Only /api/*, /agents/* and /w/* reach the Worker (run_worker_first); everything else is served from assets.
 export default {
   async fetch(request, env, ctx) {
-    if (new URL(request.url).pathname.startsWith("/agents/")) {
+    const url = new URL(request.url);
+    if (url.pathname.startsWith("/w/")) return isLocalDemo(url, env) ? env.DEMO.fetch(request) : notFound();
+    if (url.pathname.startsWith("/agents/")) {
       // WebSockets only: the app never talks to the agent over plain HTTP.
       const routed = await routeAgentRequest(request, env, {
         onBeforeConnect: (req) => (isIncidentPath(req) ? undefined : notFound()),

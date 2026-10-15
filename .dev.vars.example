@@ -1,4 +1,7 @@
 LLM_MODE=mock
-# WP-11: one exact origin (scheme://host:port) the SSRF guard lets through locally, e.g. the local demo.
+# Local demo (TDD §7.5): under `pnpm dev --port 5173` the demo Worker has no port of its own, so the main
+# Worker passes /w/* through the DEMO binding when DEMO_BASE_URL is its own origin.
+DEMO_BASE_URL=http://localhost:5173
+# One exact origin (scheme://host:port) the SSRF guard lets through locally: the demo above.
 # Never set this in wrangler.jsonc vars (TDD §11).
-# SSRF_DEV_ALLOW_ORIGIN=http://localhost:8788
+SSRF_DEV_ALLOW_ORIGIN=http://localhost:5173
