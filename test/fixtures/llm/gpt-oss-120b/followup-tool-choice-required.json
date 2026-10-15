@@ -1,0 +1,46 @@
+{
+  "id": "chatcmpl-a96b3225-a5de-4ba8-8bc4-b2b14b170299",
+  "object": "chat.completion",
+  "created": 1792006403,
+  "model": "@cf/openai/gpt-oss-120b",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "tool_calls": [
+          {
+            "id": "chatcmpl-tool-892b3fbddd99fe52",
+            "type": "function",
+            "function": {
+              "name": "submit_findings",
+              "arguments": "{\"category\": \"healthy\", \"confidence\": \"high\", \"evidence\": [\"[dns-1] Both DNS resolvers returned A record 93.184.215.14\"], \"cause\": \"example.com resolves correctly with matching A records from multiple resolvers.\", \"next_steps\": [\"Continue regular monitoring of DNS resolution.\", \"No immediate action required.\"], \"actions\": []}"
+            }
+          }
+        ],
+        "reasoning": "We have DNS lookup results: both resolvers return A 93.184.215.14. So it's resolving correctly, no mismatch.\n\nWe need to answer if example.com resolving, provide answer. No need to submit findings? The user asked \"Is example.com resolving? Check its A records.\" So we can respond with the result. No need to call submit_findings unless required. The instruction says we are a triage assistant for one endpoint: example.com. Use tools to gather evidence. Always finish by calling submit_findings, citing evidence ids like [dns-1]. Actually the system instruction says \"Always finish by calling submit_findings\". So we must call submit_findings after providing findings. The category likely \"healthy\" because resolves correctly. Confidence high. Evidence list includes [dns-1]. Cause: DNS resolves correctly. Next steps: monitor. Action perhaps none or add_to_watchlist? Probably no action needed. Use actions: []? The schema requires actions: \"restore_demo_service\" | \"add_to_watchlist\"[]? Actually actions field is defined as \"restore_demo_service\" | \"add_to_watchlist\"[]; seems expects either a string? Possibly list. We'll provide empty list? Might need at least one? Could set [].\n\nWe'll call submit_findings with category \"healthy\".",
+        "reasoning_content": "We have DNS lookup results: both resolvers return A 93.184.215.14. So it's resolving correctly, no mismatch.\n\nWe need to answer if example.com resolving, provide answer. No need to submit findings? The user asked \"Is example.com resolving? Check its A records.\" So we can respond with the result. No need to call submit_findings unless required. The instruction says we are a triage assistant for one endpoint: example.com. Use tools to gather evidence. Always finish by calling submit_findings, citing evidence ids like [dns-1]. Actually the system instruction says \"Always finish by calling submit_findings\". So we must call submit_findings after providing findings. The category likely \"healthy\" because resolves correctly. Confidence high. Evidence list includes [dns-1]. Cause: DNS resolves correctly. Next steps: monitor. Action perhaps none or add_to_watchlist? Probably no action needed. Use actions: []? The schema requires actions: \"restore_demo_service\" | \"add_to_watchlist\"[]? Actually actions field is defined as \"restore_demo_service\" | \"add_to_watchlist\"[]; seems expects either a string? Possibly list. We'll provide empty list? Might need at least one? Could set [].\n\nWe'll call submit_findings with category \"healthy\"."
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls",
+      "stop_reason": 200012,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "usage": {
+    "prompt_tokens": 428,
+    "completion_tokens": 372,
+    "total_tokens": 800,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "neurons": 38.98173141479492
+  },
+  "metrics": null
+}

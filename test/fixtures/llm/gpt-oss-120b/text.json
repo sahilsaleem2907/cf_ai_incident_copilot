@@ -1,0 +1,36 @@
+{
+  "id": "chatcmpl-e6fbf452-1907-4bce-bad1-9a91613f9a48",
+  "object": "chat.completion",
+  "created": 1792006364,
+  "model": "@cf/openai/gpt-oss-120b",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "HTTP 502 “Bad Gateway” means that a server acting as a gateway or proxy received an invalid or error response from the upstream server it was trying to contact.",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": "We need to answer in one sentence, what does HTTP 502 mean. Provide concise definition: Bad Gateway, server acting as gateway received invalid response from upstream server. One sentence.",
+        "reasoning_content": "We need to answer in one sentence, what does HTTP 502 mean. Provide concise definition: Bad Gateway, server acting as gateway received invalid response from upstream server. One sentence."
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "stop_reason": null,
+      "routed_experts": null
+    }
+  ],
+  "service_tier": null,
+  "usage": {
+    "prompt_tokens": 81,
+    "completion_tokens": 79,
+    "total_tokens": 160,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "neurons": 7.963620185852051
+  },
+  "metrics": null
+}

@@ -1,0 +1,36 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "logprobs": null,
+      "message": {
+        "annotations": null,
+        "audio": null,
+        "content": "**Findings**\n\n- **Category:** healthy  \n- **Cause:** The domain **example.com** successfully resolves to an A record (IPv4 address) on both DNS resolvers queried.  \n- **Confidence:** high  \n- **Evidence:**  \n  - DNS lookup (A record) returned 93.184.215.14 from 1.1.1.1 and 8.8.8.8 with no mismatches【dns-1】  \n- **Next steps:** No immediate action required. Monitor periodically for any future changes.  \n\n---  \n\n*Submitted via automated triage.*",
+        "function_call": null,
+        "reasoning": "We have DNS A record resolved successfully from both resolvers, same IP 93.184.215.14. So example.com is resolving.\n\nWe should output findings with category \"healthy\" maybe. Provide cause, confidence high, evidence list includes dns-1. Next steps none.",
+        "reasoning_content": "We have DNS A record resolved successfully from both resolvers, same IP 93.184.215.14. So example.com is resolving.\n\nWe should output findings with category \"healthy\" maybe. Provide cause, confidence high, evidence list includes dns-1. Next steps none.",
+        "refusal": null,
+        "role": "assistant"
+      },
+      "routed_experts": null,
+      "stop_reason": null
+    }
+  ],
+  "created": 1792006378,
+  "id": "chatcmpl-df6677b7-bd00-417e-9d33-6a38e0160c28",
+  "metrics": null,
+  "model": "@cf/openai/gpt-oss-120b",
+  "object": "chat.completion",
+  "service_tier": null,
+  "usage": {
+    "prompt_tokens": 428,
+    "completion_tokens": 189,
+    "total_tokens": 617,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "neurons": 26.50446319580078
+  }
+}

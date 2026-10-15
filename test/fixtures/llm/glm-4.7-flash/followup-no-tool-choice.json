@@ -1,0 +1,45 @@
+{
+  "id": "chatcmpl-875c538faa6d4b88",
+  "object": "chat.completion",
+  "created": 1792006378,
+  "model": "@cf/zai-org/glm-4.7-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Perfect! I can confirm that **example.com is resolving and has a valid A record**.\n\n## Evidence Summary [dns-1]\nBoth DoH resolvers (Cloudflare 1.1.1.1 and Google 8.8.8.8) returned the same IPv4 address:\n- **93.184.215.14**\n\nThe DNS query returned a **NOERROR** status, indicating successful resolution with no mismatches between the two DoH resolvers. The A record appears to be active and correctly configured.",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "tool_calls": [
+          {
+            "id": "chatcmpl-tool-ae324ad1a5a69056",
+            "type": "function",
+            "function": {
+              "name": "submit_findings",
+              "arguments": "{\"category\": \"healthy\", \"confidence\": \"high\", \"evidence\": [\"[dns-1] Both DoH resolvers (1.1.1.1 and 8.8.8.8) returned the same A record: 93.184.215.14\", \"[dns-1] DNS query resulted in NOERROR status with no resolver mismatches\", \"[dns-1] The A record shows a valid TTL of 289-300 seconds\"], \"cause\": \"example.com has a properly configured A DNS record pointing to 93.184.215.14 with consistent responses from multiple DoH resolvers.\", \"next_steps\": [], \"actions\": []}"
+            }
+          }
+        ],
+        "reasoning": null,
+        "reasoning_content": null
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls",
+      "stop_reason": 154829
+    }
+  ],
+  "service_tier": null,
+  "system_fingerprint": null,
+  "usage": {
+    "prompt_tokens": 625,
+    "completion_tokens": 261,
+    "total_tokens": 886,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "neurons": 12.9379
+  }
+}
