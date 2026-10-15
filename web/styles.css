@@ -100,6 +100,8 @@
 /* Page defaults: theming goes through light-dark() and data-mode only (TDD §12.4). */
 @layer base {
   :root { color-scheme: light; }
+  /* The shell is exactly one screen tall; only <main> and the side columns scroll, never the page (WP-27c). */
+  html, body { height: 100%; overflow: hidden; }
   :root[data-mode="dark"] { color-scheme: dark; }
   body {
     background-color: var(--cf-bg-100);

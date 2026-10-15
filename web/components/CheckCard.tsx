@@ -1,9 +1,10 @@
-import { CodeBlock, Loader, Surface } from "@cloudflare/kumo";
+import { CodeBlock, Surface } from "@cloudflare/kumo";
 import { CaretRightIcon, CertificateIcon, GlobeIcon, ListMagnifyingGlassIcon, PulseIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import type { CheckView } from "../../worker/agent/state";
 import type { ToolName } from "../../worker/tools/types";
 import type { Evidence } from "../hooks/useIncident";
+import { DashedLoader } from "./DashedLoader";
 import { StatusBadge } from "./StatusBadge";
 
 const ICONS: Record<ToolName, typeof GlobeIcon> = {
@@ -36,7 +37,7 @@ export function CheckCard({ check, status, getEvidence }: Props) {
   };
 
   return (
-    <Surface id={`check-${check.evidenceId}`} tabIndex={-1} className="rounded-lg border border-(--cf-border) outline-none">
+    <Surface id={`check-${check.evidenceId}`} tabIndex={-1} className="min-w-0 rounded-lg border border-(--cf-border) outline-none">
       <div className="flex items-start gap-3 p-3">
         <Icon aria-hidden size={18} className="mt-0.5 shrink-0 text-(--cf-fg-muted)" />
         <div className="min-w-0 flex-1">
@@ -61,10 +62,15 @@ export function CheckCard({ check, status, getEvidence }: Props) {
         )}
       </div>
       {open && (
-        <div id={`evidence-${check.evidenceId}`} className="border-t border-(--cf-border) p-3">
-          {evidence === "loading" && <Loader size={16} />}
+        <div id={`evidence-${check.evidenceId}`} className="min-w-0 border-t border-(--cf-border) p-3">
+          {evidence === "loading" && <DashedLoader label="Loading evidence" />}
           {evidence === "error" && <p className="text-sm text-(--cf-fg-muted)">Couldn't load this evidence.</p>}
-          {evidence && typeof evidence === "object" && <CodeBlock lang="jsonc" code={JSON.stringify(evidence.raw, null, 2)} />}
+          {evidence && typeof evidence === "object" && (
+            // Long lines wrap and the box stops at about 20 lines, scrolling inside, so it never leaves the card.
+            <div className="max-h-80 min-w-0 overflow-auto rounded-md [&_pre]:break-words [&_pre]:whitespace-pre-wrap">
+              <CodeBlock lang="jsonc" code={JSON.stringify(evidence.raw, null, 2)} />
+            </div>
+          )}
         </div>
       )}
     </Surface>

@@ -1,4 +1,4 @@
-import { Badge, Banner, Button, Loader } from "@cloudflare/kumo";
+import { Badge, Banner, Button } from "@cloudflare/kumo";
 import { CheckCircleIcon, EyeIcon, InfoIcon, PulseIcon, RobotIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
@@ -9,6 +9,8 @@ import { MONITOR_PASSES } from "../../worker/agent/monitor";
 import { createIncident, DEMO_CHANGED, ERROR_TEXT, notifyIncidentsChanged, parseRateLimited } from "../lib/api";
 import { otherHost, runNote } from "../lib/incident";
 import { ChatPane } from "./ChatPane";
+import { loadingProps } from "./CtaButton";
+import { DashedLoader } from "./DashedLoader";
 import { Composer } from "./Composer";
 import { CategoryPill, IncidentStatusBadge } from "./StatusBadge";
 
@@ -53,7 +55,7 @@ export function IncidentView({ id }: { id: string }) {
   if (!state) {
     return (
       <div className="m-auto flex items-center gap-2 p-8 text-(--cf-fg-muted)">
-        <Loader size={16} /> Connecting…
+        <DashedLoader label={null} /> Connecting…
       </div>
     );
   }
@@ -100,9 +102,8 @@ export function IncidentView({ id }: { id: string }) {
             <Button
               size="sm"
               variant="secondary"
-              icon={CheckCircleIcon}
+              {...loadingProps(resolving, CheckCircleIcon)}
               className="ml-auto"
-              loading={resolving}
               onClick={() => {
                 setResolving(true);
                 resolve()
@@ -131,7 +132,7 @@ export function IncidentView({ id }: { id: string }) {
       </div>
 
       <div className="flex-1">
-        <ChatPane feed={feed} knownIds={knownIds} getEvidence={getEvidence} {...(role === "owner" ? { onDecide: decide } : {})} />
+        <ChatPane feed={feed} knownIds={knownIds} getEvidence={getEvidence} working={!!state.activeRunId} {...(role === "owner" ? { onDecide: decide } : {})} />
       </div>
 
       {!viewer && (
