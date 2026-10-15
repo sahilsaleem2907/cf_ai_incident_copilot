@@ -456,3 +456,7 @@ Answers to Claude's questions:
 > Center the footer text.
 
 (Footer text centred, part of WP-27b.)
+
+> Use this as the website icon. (a blue pixel-dot cloud image)
+
+(Favicon added: the image's centre cropped square, `public/favicon.png` 64 px and `public/apple-touch-icon.png` 180 px, linked in `index.html`. Part of WP-27b.)
