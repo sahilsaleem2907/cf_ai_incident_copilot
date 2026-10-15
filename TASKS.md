@@ -21,8 +21,8 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** none (WP-10 ✅ 16:35)
-- **Next:** WP-11 Demo service + DemoPanel
+- **Current:** WP-11 Demo service + DemoPanel (started 16:54)
+- **Next:** WP-12 Act
 - **Hours today:** 2.25 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
@@ -47,7 +47,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 08 | IncidentAgent: schema, state, roles, RPC, transitions, narrate | 1.5 | 03, 07 | ✅ | 14:40 | 14:50 | `7b2bc3c`. 0.25 h vs 1.5 est. Also `/api/incidents` (nobody owned it; WP-10 needs it) |
 | 09 | DiagnosisWorkflow: planning loop, bounds, rule path | 1.5 | 05, 06, 08 | ✅ | 15:15 | 15:22 | `a5ca0ba`. 0.15 h vs 1.5 est. Dev smoke: cloudflare.com end to end in 3 s (mock LLM) |
 | 10 | Chat UI | 1.75 | 08 | ✅ | 16:24 | 16:35 | `dea9b32`. 0.2 h vs 1.75 est. Browser-checked in light, dark and at 390 px |
-| 11 | Demo service + `DemoPanel` | 1.0 | 03 | ⬜ | | | |
+| 11 | Demo service + `DemoPanel` | 1.0 | 03 | 🔄 | 16:54 | | |
 | 12 | Act: actions, approval, verify, monitor, `ApprovalCard` | 1.5 | 09, 11 | ⬜ | | | |
 | 13 | Deploy 1 + live walkthrough + SSRF/CPU checks | 0.5 | 12 | ⬜ | | | |
 

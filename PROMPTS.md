@@ -176,3 +176,15 @@ Answers to Claude's questions:
 > Lets push to origin dev, and raise a PR to main with proper title and description.
 
 (`dev` was already pushed. Opened PR #3 `dev` → `main`, "WP-06 to WP-10: diagnosis rules, LLM layer, IncidentAgent, DiagnosisWorkflow and chat UI", with a summary per WP, the key decisions, the testing done and what's not included.)
+
+### 16:49 · New session: context from the WP-11 handoff
+
+> Gain context from /var/folders/sv/ky3w59_s6bxbgfj8r92tpj5w0000gp/T/incident-copilot-handoff-wp11.md
+
+(Read the handoff, TASKS board, the WP-11 checklist, TDD §7.5 and the demo-service scaffold. No code changes.)
+
+### 16:54 · WP-11 Demo service
+
+> Yes
+
+(Plan approved: the five modes on a `DemoState` Durable Object, `DemoAdmin` RPC, `/api/demo`, and a `DemoPanel` that collapses below `lg`. Locally, the main Worker passes `/w/*` through to the demo service only when `DEMO_BASE_URL` is its own origin, because an auxiliary Worker under Vite has no port of its own.)
