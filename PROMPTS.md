@@ -338,3 +338,5 @@ Answers to Claude's questions:
 > Lets fix the older probelms as well.
 
 (Plan: the app makes one session call and waits for it before anything else, so a first visit creates one workspace; and a second run limit per visitor IP (hashed), 6 a minute and 20 an hour, so dropping the cookie doesn't skip the limit.)
+
+(WP-17b done: a first visit now creates one workspace (the app waits for one session call before anything else), and runs are also limited per visitor IP, 6 a minute and 20 an hour, stored only as a hash. 540 tests pass; checked in the browser.)
