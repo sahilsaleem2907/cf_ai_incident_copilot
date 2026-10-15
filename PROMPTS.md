@@ -299,3 +299,9 @@ Answers to Claude's questions:
 > Give me the exact steps for the api token generation and account id.
 
 (Steps for creating the Cloudflare API token and finding the account ID, then setting both as GitHub secrets with `gh secret set`. The values aren't shared in the chat.)
+
+### 22:08 · WP-15 secrets check
+
+> done.
+
+(Checked with `gh secret list`: the two secrets were saved with their values as their names, so `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` don't exist yet. The token is treated as exposed and will be rolled. Its value is left out of this log and must be redacted from the Day 2 transcript export.)

@@ -460,4 +460,4 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 - **Done:**
 - **Cut (→ README "designed, not built"):**
 - **Hours:** / 11.5 h
-- **Transcript exported to `prompts/`:** ⬜
+- **Transcript exported to `prompts/`:** ⬜ **When exporting:** this session shows a Cloudflare API token (in upper case, as a GitHub secret name in `gh secret list` output, 2026-10-15 evening). Redact it as `<TOKEN>`, matching case-insensitively, and the account ID as `<ACCOUNT_ID>`, even after the token is rolled.
