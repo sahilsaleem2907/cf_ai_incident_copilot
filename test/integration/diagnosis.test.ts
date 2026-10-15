@@ -28,7 +28,8 @@ const finished = (s: Awaited<ReturnType<typeof diagnoseRun>>["snapshot"]) => s.t
 describe("DiagnosisWorkflow (mock LLM, fake internet)", () => {
   it("diagnoses a failing origin end to end", async () => {
     const { snapshot: s, output, runId } = await diagnoseRun("why is broken.example.com down?", "https://broken.example.com/");
-    expect(output).toMatchObject({ status: "done", mode: "ai", toolCalls: 2, llmTurns: 2, category: "origin_5xx" });
+    // The baseline DNS + HTTP checks run before the first AI turn (WP-13b), so one turn is enough.
+    expect(output).toMatchObject({ status: "done", mode: "ai", toolCalls: 2, llmTurns: 1, category: "origin_5xx" });
     expect(s.checks.map((c) => [c.evidenceId, c.status])).toEqual([
       ["dns-1", "pass"],
       ["http-1", "fail"],

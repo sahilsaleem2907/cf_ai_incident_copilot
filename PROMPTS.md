@@ -223,3 +223,7 @@ Answers to Claude's questions:
 (Plan approved: apply the D1 migration remotely, deploy the demo Worker first (the main Worker's binding needs it), set the real demo URL, deploy the main Worker, then run the PRD §13 walkthrough steps 1–5 on the live URL, the three SSRF refusals and a CPU check from `wrangler tail`. About 1,000 neurons. The URL isn't shared until WP-17 (D2).)
 
 (WP-13 done in `6114882`. Both Workers deployed; PRD §13 steps 1–5 pass on the live URL; the three private addresses are refused; no CPU cut-offs (narrate peaks at 182 ms in the Durable Object). 907 neurons. Found: the card takes about 35 s (the model plans one check per turn, so every run hits the 3-turn limit; narration about 13 s), and a live narration once left "Likely cause:" empty.)
+
+### 19:39 · WP-13b Live speed + empty cause
+
+- Live fixes → "Fix now, small extra WP": run the DNS and HTTP checks before the first AI turn, show the approval card before the narration, and put back a cited cause if the citation check empties "Likely cause:". Then redeploy and re-time.

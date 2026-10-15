@@ -121,7 +121,8 @@ function harness(
   return { io, steps, requests, recorded, log };
 }
 
-const run = (h: ReturnType<typeof harness>, limits: Partial<DiagnoseLimits> = {}) => diagnose(h.io, "run-1", { ...DEFAULT_LIMITS, ...limits });
+// Most tests exercise the planning turns themselves, so the baseline checks (WP-13b) are off unless asked for.
+const run = (h: ReturnType<typeof harness>, limits: Partial<DiagnoseLimits> = {}) => diagnose(h.io, "run-1", { ...DEFAULT_LIMITS, baseline: false, ...limits });
 const offered = (req: LlmRequest) => req.tools!.map((t) => t.function.name);
 
 describe("diagnose: normal runs", () => {
@@ -129,7 +130,7 @@ describe("diagnose: normal runs", () => {
     const h = harness({ replies: [reply(dns(), http()), reply(submit(["http-1", "dns-1"]))] });
     const out = await run(h);
     expect(out).toEqual({ status: "done", mode: "ai", toolCalls: 2, llmTurns: 2, category: "origin_5xx" });
-    expect(h.steps).toEqual(["context", "llm-turn-1", "pending-1", "tool-dns-1", "tool-http-1", "llm-turn-2", "findings", "narrate", "propose", "finish"]);
+    expect(h.steps).toEqual(["context", "llm-turn-1", "pending-1", "tool-dns-1", "tool-http-1", "llm-turn-2", "findings", "propose", "narrate", "finish"]);
     expect(h.log.findings).toEqual({ f: expect.objectContaining({ category: "origin_5xx", evidence: ["http-1", "dns-1"] }), mode: "ai" });
     expect(h.log.finish).toEqual({ status: "done", stats: { toolCalls: 2, llmTurns: 2 } });
     expect(h.requests[0]).toMatchObject({ toolChoice: "required" });
@@ -186,7 +187,7 @@ describe("diagnose: every limit still ends in findings (TDD §8.2)", () => {
     const h = harness({ replies: [new LlmUnavailable("failed", "both models down")] });
     const out = await run(h);
     expect(h.recorded.map((r) => r.tool)).toEqual(["dns_lookup", "http_probe"]);
-    expect(h.steps).toEqual(["context", "llm-turn-1", "pending-rules", "tool-dns-1", "tool-http-1", "rules", "findings", "narrate", "propose", "finish"]);
+    expect(h.steps).toEqual(["context", "llm-turn-1", "pending-rules", "tool-dns-1", "tool-http-1", "rules", "findings", "propose", "narrate", "finish"]);
     expect(out).toMatchObject({ status: "llm_unavailable", mode: "rule_based", llmTurns: 1 });
     expect(h.log.finish?.status).toBe("llm_unavailable");
   });
@@ -231,7 +232,7 @@ describe("diagnose: every limit still ends in findings (TDD §8.2)", () => {
     expect(h.recorded.map((r) => r.tool)).toEqual(["dns_lookup"]);
     expect(offered(h.requests[1]!)).toEqual(["submit_findings"]);
     expect(out).toMatchObject({ status: "limit_budget", category: "origin_5xx" });
-    expect(h.steps.slice(-4)).toEqual(["findings", "narrate", "propose", "finish"]);
+    expect(h.steps.slice(-4)).toEqual(["findings", "propose", "narrate", "finish"]);
   });
 
   it("deadline → no more LLM turns; rules keep the evidence so far, limit_deadline", async () => {
@@ -273,7 +274,7 @@ describe("diagnose: approval tail (TDD §8.2)", () => {
   it("finishes the run before waiting, then acts and verifies on approval", async () => {
     const h = harness({ replies: broken(), approval: "approved" });
     const out = await run(h);
-    expect(h.steps.slice(-6)).toEqual(["narrate", "propose", "finish", "wait-for-approval", "action", "verify"]);
+    expect(h.steps.slice(-6)).toEqual(["propose", "narrate", "finish", "wait-for-approval", "action", "verify"]);
     expect(out).toMatchObject({ status: "done", category: "origin_5xx", action: { approvalId: "a-1", decision: "approved", verified: true } });
   });
 
@@ -302,6 +303,39 @@ describe("diagnose: approval tail (TDD §8.2)", () => {
     const h = harness({ replies: broken(), ctx: { isDemo: true } });
     await run(h);
     expect(h.requests[0]!.system).toContain("This target is the user's own demo service");
+  });
+});
+
+describe("diagnose: baseline checks first (WP-13b)", () => {
+  it("runs DNS + HTTP before the first AI turn of a new incident, so the model can submit right away", async () => {
+    const h = harness({ replies: [reply(submit(["http-1", "dns-1"]))] });
+    const out = await run(h, { baseline: true });
+    expect(h.steps.slice(0, 5)).toEqual(["context", "pending-baseline", "tool-dns-1", "tool-http-1", "llm-turn-1"]);
+    expect(h.requests[0]!.messages[0]!.content).toContain("[http-1] http_probe");
+    expect(out).toEqual({ status: "done", mode: "ai", toolCalls: 2, llmTurns: 1, category: "origin_5xx" });
+  });
+
+  it("counts the baseline against the tool cap", async () => {
+    const h = harness({ replies: [reply(http("a"), http("b"), http("c"), http("d"), http("e")), reply(submit(["http-1"]))] });
+    // A large subrequest budget, so the tool cap (6) is the limit that bites.
+    const out = await run(h, { baseline: true, budget: 500 });
+    expect(h.recorded).toHaveLength(6);
+    expect(h.requests[0]!.system).toContain("at most 4 more tool call(s)");
+    expect(out.toolCalls).toBe(6);
+  });
+
+  it("skips the baseline for follow-ups, which reuse the incident's evidence", async () => {
+    const h = harness({ replies: [reply(submit(["http-1"]))], ctx: { kind: "followup", evidence: [{ evidenceId: "http-1", tool: "http_probe", status: "fail", summary: "500", digest: "{}" }] } });
+    await run(h, { baseline: true });
+    expect(h.steps).not.toContain("pending-baseline");
+  });
+
+  it("doesn't repeat the baseline on the rule path", async () => {
+    const h = harness({ replies: [new LlmUnavailable("failed", "down")] });
+    const out = await run(h, { baseline: true });
+    expect(h.recorded.map((r) => r.tool)).toEqual(["dns_lookup", "http_probe"]);
+    expect(h.steps).not.toContain("pending-rules");
+    expect(out).toMatchObject({ status: "llm_unavailable", mode: "rule_based" });
   });
 });
 

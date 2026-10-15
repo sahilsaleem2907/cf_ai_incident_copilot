@@ -284,6 +284,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     const results = this.resultsFor(findings?.evidence ?? [], runId);
     const knownIds = this.sql<{ evidence_id: string }>`SELECT evidence_id FROM checks`.map((r) => r.evidence_id);
     const template = () => (findings ? renderTemplate(findings, results) : "No findings were recorded for this run.");
+    const cause = findings ? { text: findings.cause, evidence: findings.evidence } : undefined;
 
     let outcome: NarrationOutcome;
     if (!findings || run.mode === "rule_based") {
@@ -296,10 +297,10 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
           { system: narrationSystem(), messages: narrationUser({ question: run.question, findings, evidence: results.map(toLine) }), maxTokens: NARRATION_MAX_TOKENS },
           (text) => this.frame({ type: "delta", messageId, text }),
         );
-        outcome = finalizeNarration({ text: r.text, truncated: r.truncated, knownIds, template });
+        outcome = finalizeNarration({ text: r.text, truncated: r.truncated, knownIds, template, cause });
       } catch (e) {
         console.warn("narration failed", (e as Error).message);
-        outcome = finalizeNarration({ partial: e instanceof LlmUnavailable ? e.partial : undefined, knownIds, template });
+        outcome = finalizeNarration({ partial: e instanceof LlmUnavailable ? e.partial : undefined, knownIds, template, cause });
       }
       this.frame({ type: "stream_end", messageId });
     }

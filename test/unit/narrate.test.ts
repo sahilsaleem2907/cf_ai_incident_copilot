@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CUT_SHORT_NOTE, finalizeNarration } from "../../worker/loop/narrate";
+import { CUT_SHORT_NOTE, fillEmptyCause, finalizeNarration } from "../../worker/loop/narrate";
 
 const knownIds = ["http-1", "dns-1"];
 const template = () => "TEMPLATE";
@@ -26,5 +26,28 @@ describe("finalizeNarration", () => {
     expect(finalizeNarration({ text: "**Likely cause:** something [cert-7].", knownIds, template }).source).toBe("template");
     expect(finalizeNarration({ partial: "**Likely ca", knownIds, template }).source).toBe("template");
     expect(finalizeNarration({ knownIds, template }).source).toBe("template");
+  });
+});
+
+describe("an emptied Likely cause (WP-13b, seen live)", () => {
+  const cause = { text: "The origin returns HTTP 500 on every sample.", evidence: ["http-1"] };
+  const known = ["dns-1", "http-1"];
+
+  it("puts the findings' cited cause back when the citation check removed it", () => {
+    // The live model wrote the cause on its own line without a citation.
+    const text = "**Likely cause:**\nThe demo returns HTTP 500 errors.\n\n**Evidence**\n- HTTP probe: 500/500/500 [http-1]";
+    const out = finalizeNarration({ text, knownIds: known, template: () => "T", cause });
+    expect(out.text.split("\n")[0]).toBe("**Likely cause:** The origin returns HTTP 500 on every sample [http-1].");
+    expect(out.source).toBe("llm");
+  });
+
+  it("leaves a cause that survived alone", () => {
+    expect(fillEmptyCause("**Likely cause:** The origin fails [http-1].\n\n**Evidence**", cause, known)).toBe("**Likely cause:** The origin fails [http-1].\n\n**Evidence**");
+    expect(fillEmptyCause("**Likely cause:**\nThe origin fails [http-1].", cause, known)).toBe("**Likely cause:**\nThe origin fails [http-1].");
+  });
+
+  it("keeps a cause that cites itself as written, and drops unknown IDs", () => {
+    expect(fillEmptyCause("**Likely cause:**\n**Evidence**", { text: "Errors [http-1].", evidence: ["http-1"] }, known)).toBe("**Likely cause:** Errors [http-1].\n**Evidence**");
+    expect(fillEmptyCause("**Likely cause:**", { text: "Errors.", evidence: ["http-9", "dns-1"] }, known)).toBe("**Likely cause:** Errors [dns-1].");
   });
 });

@@ -15,13 +15,22 @@ import { parseFindings, SUBMIT_FINDINGS } from "./findings";
  * Bounds for one run (TDD §5.2). `tailReserve` keeps room for rules, findings, narrate, finish and the approval
  * tail (propose, outcome, action, verify). Each is one agent call: verify's own fetches run inside the agent.
  */
-export type DiagnoseLimits = { maxTurns: number; maxTools: number; deadlineMs: number; budget: number; tailReserve: number };
+export type DiagnoseLimits = {
+  maxTurns: number;
+  maxTools: number;
+  deadlineMs: number;
+  budget: number;
+  tailReserve: number;
+  /** Run the baseline checks (DNS + HTTP) before the first AI turn of a new incident (WP-13b). */
+  baseline: boolean;
+};
 export const DEFAULT_LIMITS: DiagnoseLimits = {
   maxTurns: MAX_PLAN_TURNS,
   maxTools: MAX_TOOL_CALLS,
   deadlineMs: RUN_DEADLINE_MS,
   budget: SUBREQUEST_BUDGET,
   tailReserve: 8,
+  baseline: true,
 };
 /** gpt-oss spends part of `max_tokens` on reasoning; a cut-off submit_findings would be wasted. */
 export const PLAN_MAX_TOKENS = 1500;
@@ -29,7 +38,8 @@ export const PLAN_MAX_TOKENS = 1500;
 const TURN_COST = 3;
 /** The cheapest check: `dns_lookup` for A + AAAA on two resolvers. Below this, another tool can't fit. */
 const CHEAPEST_TOOL = 4;
-/** Planning-turn index used for the rule path's own checks, so its evidence IDs are retry-safe too. */
+/** Planning-turn indexes for checks the run makes itself, so their evidence IDs are retry-safe too. */
+const BASELINE_TURN = 0;
 const RULES_TURN = 99;
 
 /** The agent methods a run calls (TDD §7.2). */
@@ -201,6 +211,35 @@ async function investigate(io: RunIO, runId: string, limits: DiagnoseLimits): Pr
       for (const t of out.cnameTargets) if (!cnameTargets.includes(t)) cnameTargets.push(t);
     };
 
+    /** The checks every diagnosis needs: DNS for the host (skipped for IP literals) and HTTP for the target. */
+    const baselineCalls = (): ValidCall[] =>
+      (
+        [
+          ["dns_lookup", { hostname: scope.host }],
+          ["http_probe", { url: ctx.target }],
+        ] as const
+      )
+        .filter(([tool]) => !ranThisRun.has(tool))
+        .flatMap(([tool, args]) => {
+          const prepared = TOOLS[tool]?.prepare(args);
+          return prepared?.ok ? [{ tool, args: prepared.args, cap: prepared.cap }] : [];
+        });
+    const runBaseline = async (turn: number, stepName: string) => {
+      const calls = baselineCalls();
+      if (!calls.length || lastAt >= deadline || budget.remaining() < 1 + Math.min(...calls.map((c) => c.cap))) return;
+      const ids = await io.step(stepName, () => io.agent.addPendingChecks(runId, turn, calls.map(({ tool, args }) => ({ tool, args }))));
+      budget.settle(0, 1);
+      for (const [i, call] of calls.entries()) {
+        if (lastAt >= deadline) break;
+        await runCheck(ids[i]!, call);
+      }
+    };
+
+    // WP-13b: live models planned one check per turn, so every run spent a turn per check and hit the
+    // turn cap. A new incident always needs DNS + HTTP, so they run first (the first card shows in about
+    // a second), and the model usually submits findings on its first turn.
+    if (limits.baseline && ctx.kind === "initial") await runBaseline(BASELINE_TURN, "pending-baseline");
+
     if (mode === "ai") {
       for (let turn = 1; turn <= limits.maxTurns; turn++) {
         if (lastAt >= deadline) {
@@ -274,32 +313,16 @@ async function investigate(io: RunIO, runId: string, limits: DiagnoseLimits): Pr
 
     if (!findings) {
       // Rule path / gap fill (TDD §8.2): the baseline checks this run hasn't done, if budget and time allow.
-      const baseline = (
-        [
-          ["dns_lookup", { hostname: scope.host }],
-          ["http_probe", { url: ctx.target }],
-        ] as const
-      ).filter(([tool]) => !ranThisRun.has(tool));
-      const calls = baseline.flatMap(([tool, args]) => {
-        const prepared = TOOLS[tool]?.prepare(args);
-        return prepared?.ok ? [{ tool, args: prepared.args, cap: prepared.cap }] : [];
-      });
-      if (calls.length && lastAt < deadline && budget.remaining() >= 1 + Math.min(...calls.map((c) => c.cap))) {
-        const ids = await io.step("pending-rules", () => io.agent.addPendingChecks(runId, RULES_TURN, calls.map(({ tool, args }) => ({ tool, args }))));
-        budget.settle(0, 1);
-        for (const [i, call] of calls.entries()) {
-          if (lastAt >= deadline) break;
-          await runCheck(ids[i]!, call);
-        }
-      }
+      await runBaseline(RULES_TURN, "pending-rules");
       const args = lastFindingsArgs;
       findings = await io.step("rules", () => io.agent.ruleFindings(runId, args));
     }
 
     const final = findings;
     await io.step("findings", () => io.agent.setFindings(runId, final, mode));
-    await io.step("narrate", () => io.agent.narrate(runId));
+    // WP-13b: the card shows as soon as the findings exist; the narration streams while it waits.
     const proposal = await io.step("propose", () => io.agent.proposeAction(runId, io.workflowId));
+    await io.step("narrate", () => io.agent.narrate(runId));
     const status = limit ?? (mode === "rule_based" && ctx.mode === "ai" ? "llm_unavailable" : "done");
     await io.step("finish", () => io.agent.finishRun(runId, status, stats));
     return { summary: { status, mode, ...stats, category: final.category }, approvalId: proposal.approvalId };
