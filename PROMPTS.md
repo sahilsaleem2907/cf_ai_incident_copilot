@@ -134,3 +134,9 @@ Answers to Claude's questions:
 (Plan approved: `worker/llm/` (`models`, `client`, `usage`, `stream`, `prompts`, `citations`, `mock`) plus the `submit_findings` schema in `worker/loop/findings.ts`. The mock picks its answer from the evidence, because a demo URL doesn't show its mode. A throwaway live check costs about 50 neurons.)
 
 (WP-07 done in `4e82395`; 359 tests green. The live check (about 370 neurons) found that glm rejects regex look-around in tool schemas, so the fallback would always have failed in planning; schemas now leave out `pattern`. glm also ignores "last turn" wording, so the last turn offers only `submit_findings`. gpt cites as `【id】` when streaming, and one stream came back as `!!!…`; both are handled.)
+
+### 14:33 · Limits must keep progress
+
+> One thing to be careful about is even if the model runs into a limit, it should return whatever findings it has acheived till then and not drop the context.
+
+(Added to the LLM layer: a `truncated` flag for answers cut off at `max_tokens`; a broken narration stream now keeps its text in `LlmUnavailable.partial`; `salvageFindings` keeps the model's valid fields from an invalid or cut-off `submit_findings` and fills the rest from the rules. Wrote the rule into TDD §8.2 ("Limits keep progress") and the WP-08/09 checklists: evidence stored per step, last turn finish-only, a diagnosis on every limit, `runs.status` names the limit, a test per limit.)

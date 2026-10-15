@@ -25,9 +25,13 @@ export type LlmRequest = {
   maxTokens: number;
 };
 
-/** No model can answer: the caller takes the rule path (TDD §8.2). */
+/**
+ * No model can answer: the caller takes the rule path (TDD §8.2). `partial` holds narration text that was
+ * already streamed before the failure, so the caller can keep it instead of dropping it.
+ */
 export class LlmUnavailable extends Error {
   override name = "LlmUnavailable";
+  partial?: string;
   constructor(
     readonly reason: "config" | "allocation" | "failed",
     message: string,
@@ -46,11 +50,14 @@ export type LlmResult = {
   model: string;
   /** True when the fallback model answered. */
   fallback: boolean;
+  /** The answer stopped at `max_tokens` (`finish_reason: "length"`): text or tool arguments may be cut off. */
+  truncated?: boolean;
 };
 
 /** The parts of a chat-completions response we read. Everything else (`reasoning*`, logprobs…) is ignored. */
 export type ChatCompletion = {
   choices?: {
+    finish_reason?: string | null;
     message?: {
       content?: string | null;
       tool_calls?: { id?: string; function?: { name?: string; arguments?: string | Record<string, unknown> } }[] | null;
@@ -88,5 +95,6 @@ export function toResult(model: string, raw: ChatCompletion, fallback = false): 
     }
   });
   const text = toolCalls.length === 0 ? (message.content ?? undefined) || undefined : undefined;
-  return { ...(text ? { text } : {}), toolCalls, usage: toUsage(model, raw.usage), model, fallback };
+  const truncated = raw.choices?.[0]?.finish_reason === "length";
+  return { ...(text ? { text } : {}), toolCalls, usage: toUsage(model, raw.usage), model, fallback, ...(truncated ? { truncated } : {}) };
 }

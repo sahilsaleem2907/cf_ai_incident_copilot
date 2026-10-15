@@ -197,7 +197,7 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 - [ ] `onConnect` roles (owner / viewer)
 - [ ] RPC methods + owner-only callables
 - [ ] `transitions.ts` (+ `transitions.test.ts`)
-- [ ] `narrate` (streams, idempotent per `runId`)
+- [ ] `narrate` (streams, idempotent per `runId`); a cut-off stream keeps its partial text if well formed (TDD §8.2 "Limits keep progress")
 - [ ] D1 index sync
 - [ ] **Done when:** agent integration tests for init, roles, narration pass
 </details>
@@ -208,6 +208,7 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 - [ ] Planning loop (≤ 3 turns, ≤ 6 tools, 60 s, 45 subrequests)
 - [ ] Invalid-call rule (1st → feedback, 2nd → rule path)
 - [ ] Rule path (`LlmUnavailable` / budget mode)
+- [ ] **Limits keep progress** (TDD §8.2): every limit ends in findings from the evidence so far (`salvageFindings` + `classify`), last turn `finishOnly`, `runs.status` records which limit hit; a test per limit
 - [ ] Findings step + narrate step + `finishRun`
 - [ ] `diagnosis.test.ts`
 - [ ] **Done when:** diagnosis integration tests pass with the mock LLM
@@ -404,6 +405,7 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
+| 2026-10-15 14:30 | 07→08/09 | **Limits keep progress:** a run that hits any limit (turns, tools, deadline, subrequests, `max_tokens`, neurons, LLM down) ends with the best diagnosis from what it already found. LLM layer now: `truncated` flag on cut-off answers, `LlmUnavailable.partial` keeps streamed text, `salvageFindings` keeps the model's valid fields. WP-08/09 rules (durable evidence, `finishOnly` last turn, partial narration, `runs.status` per limit) added to their checklists. **Folded into TDD §8.2.** | User requirement: never drop the context gathered so far |
 | 2026-10-15 14:17 | 07 | Live check findings: (1) glm rejects regex look-around in tool schemas (`3030 Grammar error`), so every glm fallback in planning would have failed. LLM tool schemas now drop `pattern` (zod still validates). (2) glm ignores "last turn" in the prompt, so the last turn offers only `submit_findings`. (3) gpt streams citations as `【id】`; the citation check normalizes them. (4) One gpt stream was pure `!!!…`; `isWellFormedNarration()` lets narrate fall back to the template. Also: `LLM_TIMEOUT_MS` 25 s → fallback; 2001/allocation skip the fallback; the mock reads evidence (not the target); `remoteBindings: false` in tests. **Folded into TDD §5.2, §7.4, §7.4.1, §9.2, §14.** | Throwaway `/api/dev/llm` route, about 370 neurons over 7 runs (the plan said about 50; the extra runs chased the glm grammar error and the two streaming issues) |
 | 2026-10-15 13:49 | 06 | Rule 2's "TLS error" is matched on the runtime's error text, which `http_probe` samples now keep (`message`, ≤ 200 chars). Locally, workerd hides the reason (`internal error; reference = …` for expired and self-signed certs), so in practice `tls_expiry` needs `cert_info` (WP-21, below the cut). Other rule details: latest usable result per tool, `no_addresses` → `dns_failure`, `actions` from rules. **Folded into TDD §9.3.** | Throwaway check against expired.badssl.com and self-signed.badssl.com from workerd |
 | 2026-10-15 13:44 | review | PR #2 (`dev` → `main`, WP-01 to WP-05) merged at 13:40 (`0073839`) after Sift's 5 findings were answered as false alarms | User merged after the review |

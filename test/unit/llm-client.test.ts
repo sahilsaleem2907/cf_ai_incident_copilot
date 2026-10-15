@@ -66,6 +66,12 @@ describe("toResult (recorded responses)", () => {
     expect(r.toolCalls.map((c) => c.name)).toEqual(["submit_findings"]);
   });
 
+  it("flags an answer cut off at max_tokens", () => {
+    const r = toResult(PRIMARY, { choices: [{ finish_reason: "length", message: { tool_calls: [{ id: "c1", function: { name: "submit_findings", arguments: '{"category": "origin_5xx", "cau' } }] } }] });
+    expect(r).toMatchObject({ truncated: true, toolCalls: [{ args: null }] });
+    expect(toResult(PRIMARY, fixture("gpt-oss-120b/text.json"))).not.toHaveProperty("truncated");
+  });
+
   it("keeps bad argument JSON as argsError", () => {
     const r = toResult(PRIMARY, { choices: [{ message: { tool_calls: [{ id: "c1", function: { name: "http_probe", arguments: "{not json" } }] } }] });
     expect(r.toolCalls[0]).toMatchObject({ name: "http_probe", args: null, argsError: expect.stringContaining("not valid JSON") });

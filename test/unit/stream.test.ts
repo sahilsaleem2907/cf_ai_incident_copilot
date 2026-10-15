@@ -53,6 +53,11 @@ describe("parseSse (recorded streams)", () => {
     expect(text).toBe("Hello");
   });
 
+  it("flags a stream cut off at max_tokens", async () => {
+    const body = [{ choices: [{ delta: { content: "Likely cause" } }] }, { choices: [{ delta: {}, finish_reason: "length" }] }].map((l) => `data: ${JSON.stringify(l)}\n`).join("");
+    expect(await parseSse(toStream(body), () => {})).toMatchObject({ text: "Likely cause", truncated: true });
+  });
+
   it("sums per-chunk usage when the final usage line is missing", async () => {
     const body = [1, 2].map((n) => `data: ${JSON.stringify({ choices: [{ delta: { content: `t${n}` } }], usage: { prompt_tokens: 10, completion_tokens: 1 } })}\n`).join("");
     expect((await parseSse(toStream(body), () => {})).usage).toEqual({ prompt_tokens: 10, completion_tokens: 2 });
@@ -93,7 +98,7 @@ describe("streamLlm", () => {
     });
     const d = deps(async () => broken);
     const deltas: string[] = [];
-    await expect(streamLlm(d, req, (t) => deltas.push(t))).rejects.toMatchObject({ name: "LlmUnavailable", reason: "failed" });
+    await expect(streamLlm(d, req, (t) => deltas.push(t))).rejects.toMatchObject({ name: "LlmUnavailable", reason: "failed", partial: "Partial" });
     expect(deltas).toEqual(["Partial"]);
     expect(d.ai.run).toHaveBeenCalledTimes(1);
   });

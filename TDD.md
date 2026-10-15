@@ -396,6 +396,14 @@ RULE_PATH: run dns, http, cert, provider (those not already run) → classify �
 
 Tool steps retry with `{limit: 2}` because each retry spends subrequest budget. LLM steps have the model fallback inside the step. `finishRun` runs before the approval wait, so the input is enabled again while waiting (D13).
 
+**Limits keep progress (user requirement, 2026-10-15).** Hitting any limit ends the run with the best diagnosis from what was already found. It never throws work away or fails the run. The limits are turns, tool calls, the 60 s deadline, the subrequest budget, `max_tokens`, the neuron allocation and the LLM being unavailable.
+- **Evidence is durable as it lands.** Each check is stored by `recordCheck` in its own step, so nothing gathered is lost to a later failure, and the rule path never re-runs a check that already has a result.
+- **Turn or tool cap:** the last planning turn offers only `submit_findings` (`llmTools({finishOnly: true})`), so the model sums up what it has. If the tool budget runs out early, that finish turn comes next, as long as the LLM is available and budget is left.
+- **Deadline, subrequest budget, `LlmUnavailable`, allocation:** go straight to findings. Use `classify` over all evidence gathered so far, merged with any usable part of the model's last `submit_findings` through `salvageFindings` (`loop/findings.ts`). The rule path only runs missing checks if budget is left; otherwise it classifies what exists.
+- **Invalid or cut-off `submit_findings`** (bad field, sentence evidence, `truncated` JSON): after the one feedback retry (FR-12), `salvageFindings` keeps the model's valid fields and fills the rest from the rules.
+- **Narration cut short** (`LlmUnavailable.partial`, or `truncated`): keep the streamed text if `isWellFormedNarration` passes, run `checkCitations` on it, and add "_Narration was cut short._". Otherwise store `renderTemplate`. Text the user already saw is never silently replaced by something unrelated.
+- **The run records why it stopped** (`runs.status`: `done` · `limit_turns` · `limit_tools` · `limit_deadline` · `limit_budget` · `llm_unavailable`), plus a timeline event. The UI says which limit hit and how many checks the diagnosis uses.
+
 **`waitForApproval` behaviour (WP-02, local Workflows, `agents` 0.28.1):**
 - **Approve:** returns the `metadata` passed to `approveWorkflow`.
 - **Reject:** throws `WorkflowRejectedError` ("Workflow rejected: <reason>").
