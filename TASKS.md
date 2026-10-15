@@ -22,7 +22,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-16 README + PROMPTS 🔄 (started 21:31). WP-15 ⛔ waiting on the user (see blockers). WP-14 to WP-16 run as one plan, started early on Day 1 evening
+- **Current:** none. WP-14 ✅, WP-16 ✅; WP-15 ⛔ built, waiting on the user (see blockers). All Musts are built
 - **Next:** WP-17 Limits + budget guard (Day 2)
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
@@ -64,7 +64,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 |---|---|---|---|---|---|---|---|
 | 14 | Tests (Must): fill coverage gaps | 1.25 | 12 | ✅ | 21:24 (D1) | 21:27 (D1) | `366d3ed`. 0.05 h vs 1.25 est. +19 tests (`schema`, `cookie`, web `approval`) and 6 `cron` stubs for WP-18; 521 pass, 3 runs in a row. `transitions` already complete. The approval path is covered by `approval.test.ts` (8 cases) |
 | 15 | CI/CD (Must): `ci.yml`, `deploy.yml`, smoke | 0.75 | 14 | ⛔ | 21:27 (D1) | 21:31 (D1) built | `3ae9eeb`. 0.15 h vs 0.75 est. Built and checked locally (actionlint, suite without `.dev.vars`, `pnpm smoke` against `pnpm dev`). **Waiting on the user:** Cloudflare secrets, then a `dev` → `main` PR (CI green), then the merge (deploy + smoke) |
-| 16 | README + PROMPTS (Must, **protected time**) | 1.0 | — | 🔄 | 21:31 (D1) | | |
+| 16 | README + PROMPTS (Must, **protected time**) | 1.0 | — | ✅ | 21:31 (D1) | 21:35 (D1) | `857cdb2`. README for reviewers (no live URL until WP-17, D2) + PROMPTS overview by phase; secret sweep clean. Done early, so the README's not-built list is kept current through Day 2 |
 | 17 | Limits + budget guard | 1.0 | 15 | ⬜ | | | |
 | 18 | Watch: API, panel, cron, `WatchWorkflow` | 2.0 | 17 | ⬜ | | | |
 | 19 | Notifications: polling, unread, webhooks, `NotifyWorkflow` | 1.5 | 18 | ⬜ | | | |
