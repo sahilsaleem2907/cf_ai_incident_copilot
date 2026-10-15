@@ -11,6 +11,7 @@ export const dnsInput = z.object({
   hostname: z
     .string()
     .regex(HOSTNAME, "must be a public hostname, not an IP address or URL")
+    .describe("A public hostname like shop.example.com: no scheme, path or IP address.")
     .transform((h) => h.toLowerCase().replace(/\.$/, "")),
   types: z.array(z.enum(DNS_TYPES)).min(1).max(DNS_TYPES.length).default(["A", "AAAA"]),
 });

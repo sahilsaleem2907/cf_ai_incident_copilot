@@ -19,6 +19,8 @@ export default defineConfig({
         plugins: [
           cloudflareTest(async () => ({
             wrangler: { configPath: "./wrangler.jsonc" },
+            // The AI binding is remote by default: tests must not need a login or spend neurons.
+            remoteBindings: false,
             miniflare: {
               bindings: { TEST_MIGRATIONS: await readD1Migrations("./migrations") },
               workers: [

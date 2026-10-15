@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { toolParameters } from "../lib/schema";
 import { countingFetch, SubrequestCounter } from "../loop/budget";
+import { submitFindingsTool } from "../loop/findings";
 import { assertInScope, OutOfScopeError, type Scope } from "../safety/origin";
 import { dnsInput, runDnsLookup } from "./dns";
 import { HTTP_PROBE_CAP, httpInput, runHttpProbe } from "./http";
@@ -41,11 +43,7 @@ function register<S extends z.ZodType>(def: ToolDef<S>): RegisteredTool {
     name: def.name,
     label: def.label,
     description: def.description,
-    parameters: () => {
-      const schema = z.toJSONSchema(def.input, { io: "input" }) as Record<string, unknown>;
-      delete schema.$schema;
-      return schema;
-    },
+    parameters: () => toolParameters(def.input),
     prepare: (args) => {
       const parsed = def.input.safeParse(args);
       if (!parsed.success) return { ok: false, error: z.prettifyError(parsed.error) };
@@ -76,12 +74,20 @@ export const TOOLS: Partial<Record<ToolName, RegisteredTool>> = {
   }),
 };
 
-/** OpenAI chat-completions tool definitions (TDD §7.4.1); WP-07 appends `submit_findings`. */
-export function llmTools() {
-  return Object.values(TOOLS).map((t) => ({
-    type: "function" as const,
-    function: { name: t.name, description: t.description, parameters: t.parameters() },
-  }));
+/**
+ * OpenAI chat-completions tool definitions for planning turns (TDD §7.4.1), ending with `submit_findings` (D5).
+ * `finishOnly` offers just `submit_findings` for the last turn: with `tool_choice: "required"` the model must
+ * finish (live check: glm ignored "call submit_findings now" and asked for more probes).
+ */
+export function llmTools({ finishOnly = false } = {}) {
+  if (finishOnly) return [submitFindingsTool()];
+  return [
+    ...Object.values(TOOLS).map((t) => ({
+      type: "function" as const,
+      function: { name: t.name, description: t.description, parameters: t.parameters() },
+    })),
+    submitFindingsTool(),
+  ];
 }
 
 export type RunOutcome = { ok: true; result: ToolResult; subrequests: number; cap: number } | { ok: false; invalid: string };

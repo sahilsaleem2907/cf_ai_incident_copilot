@@ -36,6 +36,14 @@ export const CATEGORY_INFO: Record<Category, string> = {
 export const ACTION_IDS = ["restore_demo_service", "add_to_watchlist", "recheck_burst", "generate_postmortem"] as const;
 export type ActionId = (typeof ACTION_IDS)[number];
 
+/** What each action does and when it can be proposed (TDD §7.6); listed in the planning prompt. */
+export const ACTION_INFO: Record<ActionId, string> = {
+  restore_demo_service: "Switch the demo service back to healthy mode. Only for the demo target, and only when it isn't healthy.",
+  add_to_watchlist: "Re-check the endpoint every 5 minutes for 24 hours. Only if it isn't already watched.",
+  recheck_burst: "Re-check every minute for 15 minutes. Only when no monitor is running.",
+  generate_postmortem: "Write a postmortem. Only once the incident is resolved.",
+};
+
 /** The structured diagnosis: the `submit_findings` tool's shape (D5, TDD §7.3), also produced by `classify`. */
 export type Findings = {
   category: Category;

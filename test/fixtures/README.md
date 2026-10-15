@@ -2,7 +2,7 @@
 
 ## `llm/`
 
-Real Workers AI responses recorded in WP-02 (2026-10-15) through `wrangler dev` and AI Gateway, using the chat-completions format. They are the source for `worker/llm/mock.ts` and the `client.ts` / `stream.ts` mapper tests. Findings are in TDD §7.4.1.
+Real Workers AI responses recorded in WP-02 (2026-10-15) through `wrangler dev` and AI Gateway, using the chat-completions format. The unit tests feed them through the real mapper and SSE parser (`llm-client.test.ts`, `stream.test.ts`, `findings.test.ts`). `worker/llm/mock.ts` produces responses in the same shape. Findings are in TDD §7.4.1.
 
 - Removed: `prompt_token_ids`, `prompt_text`, `prompt_logprobs`, `kv_transfer_params`, `ec_transfer_params`, `token_ids` (noise), and the gateway log ID.
 - The prompts used a system prompt naming `example.com`, plus the TDD `dns_lookup` and `submit_findings` tool schemas. The tool result fed back was `[dns-1] dns_lookup: … A 93.184.215.14 … mismatch=false`.

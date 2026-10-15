@@ -158,6 +158,7 @@ test/         unit/*.test.ts integration/*.test.ts demo/*.test.ts fixtures/
 | `CRT_CACHE_TTL` | 1 h (Cache API) |
 | `EVIDENCE_DIGEST_MAX` | 1.5 KB per check (this is what moves between steps and goes to the LLM) |
 | `HIGH_LATENCY_MS` | median total ≥ 2000 ms or median TTFB ≥ 1500 ms |
+| `LLM_TIMEOUT_MS` | 25 000 per LLM call. A timeout counts as a failure, so the fast fallback answers (*WP-07*) |
 | `MONITOR_TICK_S` | 15 (on-demand), max 10 ticks |
 | `BURST_TICK_S` | 60 × 15 |
 | `WATCH_MIN_INTERVAL_S` | 300 |
@@ -302,7 +303,18 @@ streamLlm(env, req, onDelta): Promise<LlmResult>
 - Models are called through `env.AI.run(model, input, { gateway: { id: env.AI_GATEWAY_ID } })`. Both models use the **OpenAI chat-completions format**, so `client.ts` has one request builder and one response mapper. `models.ts` only adds per-model extras (below). Shapes were confirmed in spike WP-02.
 - After each call, `usage.ts` adds **`usage.neurons`**, which Workers AI reports on every response. If it's missing, it falls back to the token rates: gpt-oss-120b 31,818 / 68,182 neurons per M input/output tokens (≈ 0.0318 / 0.0682 per token), and glm-4.7-flash 5,500 / 36,400 per M (≈ 0.0055 / 0.0364).
 - A Workers AI "daily allocation exceeded" error sets the day to `NEURON_DAILY`.
-- When `LLM_MODE=mock`, `mock.ts` returns scripted turns keyed by target pattern (demo modes, `cloudflare.com`, generic) and streams canned text. Its responses are built from the real recorded responses in `test/fixtures/llm/`.
+- When `LLM_MODE=mock`, `mock.ts` returns scripted turns and streams canned text, with 0 neurons. Its responses use the recorded chat-completions shape and go through the same mapper.
+  - The first planning turn calls `dns_lookup` and `http_probe` on the `Target:` from the prompt.
+  - The next turn calls `submit_findings` with a category read from the evidence summaries. *WP-07 deviation:* the TDD said "keyed by target pattern", but a demo URL doesn't show its mode, so the mock reads the evidence and works for any target.
+  - Narration fills the four sections from the findings and evidence in the prompt.
+  - Test triggers in the question: `#llm-down` throws `LlmUnavailable`; `#llm-invalid` returns a call whose arguments don't parse.
+- **Fallback rules (WP-07):**
+  - `2001` (gateway not configured) and "allocation exceeded" skip the fallback: both models fail the same way and share one allocation. Allocation also marks the day as spent in `llm_usage`.
+  - Anything else falls back once: a 429, `5007`, a timeout (`LLM_TIMEOUT_MS`), or an empty answer.
+  - Streaming falls back only before the first delta.
+  - `client.ts` takes `LlmDeps {ai, gatewayId, mode, usage}` (built by `llmDeps(env)`), so unit tests pass a fake `ai`.
+- **Tool schemas sent to the model have no regex `pattern`s** (`lib/schema.ts` `toolParameters`). zod still validates the arguments on the server.
+- **Last planning turn:** `llmTools({finishOnly: true})` offers only `submit_findings`, so `tool_choice:"required"` forces the model to finish.
 
 #### 7.4.1 Spike findings (WP-02, 2026-10-15, live calls from `wrangler dev`)
 
@@ -315,6 +327,9 @@ streamLlm(env, req, onDelta): Promise<LlmResult>
 | gpt reasoning | Can't be turned off; `reasoning_effort` low/medium/high (default medium). Text took about 3 s, a tool turn 1.4–1.7 s, but the forced `submit_findings` turn took **19 s** once. | Watch latency against `RUN_DEADLINE_MS` in WP-09. Use `reasoning_effort:"low"` if turns run slow. |
 | Streaming | `stream:true` returns an SSE `ReadableStream`, and it works through the gateway binding. Chunks are `chat.completion.chunk` with `choices[0].delta.{content \| reasoning \| reasoning_content \| tool_calls[{index, id?, function:{name?, arguments fragment}}]}`. Per-chunk `usage` is partial. The last data line is `{"response":"","usage":{…,"neurons"}}`, then `[DONE]`. Chunks carry a `p` padding field. | `stream.ts` forwards only `delta.content` and takes usage from the final summary line. Narration doesn't use tools, so tool-call fragments aren't reassembled. |
 | AI Gateway | Only the `default` ID is created automatically. Any other ID fails with `AiGatewayError` "2001: Please configure AI Gateway in the Cloudflare dashboard" until it exists. **`incident-copilot` was created in the dashboard** (2026-10-15). | This is a configuration error, not an outage: both models fail the same way, so it maps to `LlmUnavailable` (rule path) and is logged as an error. Terraform (WP-25) imports the gateway if the provider supports it (R1). |
+| glm tool grammar (*WP-07 live*) | glm builds a constrained grammar from each tool's JSON schema and fails with `3030: Grammar error: … look-around … is not supported` on the `dns_lookup` hostname regex. With the regex in the schema, **every planning call that fell back to glm would fail.** | `toolParameters()` drops `pattern` from LLM tool schemas; the hostname gets a `description` instead. |
+| Last turn (*WP-07 live*) | Told "This is your last turn: call submit_findings now", glm still asked for `dns_lookup` + `http_probe`. With only `submit_findings` offered, it returned valid findings (IDs, not sentences) in about 6 s. | WP-09 passes `llmTools({finishOnly: true})` on the last turn. |
+| Streamed narration (*WP-07 live*) | gpt streamed about 180 content deltas (reasoning deltas arrive separately and are dropped). It cites with **full-width brackets `【http-1】`**, which the citation check would have stripped. Once, a stream came back as a single run of `!!!…`; it didn't happen again in later runs. A narration cost about 40–55 neurons. | `citations.ts` turns `【id】` into `[id]` first. `isWellFormedNarration()` (needs the "Likely cause" label and a known `[id]`) lets WP-08 swap junk for `renderTemplate`. The prompt asks for plain square brackets. |
 | Errors | Thrown as `InferenceUpstreamError` with `name` `AiError` or `AiGatewayError` and a numeric code at the start of `message` (`5007: No such model …`, `2001: …`). 429 and "allocation exceeded" weren't observed. | `client.ts` parses the code from the message. Rate-limit and allocation errors are matched by message as planned. Fixture: `test/fixtures/llm/errors.json`. |
 
 ### 7.5 Demo service
@@ -464,6 +479,13 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 4. Append "_n uncited statement(s) removed_" if anything was removed.
 5. The final stored message replaces the streamed buffer. Nothing is repaired with an extra LLM turn, to stay within the 4-turn budget.
 
+*WP-07:*
+- Full-width `【id】` citations are normalized to `[id]` first.
+- A citation written after the full stop (`Fact. [http-1]`) stays with its sentence.
+- A bold label such as `**Likely cause:**` is kept even if its sentence is removed.
+- "Factual" means digits, `ms`, TTL/TTFB, upper-case record types (not the article "A") and header names.
+- `isWellFormedNarration()` rejects output with no "Likely cause" label or no known citation; `narrate` then stores the template instead.
+
 ### 9.3 Rule-based classification (`diagnosis/classify.ts`), applied first match wins
 
 | # | Category | Rule | Confidence |
@@ -597,7 +619,8 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | | `target.test.ts` | URL, then hostname, then "demo", then need_target; "dot" normalization |
 | | `dns.test.ts`, `http.test.ts` | DoH JSON parsing and the mismatch flag; samples, hops, loop detection, header picks, asset extraction, read cap |
 | | `classify.test.ts`, `template.test.ts` | One fixture per category plus precedence between rules; the four template sections, with every evidence bullet cited |
-| | `citations.test.ts` | Unknown IDs and uncited factual sentences are removed |
+| | `citations.test.ts` | Unknown IDs and uncited factual sentences are removed; `【id】`; well-formed check |
+| | `llm-client.test.ts`, `stream.test.ts`, `findings.test.ts`, `mock.test.ts`, `prompts.test.ts` | Mapper on every recorded fixture, fallback rules with a fake `ai`, SSE parsing of both recorded streams, the `submit_findings` schema (rejects the spike's sentence evidence), mock turns, prompt content |
 | | `transitions.test.ts` | Every legal edge, and illegal edges throw |
 | | `webhook.test.ts` | Allowlist accept/reject, AES-GCM round trip, masking |
 | | `origin.test.ts` | Origin-pin scope rules |
@@ -607,7 +630,8 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | | `cron.test.ts` | Due-watch query with LIMIT and caps; failure starts WatchWorkflow; duplicate ID ignored |
 | Demo (`@cloudflare/vitest-plugin`, demo Worker) | `demo.test.ts` | Every mode's status, headers and timing, through `exports.default` and the `DemoAdmin` RPC |
 
-- **Projects** (`vitest.config.ts`): `unit` runs in node. `integration` loads `wrangler.jsonc`. `demo` loads `demo-service/wrangler.jsonc`.
+- **Projects** (`vitest.config.ts`): `unit` runs in node. `integration` loads `wrangler.jsonc` with `remoteBindings: false`, so the AI binding never goes remote: tests need no login and spend no neurons. `demo` loads `demo-service/wrangler.jsonc`.
+- Unit tests load the recorded fixtures as JSON imports and the `.sse` files with Vite `?raw` imports (`test/unit/raw.d.ts`), because the worker tsconfig has no Node types.
 - **Demo stub:** the test runtime won't start while a service binding points at a Worker it doesn't know about. So `integration` adds a small inline stand-in `incident-copilot-demo` Worker behind `DEMO`, and `approval.test.ts` asserts what the main Worker asks it to do (e.g. `setMode`). The real demo service is tested only in `demo`.
 - Tests use `env` and `exports` from `cloudflare:workers` (the plugin's `cloudflare:test` `env`/`SELF` are deprecated). Workflow tests use the plugin's Workflow introspection APIs. Retrying events with `waitForEvent` and the timeout path are verified in WP-02.
 

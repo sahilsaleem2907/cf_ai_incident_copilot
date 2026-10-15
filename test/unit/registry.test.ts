@@ -18,11 +18,20 @@ describe("registry", () => {
 
   it("exposes OpenAI-style tool definitions with optional defaults", () => {
     const tools = llmTools();
-    expect(tools.map((t) => t.function.name)).toEqual(["dns_lookup", "http_probe"]);
+    expect(tools.map((t) => t.function.name)).toEqual(["dns_lookup", "http_probe", "submit_findings"]);
     const dns = tools[0]!.function.parameters as { required: string[]; properties: Record<string, unknown> };
     expect(dns.required).toEqual(["hostname"]);
     expect(dns.properties).toHaveProperty("types");
     expect(tools[0]!.function.parameters).not.toHaveProperty("$schema");
+  });
+
+  it("offers only submit_findings on the last turn", () => {
+    expect(llmTools({ finishOnly: true }).map((t) => t.function.name)).toEqual(["submit_findings"]);
+  });
+
+  it("sends no regex patterns (glm rejects look-around in its tool grammar)", () => {
+    expect(JSON.stringify(llmTools())).not.toContain('"pattern"');
+    expect(JSON.stringify(llmTools()[0]!.function.parameters)).toContain("A public hostname");
   });
 
   it("runs a valid, in-scope call and counts subrequests", async () => {
