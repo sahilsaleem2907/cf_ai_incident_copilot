@@ -371,3 +371,22 @@ Answers to Claude's questions:
 (Plan approved: sidebar polling every 10 s with unread dots and `markRead`, browser notifications from a button, Slack/Discord webhooks encrypted with AES-GCM, and `NotifyWorkflow` sending at most once per state change.)
 
 (WP-19 built: sidebar polling with unread markers, browser notifications, Slack/Discord webhooks sent by `NotifyWorkflow`. 585 tests pass. The fake-Discord integration test gets exactly one message per state change. Locally, a watch failure showed as "New" and raised one browser notification. Webhooks go live once the user sets `WEBHOOK_KEY` on the deployed Worker.)
+
+### 01:23 · WP-20 plan
+
+> Lets build WP-20 now.
+
+**Claude asked:** where should the one live eval run happen (it spends real neurons either way)?
+**Answer:** against local `pnpm dev` with the live model, so it tests today's code without waiting for a deploy.
+
+**Claude asked:** the incident snapshot doesn't say which model answered or whether the rules filled in the diagnosis. Record that?
+**Answer:** yes, add it to the `run_finished` timeline event (no database change).
+
+(Plan approved: `eval/cases.ts` with the five cases and the scoring, `eval/run.ts` run as `pnpm eval --base <url>`, `run_finished` records the findings source and fallback turns, one live local run, `eval/results.md` committed.)
+
+**Claude asked:** the old dev server on port 5173 (started 21:28 the day before) fails every request with "fetch failed", and the eval needs 5173. Stop it, use another port, or leave it to the user?
+**Answer:** "ive handled." (At 01:3x the same process was still listening on 5173, so Claude waited for the user before the live run.)
+
+> freed, try now.
+
+(WP-20 built: `pnpm eval --base <url>` with five cases, scoring and `eval/results.md`; `run_finished` now says who made the findings. One live local run: **5/5 passed**, 642 neurons. `redirect_loop` needed the rules to fill in an invalid model answer; noted in the results. 595 tests pass.)

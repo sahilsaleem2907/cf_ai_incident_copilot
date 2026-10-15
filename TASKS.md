@@ -22,8 +22,8 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** none. WP-17 to WP-19 are done (not deployed yet); the user tested the demo watch walkthrough and it worked. **Before webhooks work live:** the user sets `WEBHOOK_KEY` (`openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`) **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
-- **Next:** WP-20 Eval
+- **Current:** none. **Everything above the cut line is done** (WP-01 to WP-20). WP-20's eval passed 5/5 locally. WP-17 to WP-19 are done (not deployed yet); the user tested the demo watch walkthrough and it worked. **Before webhooks work live:** the user sets `WEBHOOK_KEY` (`openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`) **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
+- **Next:** WP-21 `cert_info` + `provider_status` (below the cut line)
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
@@ -69,7 +69,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 17b | First-visit workspace race + per-IP run limit (found in WP-17) | — | 17 | ✅ | 22:47 (D1) | 22:49 (D1) | `feb4707`. 540 tests pass. Browser: a first visit sets 1 cookie (was 6), the demo URL matches it, and the eager 3+1 check gets 429; a 3rd browser on the same IP was refused from its first run |
 | 18 | Watch: API, panel, cron, `WatchWorkflow` | 2.0 | 17 | ✅ | 22:57 (D1) | 23:13 (D1) | `ca576d7`. 565 tests pass, 3 runs in a row. Local, real 500 site: incident 34 s after the cron check; resolved after 3 passes. Demo walkthrough on the live site after the next deploy |
 | 19 | Notifications: polling, unread, webhooks, `NotifyWorkflow` | 1.5 | 18 | ✅ | 23:45 (D1) | 23:56 (D1) | `8988fd9`. 585 tests pass, 3 runs in a row. Integration: 3 events → exactly 3 Discord messages, repeats ignored. Local browser: unread + one notification 40 s after a watch failure. Real Discord check after the deploy + `WEBHOOK_KEY` (user) |
-| 20 | Eval: `eval/run.ts` + `results.md` | 0.75 | 15 | ⬜ | | | |
+| 20 | Eval: `eval/run.ts` + `results.md` | 0.75 | 15 | ✅ | 01:23 | 01:34 | `556418d`. 0.2 h vs 0.75 est. **5/5** on one local live run (gpt-oss-120b, no fallback turns), 642 neurons. 595 tests pass, 3 runs in a row |
 | — | **✂️ CUT LINE**: anything below that isn't built goes into the README "designed, not built" list | | | | | | |
 | 21 | `cert_info` + `provider_status` | 1.0 | 09 | ⬜ | | | |
 | 22 | Postmortem | 0.5 | 12 | ⬜ | | | |
@@ -348,10 +348,10 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-20</b> Eval</summary>
 
-- [ ] `eval/run.ts` + `cases.ts`
-- [ ] One live run (about 3k neurons)
-- [ ] Commit `eval/results.md`
-- [ ] **Done when:** at least 4 of 5 cases pass
+- [x] `eval/run.ts` + `cases.ts` (+ `eval-score.test.ts`)
+- [x] One live run (642 neurons, not 3k: about 130 per case since WP-13b)
+- [x] Commit `eval/results.md`
+- [x] **Done when:** at least 4 of 5 cases pass (5/5, local `pnpm dev` with the live model)
 </details>
 
 <details>
@@ -412,6 +412,7 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
+| 2026-10-16 01:34 | 20 | **Eval as built.** (1) The live run was **local `pnpm dev` with `LLM_MODE=live`** (user decision): tests WP-17 to WP-19 without a deploy. (2) **`run_finished` records `source` (`model` / `model+rules` / `rules`) and `fallbackTurns`** (user decision), so results say who got it right; no schema change. (3) A `rule_based` run fails whatever it found. (4) ③ needs an approval card for broken modes; for healthy, no card and no restore in the findings. (5) A 429 waits `retryAfter`. **Result:** 5/5, 642 neurons; `redirect_loop` was `model+rules` (an invalid `submit_findings`; the reason isn't stored, so it's unknown from this run). Check ③ is mostly guaranteed by `pickAction` (WP-12). The old 5173 dev server was stopped by the user first. **Folded into TDD §16 and the README.** | The eval should measure the AI, not the rules behind it |
 | 2026-10-15 23:56 | 19 | **Notifications as built.** (1) The "opened" webhook waits for the first diagnosis (up to 9 × 10 s) so it names the likely cause (user decision). (2) Mitigated/resolved webhooks for **any incident with a watch attached**, including chat incidents with an approved "Add to watchlist" (user decision, widens D18). (3) Migration `0002` adds `webhooks.app_origin`, recorded on save, for incident links without committing the URL (D2). (4) `POST /api/webhook/test` (5 an hour) so a user can check the URL. (5) `WEBHOOK_KEY` isn't declared in wrangler: without it webhooks are off and the UI says so; the **user sets it in production** (user decision). (6) Automatic status changes set unread; `IncidentView` marks read on open and on new activity while visible. (7) `GET /api/webhook` returns `{available, webhook}`. **Local check (5181; the old 5173 server is still broken):** an auto-opened watch incident showed "New" + "1 new" 40 s after the cron check, raised exactly one browser notification (stubbed Notification API), and cleared on open; light, dark and 390 px screenshots. The local `.dev.vars` key wasn't added (the safety check gave no verdict on writing a secret), so the save/test UI wasn't run locally; the integration tests cover it. **Folded into TDD §5.1, §6.1, §7.1, §11, §12.3, §14 and the README.** | The PRD wants the diagnosis ready when the user is notified. A user who asked to watch an incident wants to hear when it recovers |
 | 2026-10-15 23:13 | 18 | **Watch as built.** (1) **Own demo checked every 60 s** (user decision), real sites 5–60 min. (2) **`add_to_watchlist` is a rule card for broken real sites** (user decision): approving links the new watch to the incident, so passes resolve it; no verify check, the card says "Approved and done"; `restore_demo_service` always wins when it fits. (3) WatchWorkflow confirms on the first failed re-check (saves 30 s) and claims the watch before `init`, so one failure opens one incident. (4) While the post-action monitor runs, it decides; watch checks are only recorded. (5) `WatchlistPanel` polls every 15 s and refreshes the incident list when a watch opens an incident (stands in until WP-19's polling). (6) `WatchView` lives in `worker/watch/types.ts` so the web build can import it. (7) Diagnosis tests expire approval cards at once, since a broken real site now gets a card. **Local check:** the 5173 dev server was broken ("fetch failed" on every request; started 21:28, before this session) and wasn't touched, so the demo walkthrough wasn't run locally. On 5181 with a real 500 site: the incident opened 34 s after the cron check, then mitigated → resolved after 3 passes, and the watch was released; in the browser, the panel and the incident list showed it within 45 s with no reload. **Folded into TDD §5.2, §7.1, §7.2, §7.6, §8.4, §8.5, §14 and the README.** | The done-when needs the demo in about 2 min, and the PRD's 5-minute minimum would take up to 6. Rule card: the model rarely proposes watching on its own |
 | 2026-10-15 22:49 | 17b | **Fixed both WP-17 findings (user: "fix the older problems").** (1) The app makes one `firstSession()` call per page load and renders the sidebar, demo panel and routes after it, so a first visit creates one workspace (was up to 6 in dev). (2) Per-IP run limit next to the workspace one: 6 a minute (new binding `RUN_IP_LIMIT`, namespace 1004) and 20 an hour (D1, key `ip:<SHA-256 prefix>`); the agent keeps the key from `onConnect` for follow-ups. The 429 text no longer names numbers, since either limit can trip. **Folded into TDD §5.1, §11, §14 and the README.** | Per-IP limits are looser than per workspace so a shared network (an office, a reviewer team) isn't blocked. An unsalted hash of an IPv4 address can be brute-forced, but it stays in our own D1 and isn't shown anywhere |
