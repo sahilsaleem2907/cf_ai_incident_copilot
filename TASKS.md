@@ -21,9 +21,9 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-10 Chat UI (started 16:24)
+- **Current:** none (WP-10 ✅ 16:35)
 - **Next:** WP-11 Demo service + DemoPanel
-- **Hours today:** 2.05 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
+- **Hours today:** 2.25 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
   - PR #2 `dev` → `main` ("WP-01 to WP-05") was reviewed by Sift: 5 findings, all false alarms, each answered `/not-helpful` with the reason. **Merged** 2026-10-15 13:40 (`0073839`).
@@ -46,7 +46,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 07 | LLM layer: adapter, fallback, usage, prompts, mock, citations, streaming | 1.5 | 02 | ✅ | 14:06 | 14:18 | `4e82395`. 0.2 h vs 1.5 est. Live check ≈ 370 neurons; found the glm grammar bug and `【id】` citations |
 | 08 | IncidentAgent: schema, state, roles, RPC, transitions, narrate | 1.5 | 03, 07 | ✅ | 14:40 | 14:50 | `7b2bc3c`. 0.25 h vs 1.5 est. Also `/api/incidents` (nobody owned it; WP-10 needs it) |
 | 09 | DiagnosisWorkflow: planning loop, bounds, rule path | 1.5 | 05, 06, 08 | ✅ | 15:15 | 15:22 | `a5ca0ba`. 0.15 h vs 1.5 est. Dev smoke: cloudflare.com end to end in 3 s (mock LLM) |
-| 10 | Chat UI | 1.75 | 08 | 🔄 | 16:24 | | |
+| 10 | Chat UI | 1.75 | 08 | ✅ | 16:24 | 16:35 | `dea9b32`. 0.2 h vs 1.75 est. Browser-checked in light, dark and at 390 px |
 | 11 | Demo service + `DemoPanel` | 1.0 | 03 | ⬜ | | | |
 | 12 | Act: actions, approval, verify, monitor, `ApprovalCard` | 1.5 | 09, 11 | ⬜ | | | |
 | 13 | Deploy 1 + live walkthrough + SSRF/CPU checks | 0.5 | 12 | ⬜ | | | |
@@ -218,20 +218,20 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-10</b> Chat UI</summary>
 
-- [ ] `routes.tsx` (`/`, `/i/:id`)
-- [ ] `useIncident`: wraps `useAgent`, merges `delta` broadcasts into a buffer keyed by `messageId`, exposes callables
-- [ ] `ChatPane`: messages, check cards inline in run order, empty state (`Empty`) with "Use demo service" and "diagnose cloudflare.com" chips
-- [ ] `Composer`: Enter sends, Shift+Enter adds a new line, disabled while `activeRunId` is set, handles 400 `need_target` and 409
-- [ ] `MessageBubble`: streaming buffer replaced by the final stored text; stream region has `aria-live="polite"`
-- [ ] `CheckCard`: tool icon, label, summary, `Collapsible` evidence in `Code` (lazy `getEvidence`)
-- [ ] `StatusBadge`: icon **and** text for Pending, Running (`Loader`), Pass, Fail, Unavailable
-- [ ] `EvidenceChip`: clicking `[http-1]` scrolls to its card and flashes the orange ring
-- [ ] Incident header: target in mono and a status chip that always has text
-- [ ] "New incident for X" button when a follow-up names a host outside the origin pin (§8.6)
-- [ ] `IncidentSidebar`: "New incident" button and a basic list with status badges
-- [ ] `ReadOnlyBanner` for viewer connections
-- [ ] Keyboard pass: every control reachable, nothing shown by colour alone
-- [ ] **Done when:** full chat works end to end in the browser with `LLM_MODE=mock`
+- [x] `routes.tsx` (`/`, `/i/:id`)
+- [x] `useIncident`: wraps `useAgent`, merges `delta` broadcasts into a buffer keyed by `messageId`, exposes callables
+- [x] `ChatPane`: messages, check cards inline in run order, empty state (`Empty`) with "Use demo service" and "diagnose cloudflare.com" chips
+- [x] `Composer`: Enter sends, Shift+Enter adds a new line, disabled while `activeRunId` is set, handles 400 `need_target` and 409
+- [x] `MessageBubble`: streaming buffer replaced by the final stored text; stream region has `aria-live="polite"`
+- [x] `CheckCard`: tool icon, label, summary, evidence disclosure in `CodeBlock` (lazy `getEvidence`)
+- [x] `StatusBadge`: icon **and** text for Pending, Running (`Loader`), Pass, Fail, Error, Unavailable
+- [x] `EvidenceChip`: clicking `[http-1]` scrolls to its card and flashes the orange ring
+- [x] Incident header: target in mono and a status chip that always has text
+- [x] "New incident for X" button when a follow-up names a host outside the origin pin (§8.6)
+- [x] `IncidentSidebar`: "New incident" button and a basic list with status badges
+- [x] `ReadOnlyBanner` for viewer connections (+ "View only" badge in the header)
+- [x] Keyboard pass: every control reachable, nothing shown by colour alone
+- [x] **Done when:** full chat works end to end in the browser with `LLM_MODE=mock`
 </details>
 
 <details>
@@ -438,9 +438,9 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 ## Daily wrap-up
 
 ### Day 1 (2026-10-15)
-- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03, WP-04, WP-05, WP-06, WP-07, WP-08, WP-09. Review setup: `dev` branch, Sift workflows on `main`, PR #2 (WP-01 to WP-05) merged
+- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03, WP-04, WP-05, WP-06, WP-07, WP-08, WP-09, WP-10. Review setup: `dev` branch, Sift workflows on `main`, PR #2 (WP-01 to WP-05) merged
 - **Moved / slipped:**
-- **Hours:** 2.05 / 14.75 h
+- **Hours:** 2.25 / 14.75 h
 - **Transcript exported to `prompts/`:** ⬜
 
 ### Day 2 (2026-10-16)
