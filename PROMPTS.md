@@ -164,3 +164,9 @@ Answers to Claude's questions:
 (Plan approved: routes `/` and `/i/:id`; `useIncident` over `useAgent` with a stream buffer; check cards with lazy evidence; a small safe markdown renderer with clickable `[http-1]` chips; an other-host follow-up offer; a read-only view for link visitors (new `whoami` callable); limit and rule-based notes. Pure helpers are unit-tested; the UI is checked with headless-browser screenshots in light and dark.)
 
 (WP-10 done in `dea9b32`; 443 tests green, build OK. A headless browser walkthrough with the mock LLM covered: create → live checks → streamed narration → evidence → chip scroll → follow-up → other-host offer → read-only visitor, in light, dark and at phone width. The screenshots caught narrow-screen layout, a sticky header lost on scroll, a hidden view-only banner and a first-load Vite reload, all fixed.)
+
+### 16:40 · Handoff
+
+> /handoff
+
+(Wrote the handoff for the next session (WP-11 onward) to the OS temp folder: `incident-copilot-handoff-wp11.md`.)
