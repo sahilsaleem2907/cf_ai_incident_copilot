@@ -18,8 +18,7 @@ afterEach(async () => {
   introspector = null;
 });
 
-// Generous: a cold first run (module transforms, DO and Workflow start-up) can take several seconds under load.
-async function until(check: (s: IncidentState) => boolean, get: () => Promise<IncidentState>, ms = 20_000): Promise<IncidentState> {
+async function until(check: (s: IncidentState) => boolean, get: () => Promise<IncidentState>, ms = 8000): Promise<IncidentState> {
   const end = Date.now() + ms;
   for (;;) {
     const s = await get();
@@ -28,6 +27,12 @@ async function until(check: (s: IncidentState) => boolean, get: () => Promise<In
     await new Promise((r) => setTimeout(r, 50));
   }
 }
+
+/**
+ * The card is shown *and* the run is finished. The Workflow proposes the card one step before `finish`, so
+ * waiting for the card alone can catch the run still active (a real flake, reproduced by polling every 1 ms).
+ */
+const cardShown = (s: IncidentState) => s.approvals.length > 0 && s.activeRunId === null;
 
 /** Breaks a fresh workspace's demo, asks about it, and waits for the approval card. */
 async function brokenDemo(opts: { timeout?: boolean } = {}) {
@@ -47,7 +52,7 @@ async function brokenDemo(opts: { timeout?: boolean } = {}) {
 describe("approval: restore the demo (FR-20 to FR-23)", () => {
   it("proposes a card, and on approve restores, verifies, and resolves after the monitor's passes", async () => {
     const { ws, agent, instance, snapshot } = await brokenDemo();
-    const card = await until((s) => s.approvals.length > 0, snapshot);
+    const card = await until(cardShown, snapshot);
     expect(card).toMatchObject({ status: "awaiting_approval", category: "origin_5xx", activeRunId: null });
     expect(card.approvals[0]).toMatchObject({ actionId: "restore_demo_service", title: "Restore the demo service to healthy", status: "pending", evidence: ["http-1", "dns-1"] });
     expect(card.approvals[0]!.cause).toBeTruthy();
@@ -75,7 +80,7 @@ describe("approval: restore the demo (FR-20 to FR-23)", () => {
 
   it("approve is idempotent: a second click doesn't run the action again", async () => {
     const { ws, agent, instance, snapshot } = await brokenDemo();
-    const { approvals } = await until((s) => s.approvals.length > 0, snapshot);
+    const { approvals } = await until(cardShown, snapshot);
     await agent.approve(approvals[0]!.id);
     expect(await agent.approve(approvals[0]!.id)).toEqual({ status: "approved" });
     await instance.waitForStatus("complete");
@@ -84,7 +89,7 @@ describe("approval: restore the demo (FR-20 to FR-23)", () => {
 
   it("reject → back to investigating, nothing runs", async () => {
     const { ws, agent, instance, snapshot } = await brokenDemo();
-    const { approvals } = await until((s) => s.approvals.length > 0, snapshot);
+    const { approvals } = await until(cardShown, snapshot);
     expect(await agent.reject(approvals[0]!.id)).toEqual({ status: "rejected" });
     expect(await snapshot()).toMatchObject({ status: "investigating" });
     await instance.waitForStatus("complete");
@@ -108,7 +113,7 @@ describe("approval: restore the demo (FR-20 to FR-23)", () => {
 
   it("a viewer can't approve or reject", async () => {
     const { id, ws, snapshot } = await brokenDemo();
-    const { approvals } = await until((s) => s.approvals.length > 0, snapshot);
+    const { approvals } = await until(cardShown, snapshot);
     const sock = await connect(id, newId());
     await sock.state();
     for (const method of ["approve", "reject"]) {
@@ -123,7 +128,7 @@ describe("approval: restore the demo (FR-20 to FR-23)", () => {
 
   it("resolving by hand closes the pending card and stops the monitor", async () => {
     const { agent, instance, snapshot } = await brokenDemo();
-    await until((s) => s.approvals.length > 0, snapshot);
+    await until(cardShown, snapshot);
     await agent.resolve();
     await instance.waitForStatus("complete");
     const s = await snapshot();
@@ -135,7 +140,7 @@ describe("approval: restore the demo (FR-20 to FR-23)", () => {
 describe("approval: one card at a time (D13)", () => {
   it("a follow-up with the same proposal is deduplicated, and its run doesn't wait", async () => {
     const first = await brokenDemo();
-    const { approvals } = await until((s) => s.approvals.length > 0, first.snapshot);
+    const { approvals } = await until(cardShown, first.snapshot);
     const runId = await first.agent.startRun("still broken?", "followup");
     await first.agent.launchRun(runId);
     const instances = await introspector!.get();
@@ -148,7 +153,7 @@ describe("approval: one card at a time (D13)", () => {
 
   it("proposeAction is idempotent per run", async () => {
     const { agent, snapshot } = await brokenDemo();
-    const { approvals } = await until((s) => s.approvals.length > 0, snapshot);
+    const { approvals } = await until(cardShown, snapshot);
     const again = await agent.proposeAction(approvals[0]!.runId, "diag-retry");
     expect(again.approvalId).toBe(approvals[0]!.id);
   });
