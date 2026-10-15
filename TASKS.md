@@ -21,9 +21,9 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-09 DiagnosisWorkflow (started 15:15)
+- **Current:** none (WP-09 ✅ 15:22)
 - **Next:** WP-10 Chat UI
-- **Hours today:** 1.9 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
+- **Hours today:** 2.05 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
   - PR #2 `dev` → `main` ("WP-01 to WP-05") was reviewed by Sift: 5 findings, all false alarms, each answered `/not-helpful` with the reason. **Merged** 2026-10-15 13:40 (`0073839`).
@@ -45,7 +45,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 06 | Rules: `classify.ts`, `template.ts` | 0.5 | 05 | ✅ | 13:44 | 13:49 | `6dad2cf`. 0.1 h vs 0.5 est. TLS spike: workerd hides cert errors (TDD §9.3) |
 | 07 | LLM layer: adapter, fallback, usage, prompts, mock, citations, streaming | 1.5 | 02 | ✅ | 14:06 | 14:18 | `4e82395`. 0.2 h vs 1.5 est. Live check ≈ 370 neurons; found the glm grammar bug and `【id】` citations |
 | 08 | IncidentAgent: schema, state, roles, RPC, transitions, narrate | 1.5 | 03, 07 | ✅ | 14:40 | 14:50 | `7b2bc3c`. 0.25 h vs 1.5 est. Also `/api/incidents` (nobody owned it; WP-10 needs it) |
-| 09 | DiagnosisWorkflow: planning loop, bounds, rule path | 1.5 | 05, 06, 08 | 🔄 | 15:15 | | |
+| 09 | DiagnosisWorkflow: planning loop, bounds, rule path | 1.5 | 05, 06, 08 | ✅ | 15:15 | 15:22 | `a5ca0ba`. 0.15 h vs 1.5 est. Dev smoke: cloudflare.com end to end in 3 s (mock LLM) |
 | 10 | Chat UI | 1.75 | 08 | ⬜ | | | |
 | 11 | Demo service + `DemoPanel` | 1.0 | 03 | ⬜ | | | |
 | 12 | Act: actions, approval, verify, monitor, `ApprovalCard` | 1.5 | 09, 11 | ⬜ | | | |
@@ -206,13 +206,13 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-09</b> DiagnosisWorkflow</summary>
 
-- [ ] Planning loop (≤ 3 turns, ≤ 6 tools, 60 s, 45 subrequests)
-- [ ] Invalid-call rule (1st → feedback, 2nd → rule path)
-- [ ] Rule path (`LlmUnavailable` / budget mode)
-- [ ] **Limits keep progress** (TDD §8.2): every limit ends in findings from the evidence so far (`salvageFindings` + `classify`), last turn `finishOnly`, `runs.status` records which limit hit; a test per limit
-- [ ] Findings step + narrate step + `finishRun`
-- [ ] `diagnosis.test.ts`
-- [ ] **Done when:** diagnosis integration tests pass with the mock LLM
+- [x] Planning loop (≤ 3 turns, ≤ 6 tools, 60 s, 45 subrequests)
+- [x] Invalid-call rule (1st → feedback, 2nd → rule path)
+- [x] Rule path (`LlmUnavailable` / budget mode)
+- [x] **Limits keep progress** (TDD §8.2): every limit ends in findings from the evidence so far (`salvageFindings` + `classify`), last turn `finishOnly`, `runs.status` records which limit hit; a test per limit (`plan.test.ts`)
+- [x] Findings step + narrate step + `finishRun`
+- [x] `diagnosis.test.ts` (real Workflow, offline via fake internet)
+- [x] **Done when:** diagnosis integration tests pass with the mock LLM
 </details>
 
 <details>
@@ -437,9 +437,9 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 ## Daily wrap-up
 
 ### Day 1 (2026-10-15)
-- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03, WP-04, WP-05, WP-06, WP-07, WP-08. Review setup: `dev` branch, Sift workflows on `main`, PR #2 (WP-01 to WP-05) merged
+- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03, WP-04, WP-05, WP-06, WP-07, WP-08, WP-09. Review setup: `dev` branch, Sift workflows on `main`, PR #2 (WP-01 to WP-05) merged
 - **Moved / slipped:**
-- **Hours:** 1.9 / 14.75 h
+- **Hours:** 2.05 / 14.75 h
 - **Transcript exported to `prompts/`:** ⬜
 
 ### Day 2 (2026-10-16)

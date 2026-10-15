@@ -154,3 +154,5 @@ Answers to Claude's questions:
 > Lets move to the next one, sounds good.
 
 (Plan approved: a pure driver `loop/plan.ts` `diagnose(io, …)` behind a thin `DiagnosisWorkflow`, so every limit (turns, tools, budget, deadline, LLM down, invalid ×2) is unit-tested and always ends in a diagnosis. Integration tests run a real Workflow offline, against an inline "fake internet" Worker and the mock LLM.)
+
+(WP-09 done in `a5ca0ba`; 427 tests green, all offline. Dev smoke with the mock LLM: "diagnose cloudflare.com" ran real DNS and HTTP checks through a local Workflow, came out healthy → resolved, and was narrated with citations in about 3 s.)
