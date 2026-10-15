@@ -480,6 +480,8 @@ Tool steps retry with `{limit: 2}` because each retry spends subrequest budget. 
 - **`finishRun`** marks checks that were planned but never run as `unavailable` ("Not run: the run stopped before this check.").
 - **Launch.** `startRun` → `launchRun(runId)` (idempotent, ID `diag-<incidentId>-<seq>`, stored in `runs.workflow_id`). If the Workflow can't start, the run finishes `failed` with a system message. Test seam: `DIAGNOSIS_AUTOSTART=off` (integration config only) skips the auto-launch so agent tests can drive runs by hand.
 - `PLAN_MAX_TOKENS` = 1500, because gpt's reasoning shares the budget.
+- **Baseline first (WP-13b).** A new incident's run starts with the DNS (host) and HTTP (target) checks, before the first AI turn (step `pending-baseline`, turn 0). They count against the tool cap. Follow-ups skip it, because they reuse earlier evidence. Reason: live models planned one check per turn, so every run hit the 3-turn cap. Now the model usually submits on turn 1, and the first card shows in about a second after the Workflow starts. `DiagnoseLimits.baseline` turns it off in the unit tests about planning turns.
+- **Card before narration (WP-13b).** `propose` now runs right after `findings`, before `narrate`, so the card shows while the narration streams.
 - **Approval tail (WP-12).** The order after `narrate` is:
   - `propose`, then `finish`. The run ends before the wait, so the input is enabled again (D13).
   - Then `io.waitForApproval()` (24 h) returns `approved`, `rejected` or `expired`.
@@ -595,6 +597,8 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 - A bold label such as `**Likely cause:**` is kept even if its sentence is removed.
 - "Factual" means digits, `ms`, TTL/TTFB, upper-case record types (not the article "A") and header names.
 - `isWellFormedNarration()` rejects output with no "Likely cause" label or no known citation; `narrate` then stores the template instead.
+
+*WP-13b (seen live):* the model put the cause on its own line without a citation, the check removed it, and "**Likely cause:**" was left empty. `finalizeNarration` → `fillEmptyCause` now puts the findings' cause back on that line, with its known evidence IDs.
 
 ### 9.3 Rule-based classification (`diagnosis/classify.ts`), applied first match wins
 

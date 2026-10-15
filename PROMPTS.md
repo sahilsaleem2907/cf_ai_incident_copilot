@@ -227,3 +227,5 @@ Answers to Claude's questions:
 ### 19:39 · WP-13b Live speed + empty cause
 
 - Live fixes → "Fix now, small extra WP": run the DNS and HTTP checks before the first AI turn, show the approval card before the narration, and put back a cited cause if the citation check empties "Likely cause:". Then redeploy and re-time.
+
+(WP-13b done in `8053dba`, redeployed. Live re-time: first check card 22 s → 7.5 s, demo card 35 s → 9.6 s (shown while the narration streams), runs end `done` in 1 AI turn, and "Likely cause" is filled. About 140 neurons per run. Steps 1–5 now take about 55–60 s with a person clicking; the 30 s monitor wait (2 ticks × 15 s) is the largest part.)
