@@ -19,8 +19,8 @@ export function retryText(seconds: number): string {
   return `${Math.ceil(seconds / 60)} minutes`;
 }
 
-/** Shown in the toast and inline for a 429 (TDD §11: 3 runs a minute, 10 an hour per workspace). */
-export const rateLimitedText = (retryAfter: number) => `Run limit reached (3 a minute, 10 an hour). Try again in ${retryText(retryAfter)}.`;
+/** Shown inline for a 429 (TDD §11: per workspace 3 runs a minute and 10 an hour; per visitor IP 6 and 20). */
+export const rateLimitedText = (retryAfter: number) => `Run limit reached. Try again in ${retryText(retryAfter)}.`;
 
 /** The agent's `sendMessage` refuses with `rate_limited:<seconds>`; returns the seconds, or null for other errors. */
 export function parseRateLimited(message: string): number | null {
@@ -62,7 +62,7 @@ export async function listIncidents(f: Fetch = fetch): Promise<IncidentRow[]> {
   }
 }
 
-/** Also creates the workspace cookie on a first visit. */
+/** Also creates the workspace cookie on a first visit; use `firstSession` for that first call. */
 export async function getSession(f: Fetch = fetch): Promise<Session | null> {
   try {
     const res = await f("/api/session");
@@ -71,6 +71,16 @@ export async function getSession(f: Fetch = fetch): Promise<Session | null> {
     return null;
   }
 }
+
+/**
+ * The first visit's session call, made once per page load (StrictMode runs effects twice). Each request
+ * without a cookie creates its own workspace, so the app waits for this one before making any other call.
+ */
+export function sessionOnce(f: Fetch = fetch): () => Promise<Session | null> {
+  let pending: Promise<Session | null> | null = null;
+  return () => (pending ??= getSession(f));
+}
+export const firstSession = sessionOnce();
 
 export type Demo = { modes: DemoMode[]; url: string };
 export type DemoResult = { ok: true; demo: Demo } | { ok: false; error: "demo_unavailable" | "network" | "server" };

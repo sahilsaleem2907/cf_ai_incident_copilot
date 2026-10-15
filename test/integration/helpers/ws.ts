@@ -3,9 +3,9 @@ import { exports } from "cloudflare:workers";
 export type Frame = { type: string; [k: string]: unknown };
 
 /** A raw agent WebSocket that speaks the SDK's frames: `cf_agent_state`, `rpc`, plus our stream frames. */
-export async function connect(incidentId: string, workspaceId?: string) {
+export async function connect(incidentId: string, workspaceId?: string, headers: Record<string, string> = {}) {
   const res = await exports.default.fetch(`https://copilot.example.com/agents/incident-agent/${incidentId}`, {
-    headers: { Upgrade: "websocket", ...(workspaceId ? { Cookie: `__Host-ws=${workspaceId}` } : {}) },
+    headers: { Upgrade: "websocket", ...(workspaceId ? { Cookie: `__Host-ws=${workspaceId}` } : {}), ...headers },
   });
   if (res.status !== 101 || !res.webSocket) throw new Error(`upgrade failed: ${res.status}`);
   const ws = res.webSocket;

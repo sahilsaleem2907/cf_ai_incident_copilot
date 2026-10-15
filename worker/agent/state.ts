@@ -68,7 +68,8 @@ export type IncidentState = {
 export type StreamFrame = { type: "stream_start"; messageId: string } | { type: "delta"; messageId: string; text: string } | { type: "stream_end"; messageId: string };
 
 export type ConnectionRole = "owner" | "viewer";
-export type ConnectionInfo = { role: ConnectionRole };
+/** `ip` is the visitor's hashed `ipKey` (safety/quota.ts) for the per-IP run quota; null without an address. */
+export type ConnectionInfo = { role: ConnectionRole; ip: string | null };
 
 export const STATE_CAPS = { checks: 40, messages: 50, approvals: 5, timeline: 100 } as const;
 

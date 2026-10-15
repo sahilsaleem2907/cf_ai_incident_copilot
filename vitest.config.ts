@@ -77,6 +77,7 @@ export default defineConfig({
                 PROBE_LIMIT: { namespace_id: "1001", simple: { limit: 10_000, period: 60 } },
                 RUN_LIMIT: { namespace_id: "1002", simple: { limit: 3, period: 60 } },
                 VOICE_LIMIT: { namespace_id: "1003", simple: { limit: 5, period: 60 } },
+                RUN_IP_LIMIT: { namespace_id: "1004", simple: { limit: 6, period: 60 } },
               },
               outboundService: "fake-internet",
               workers: [

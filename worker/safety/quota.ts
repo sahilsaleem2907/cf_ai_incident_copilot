@@ -24,24 +24,53 @@ export async function takeWindow(db: D1Database, workspaceId: string, kind: "run
   return { ok: false, retryAfter: Math.max(1, Math.ceil((windowStart + windowMs - now) / 1000)) };
 }
 
+/** Who is asking: the workspace, and the visitor's IP as an `ipKey` (null when the request carries none). */
+export type Caller = { workspaceId: string; ip: string | null };
+
 /**
- * The single "LLM run" quota (D14): new incidents and follow-ups, 3 a minute (Rate Limiting binding) and
- * 10 an hour (D1) per workspace. Fails open: a binding or D1 error is logged and the run goes ahead, since the
- * budget guard and the Workers AI allocation still protect neurons.
+ * The D1 and rate-limit key for a visitor IP: `ip:` plus a SHA-256 prefix, so raw addresses aren't stored.
+ * Null without an address (local tools and tests that don't send `CF-Connecting-IP`; Cloudflare always sets it).
  */
-export async function takeRun(env: Pick<Env, "RUN_LIMIT" | "DB">, workspaceId: string, now: number = Date.now()): Promise<Quota> {
+export async function ipKey(ip: string | null | undefined): Promise<string | null> {
+  if (!ip) return null;
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip)));
+  return `ip:${[...digest.slice(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** One Rate Limiting binding call; an error is logged and allows the run (fail open). */
+async function burst(binding: RateLimit, key: string, name: string): Promise<boolean> {
   try {
-    // The binding doesn't say when its window resets, so the burst answer is the worst case: a minute.
-    if (!(await env.RUN_LIMIT.limit({ key: workspaceId })).success) return { ok: false, retryAfter: MINUTE_MS / 1000 };
+    return (await binding.limit({ key })).success;
   } catch (e) {
-    console.error("RUN_LIMIT failed; allowing the run", (e as Error).message);
+    console.error(`${name} failed; allowing the run`, (e as Error).message);
+    return true;
   }
+}
+
+/** One D1 window; an error is logged and allows the run (fail open). */
+async function hourly(db: D1Database, key: string, limit: number, now: number): Promise<Quota> {
   try {
-    return await takeWindow(env.DB, workspaceId, "run", LIMITS.runsPerHour, HOUR_MS, now);
+    return await takeWindow(db, key, "run", limit, HOUR_MS, now);
   } catch (e) {
     console.error("run quota (D1) failed; allowing the run", (e as Error).message);
     return { ok: true };
   }
+}
+
+/**
+ * The single "LLM run" quota (D14): new incidents and follow-ups. Per workspace, 3 a minute (RUN_LIMIT) and
+ * 10 an hour (D1). Per visitor IP as well, 6 a minute (RUN_IP_LIMIT) and 20 an hour (D1, keyed by `ipKey`),
+ * because a client that drops the cookie gets a new workspace each time. Fails open: a binding or D1 error
+ * is logged and the run goes ahead, since the budget guard and the Workers AI allocation still protect neurons.
+ */
+export async function takeRun(env: Pick<Env, "RUN_LIMIT" | "RUN_IP_LIMIT" | "DB">, caller: Caller, now: number = Date.now()): Promise<Quota> {
+  // The binding doesn't say when its window resets, so the burst answer is the worst case: a minute.
+  const minute: Quota = { ok: false, retryAfter: MINUTE_MS / 1000 };
+  if (!(await burst(env.RUN_LIMIT, caller.workspaceId, "RUN_LIMIT"))) return minute;
+  if (caller.ip && !(await burst(env.RUN_IP_LIMIT, caller.ip, "RUN_IP_LIMIT"))) return minute;
+  const ws = await hourly(env.DB, caller.workspaceId, LIMITS.runsPerHour, now);
+  if (!ws.ok) return ws;
+  return caller.ip ? hourly(env.DB, caller.ip, LIMITS.runsPerHourPerIp, now) : ws;
 }
 
 /**

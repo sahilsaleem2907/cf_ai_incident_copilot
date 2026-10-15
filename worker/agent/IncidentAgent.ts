@@ -12,7 +12,7 @@ import { streamLlm } from "../llm/stream";
 import { budgetMode, d1Usage } from "../llm/usage";
 import { salvageFindings } from "../loop/findings";
 import { finalizeNarration, NARRATION_MAX_TOKENS, type NarrationOutcome } from "../loop/narrate";
-import { takeRun } from "../safety/quota";
+import { ipKey, takeRun } from "../safety/quota";
 import { devAllowOrigin } from "../safety/ssrf";
 import type { DnsRaw } from "../tools/dns";
 import { quickCheck, type QuickCheckResult } from "../tools/quickcheck";
@@ -135,7 +135,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       connection.close(4404, "Unknown incident");
       return;
     }
-    connection.setState({ role: this.roleFor(ctx) } satisfies ConnectionInfo);
+    connection.setState({ role: this.roleFor(ctx), ip: await ipKey(ctx.request.headers.get("CF-Connecting-IP")) } satisfies ConnectionInfo);
   }
 
   /** Only the server writes state; clients use callables. */
@@ -468,7 +468,8 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     if (typeof text !== "string" || !text.trim()) throw new Error("empty_message");
     // Checked before the quota so a send that can't start isn't counted; startRun checks again.
     if (this.activeRunId()) throw new Error("run_active");
-    const quota = await takeRun(this.env, this.mustIncident().workspace_id);
+    const ip = (getCurrentAgent().connection?.state as ConnectionInfo | null)?.ip ?? null;
+    const quota = await takeRun(this.env, { workspaceId: this.mustIncident().workspace_id, ip });
     if (!quota.ok) throw new Error(`rate_limited:${quota.retryAfter}`);
     return { runId: await this.startRun(text.trim().slice(0, MAX_MESSAGE), "followup") };
   }

@@ -1,10 +1,10 @@
-import { LinkProvider, Toasty, type LinkComponentProps } from "@cloudflare/kumo";
+import { LinkProvider, Loader, Toasty, type LinkComponentProps } from "@cloudflare/kumo";
 import { forwardRef, useEffect, useState } from "react";
 import { Link } from "wouter";
 import { AppShell } from "./components/AppShell";
 import { DemoPanel } from "./components/DemoPanel";
 import { IncidentSidebar } from "./components/IncidentSidebar";
-import { getSession, INCIDENTS_CHANGED, type Session } from "./lib/api";
+import { firstSession, getSession, INCIDENTS_CHANGED, type Session } from "./lib/api";
 import { AppRoutes } from "./routes";
 
 /** Kumo links (sidebar items, link buttons) navigate inside the app instead of reloading. */
@@ -13,12 +13,18 @@ AppLink.displayName = "AppLink";
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
-  // Creates the workspace cookie up front, so the first WebSocket already carries it. Fetched again when
-  // incidents change, so the budget banner appears without a reload once the guard trips.
+  const [ready, setReady] = useState(false);
+  // One session call creates the workspace cookie before anything else runs: each request without a cookie
+  // would create its own workspace. If it fails the app still renders. Fetched again when incidents change,
+  // so the budget banner appears without a reload once the guard trips.
   useEffect(() => {
     let live = true;
     const load = () => void getSession().then((s) => live && s && setSession(s));
-    load();
+    void firstSession().then((s) => {
+      if (!live) return;
+      if (s) setSession(s);
+      setReady(true);
+    });
     window.addEventListener(INCIDENTS_CHANGED, load);
     return () => {
       live = false;
@@ -28,8 +34,14 @@ export function App() {
   return (
     <LinkProvider component={AppLink}>
       <Toasty>
-        <AppShell sidebar={<IncidentSidebar />} aside={<DemoPanel />} budgetMode={session?.budgetMode}>
-          <AppRoutes />
+        <AppShell sidebar={ready && <IncidentSidebar />} aside={ready && <DemoPanel />} budgetMode={session?.budgetMode}>
+          {ready ? (
+            <AppRoutes />
+          ) : (
+            <div className="m-auto flex items-center gap-2 p-8 text-(--cf-fg-muted)">
+              <Loader size={16} /> Starting…
+            </div>
+          )}
         </AppShell>
       </Toasty>
     </LinkProvider>

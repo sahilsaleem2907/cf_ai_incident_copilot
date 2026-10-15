@@ -56,7 +56,7 @@ export function AppShell({ sidebar, aside, children, budgetMode }: Props) {
           {children}
         </main>
 
-        {wide && (
+        {wide && aside && (
           <aside aria-label="Demo service" className="w-80 shrink-0 overflow-y-auto border-l border-(--cf-border) bg-(--cf-bg-200) p-4">
             {aside}
           </aside>

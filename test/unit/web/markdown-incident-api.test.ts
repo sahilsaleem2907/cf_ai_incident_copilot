@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createIncident, getDemo, listIncidents, parseRateLimited, retryText, setDemoModes } from "../../../web/lib/api";
+import { createIncident, getDemo, listIncidents, parseRateLimited, retryText, sessionOnce, setDemoModes } from "../../../web/lib/api";
 import { otherHost, runNote } from "../../../web/lib/incident";
 import { parseInline, parseMarkdown } from "../../../web/lib/markdown";
 import type { TimelineView } from "../../../worker/agent/state";
@@ -93,6 +93,19 @@ describe("api", () => {
     const res = (status: number, body: string, headers: Record<string, string> = {}) => (async () => new Response(body, { status, headers })) as unknown as typeof fetch;
     expect(await createIncident("x", res(429, "{}", { "Retry-After": "120" }))).toEqual({ ok: false, error: "rate_limited", retryAfter: 120 });
     expect(await createIncident("x", res(429, "not json"))).toEqual({ ok: false, error: "rate_limited", retryAfter: 60 });
+  });
+
+  it("makes the first-visit session call once, however often it's asked (StrictMode runs effects twice)", async () => {
+    let calls = 0;
+    const f = (async () => {
+      calls++;
+      return new Response(JSON.stringify({ demoUrl: "u", budgetMode: "ai" }));
+    }) as unknown as typeof fetch;
+    const first = sessionOnce(f);
+    const [a, b] = await Promise.all([first(), first()]);
+    expect(await first()).toEqual({ demoUrl: "u", budgetMode: "ai" });
+    expect(a).toBe(b);
+    expect(calls).toBe(1);
   });
 
   it("parses the agent's rate_limited error and words the wait", () => {
