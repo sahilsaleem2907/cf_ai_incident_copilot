@@ -19,6 +19,18 @@ export function evidenceId(tool: ToolName, n: number): string {
   return `${EVIDENCE_PREFIX[tool]}-${n}`;
 }
 
+const LABEL_FALLBACK: Record<ToolName, string> = {
+  dns_lookup: "DNS lookup",
+  http_probe: "HTTP probe",
+  cert_info: "Certificate",
+  provider_status: "Provider status",
+};
+
+/** Display name for a check; cert/provider tools aren't registered until WP-21. */
+export function toolLabel(tool: ToolName): string {
+  return TOOLS[tool]?.label ?? LABEL_FALLBACK[tool];
+}
+
 type ToolDef<S extends z.ZodType> = {
   name: ToolName;
   label: string;

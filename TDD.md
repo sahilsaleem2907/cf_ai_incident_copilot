@@ -209,6 +209,12 @@ monitor(id PK CHECK(id=1), kind, ticks_left, consecutive_passes, schedule_id)   
 postmortem(id PK CHECK(id=1), markdown, generated_at)
 ```
 
+*WP-08 additions:*
+- `incident.watch_id` and `incident.unread` (mirrored to the index).
+- `runs.question` and `runs.mode`. `runs.status` is one of `running`, `done`, `limit_turns`, `limit_tools`, `limit_deadline`, `limit_budget`, `llm_unavailable` or `failed` (§8.2).
+- `checks.turn` and `checks.seq` with `UNIQUE(run_id, turn, seq)`, so a retried planning step gets the same evidence IDs back.
+- Lists are ordered by insertion (`rowid`).
+
 ### 6.3 Synced state (`agent/state.ts`), kept small (full evidence goes through `getEvidence`)
 
 ```ts
@@ -232,8 +238,15 @@ interface IncidentState {
 interface CheckView { evidenceId: string; tool: ToolName; label: string;
   status: "pending" | "running" | "pass" | "fail" | "error" | "unavailable"; summary: string;
   startedAt: number; finishedAt?: number }
-// WS side-channel (broadcast, not state): {type:"delta", messageId, text} | {type:"stream_end", messageId}
+// WS side-channel (broadcast, not state): {type:"stream_start", messageId} | {type:"delta", messageId, text} | {type:"stream_end", messageId}
 ```
+
+*WP-08:*
+- The state also carries the latest run's `findings` (for the approval card's "why").
+- `CheckView` has a `runId`.
+- Timeline `detail` values are flat scalars: a recursive JSON type makes the RPC stub types too deep to check.
+- `stream_start` resets the client buffer when a retried narration streams again.
+- `syncState()` rebuilds the state from SQL after every change, and `validateStateChange` rejects every client-originated write.
 
 ### 6.4 IDs
 
@@ -247,7 +260,7 @@ Incident, workspace and approval IDs are 128-bit random hex values (`crypto.getR
 |---|---|---|---|
 | `GET /api/session` | | `{demoUrl, budgetMode, limits}` | Sets `__Host-ws` (HttpOnly, Secure, SameSite=Lax, 1 year) if it's missing |
 | `GET /api/incidents` | | `[{id,target,status,origin,unread,updatedAt}]` | Sidebar polling (D16) |
-| `POST /api/incidents` | `{message}` | `{id}` / 400 `{error:"need_target"}` / 429 `{retryAfter}` | Target parse (D9), then quota (D14), then `IncidentAgent.init` |
+| `POST /api/incidents` | `{message}` | `{id}` / 400 `{error:"need_target"}` / 429 `{retryAfter}` / 503 `{error:"demo_unavailable"}` | Target parse (D9), then quota (D14), then `IncidentAgent.init`. 503 while `DEMO_BASE_URL` still holds the `<sub>` placeholder |
 | `GET /api/incidents/:id` | | Snapshot (`IncidentState` + findings) | Owner only. Used by eval and smoke tests. |
 | `POST /api/incidents/:id/read` | | 204 | Clears `unread` |
 | `GET /api/demo` · `POST /api/demo/mode` | `{mode}` | `{mode, url}` | Calls `env.DEMO.setMode(ws, mode)` |
@@ -276,6 +289,14 @@ markRead() · getEvidence(evidenceId)
 ```
 
 `onConnect(conn, ctx)` parses the cookie from `ctx.request` and calls `conn.setState({ role })`. Owner-only callables use `getCurrentAgent().connection.state.role`.
+
+*WP-08 as built:*
+- **Signatures:** `addPendingChecks(runId, turn, calls)`; `setFindings(runId, findings, mode)`; `finishRun(runId, status, {toolCalls, llmTurns})` (first call wins); `startRun(question, kind)` throws `run_active`; plus `getSnapshot()`.
+- **Viewers:** `shouldConnectionBeReadonly` also marks them readonly. A socket for an incident that doesn't exist is closed with 4404.
+- **Routing:** the Worker only routes WebSocket upgrades to `/agents/incident-agent/<32-hex id>`. Every other agent path and plain HTTP gets a 404, so no stray Durable Objects are created.
+- **Callables without decorator syntax:** `@callable()` only records the method in the SDK's registry (the decorator context is unused), so `IncidentAgent.ts` registers `sendMessage`, `resolve`, `markRead` and `getEvidence` with `callable()(fn)` after the class. That avoids the Babel decorator transform and the ES2021 target the SDK otherwise needs in Vite and Vitest.
+- **Typed stub:** `agent/stub.ts` `incidentAgent(env, id)` wraps `getAgentByName`, whose type only accepts agents with `unknown` state.
+- **Deferred to their WPs:** the Workflow launch (WP-09, marked in `startRun`); `proposeAction`, `recordApprovalOutcome`, `afterAction`, approve/reject and the monitor (WP-12); quotas (WP-17); `reportWatchCheck` (WP-18); `generatePostmortem` (WP-22).
 
 ### 7.3 Tool contracts (`tools/registry.ts`). Inputs use zod. Outputs are `ToolResult {evidenceId, ok, status, summary, digest, raw}`.
 
@@ -632,13 +653,14 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | | `transitions.test.ts` | Every legal edge, and illegal edges throw |
 | | `webhook.test.ts` | Allowlist accept/reject, AES-GCM round trip, masking |
 | | `origin.test.ts` | Origin-pin scope rules |
-| Integration (`@cloudflare/vitest-plugin`, main Worker, mocked outbound fetch, `LLM_MODE=mock`) | `agent.test.ts` | `init`, owner/viewer roles, idempotent `recordCheck`, index sync |
+| Integration (`@cloudflare/vitest-plugin`, main Worker, mocked outbound fetch, `LLM_MODE=mock`) | `agent.test.ts` | `init`, owner/viewer roles over a real WebSocket (`helpers/ws.ts` speaks the SDK's `rpc` / `cf_agent_state` frames), idempotent `addPendingChecks`/`recordCheck`, narration streaming, idempotency and template fallback, limits, index sync |
+| | `incidents.test.ts` | `need_target`, create, list per workspace, owner-only snapshot, read |
 | | `diagnosis.test.ts` | Scripted mock LLM: tools, then findings, then narrate. Invalid call ×2 → rule path. LLM unavailable → rule path. Budget cap. |
 | | `approval.test.ts` | Propose → approve → `setMode` called → verify → `mitigated` → 2 ticks → `resolved`. Reject → `investigating`. Supersede. |
 | | `cron.test.ts` | Due-watch query with LIMIT and caps; failure starts WatchWorkflow; duplicate ID ignored |
 | Demo (`@cloudflare/vitest-plugin`, demo Worker) | `demo.test.ts` | Every mode's status, headers and timing, through `exports.default` and the `DemoAdmin` RPC |
 
-- **Projects** (`vitest.config.ts`): `unit` runs in node. `integration` loads `wrangler.jsonc` with `remoteBindings: false`, so the AI binding never goes remote: tests need no login and spend no neurons. `demo` loads `demo-service/wrangler.jsonc`.
+- **Projects** (`vitest.config.ts`): `unit` runs in node. `integration` loads `wrangler.jsonc` with `LLM_MODE=mock` and a valid test `DEMO_BASE_URL`, and with `remoteBindings: false`, so the AI binding never goes remote: tests need no login and spend no neurons. `demo` loads `demo-service/wrangler.jsonc`.
 - Unit tests load the recorded fixtures as JSON imports and the `.sse` files with Vite `?raw` imports (`test/unit/raw.d.ts`), because the worker tsconfig has no Node types.
 - **Demo stub:** the test runtime won't start while a service binding points at a Worker it doesn't know about. So `integration` adds a small inline stand-in `incident-copilot-demo` Worker behind `DEMO`, and `approval.test.ts` asserts what the main Worker asks it to do (e.g. `setMode`). The real demo service is tested only in `demo`.
 - Tests use `env` and `exports` from `cloudflare:workers` (the plugin's `cloudflare:test` `env`/`SELF` are deprecated). Workflow tests use the plugin's Workflow introspection APIs. Retrying events with `waitForEvent` and the timeout path are verified in WP-02.

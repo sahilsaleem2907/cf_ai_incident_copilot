@@ -1,14 +1,8 @@
-import { TOOLS } from "../tools/registry";
-import type { ToolName, ToolResult } from "../tools/types";
+import { toolLabel } from "../tools/registry";
+import type { ToolResult } from "../tools/types";
 import type { Confidence, Findings } from "./categories";
 import { trimDot } from "./classify";
 
-const LABEL_FALLBACK: Record<ToolName, string> = {
-  dns_lookup: "DNS lookup",
-  http_probe: "HTTP probe",
-  cert_info: "Certificate",
-  provider_status: "Provider status",
-};
 const CONFIDENCE: Record<Confidence, string> = { high: "High", medium: "Medium", low: "Low" };
 
 /**
@@ -19,7 +13,7 @@ export function renderTemplate(findings: Findings, results: ToolResult[]): strin
   const byId = new Map(results.map((r) => [r.evidenceId, r]));
   const bullets = findings.evidence.flatMap((id) => {
     const r = byId.get(id);
-    return r ? [`- ${TOOLS[r.tool]?.label ?? LABEL_FALLBACK[r.tool]}: ${trimDot(r.summary)} [${id}]`] : [];
+    return r ? [`- ${toolLabel(r.tool)}: ${trimDot(r.summary)} [${id}]`] : [];
   });
   return [
     `**Likely cause:** ${findings.cause}`,

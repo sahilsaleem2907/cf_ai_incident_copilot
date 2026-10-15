@@ -16,6 +16,8 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "incident-copilot", "database_id": "d24601d5-e047-48c8-8d5a-66880d841b40", "migrations_dir": "migrations" }
   ],
+  "durable_objects": { "bindings": [{ "name": "IncidentAgent", "class_name": "IncidentAgent" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["IncidentAgent"] }],
   "services": [{ "binding": "DEMO", "service": "incident-copilot-demo", "entrypoint": "DemoAdmin" }],
   "vars": {
     "DEMO_BASE_URL": "https://incident-copilot-demo.<sub>.workers.dev",

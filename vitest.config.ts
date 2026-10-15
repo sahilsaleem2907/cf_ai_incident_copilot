@@ -22,7 +22,7 @@ export default defineConfig({
             // The AI binding is remote by default: tests must not need a login or spend neurons.
             remoteBindings: false,
             miniflare: {
-              bindings: { TEST_MIGRATIONS: await readD1Migrations("./migrations") },
+              bindings: { TEST_MIGRATIONS: await readD1Migrations("./migrations"), LLM_MODE: "mock", DEMO_BASE_URL: "https://incident-copilot-demo.test.workers.dev" },
               workers: [
                 { name: "incident-copilot-demo", modules: true, script: demoStub, compatibilityDate: "2026-10-01" },
               ],
