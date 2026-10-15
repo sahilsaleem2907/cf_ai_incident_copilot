@@ -170,3 +170,9 @@ Answers to Claude's questions:
 > /handoff
 
 (Wrote the handoff for the next session (WP-11 onward) to the OS temp folder: `incident-copilot-handoff-wp11.md`.)
+
+### 16:47 · PR for WP-06 to WP-10
+
+> Lets push to origin dev, and raise a PR to main with proper title and description.
+
+(`dev` was already pushed. Opened PR #3 `dev` → `main`, "WP-06 to WP-10: diagnosis rules, LLM layer, IncidentAgent, DiagnosisWorkflow and chat UI", with a summary per WP, the key decisions, the testing done and what's not included.)

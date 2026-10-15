@@ -28,7 +28,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
   - PR #2 `dev` → `main` ("WP-01 to WP-05") was reviewed by Sift: 5 findings, all false alarms, each answered `/not-helpful` with the reason. **Merged** 2026-10-15 13:40 (`0073839`).
   - PR #1 was closed unmerged; `master` (`867d8d6`) is unused.
-  - Next review: a new `dev` → `main` PR for WP-06 onward.
+  - **PR #3** `dev` → `main` ("WP-06 to WP-10 …") opened 16:47: https://github.com/sahilsaleem2907/cf_ai_incident_copilot/pull/3. Waiting for Sift review.
 - **Blockers / risks:** none blocking. Watch gpt latency in WP-09: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
 
 ---
