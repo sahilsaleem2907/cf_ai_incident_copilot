@@ -235,3 +235,12 @@ Answers to Claude's questions:
 > Complete the export.
 
 (Exported 7 sessions (planning + Day 1) to [`prompts/`](prompts/): full conversations with every tool call and result. Removed: the Cloudflare account ID, the developer's IP from request logs, and any token pattern (none found). Screenshots, private reasoning blocks and editor bookkeeping aren't exported. See [`prompts/README.md`](prompts/README.md).)
+
+### 21:20 · Sift review of PR #3 (latest round)
+
+> https://github.com/sahilsaleem2907/cf_ai_incident_copilot/pull/3. Check the latest sift comments, are any bugs? If so lets fix it.
+
+- **Small fix:** Yes, fix it: show the error text safely in `worker/llm/client.ts`.
+- **Sift replies:** Yes, reply `/not-helpful` with the reason on every false alarm.
+
+(The latest two Sift reviews on `6dd092c` raised 18 items; none is a real bug. Most are parser false alarms (`satisfies`, the generated `import()` types, the Workers `scheduler` global). The rest are guarded already: exhaustive switches, `?.` chains, `isId(unknown)`, `getSession` catching its own errors, `state` null until set, no SSR. One clean-up: `client.ts` read `(e as Error).message`, which gives "undefined" if something other than an Error is thrown; now an `errText` helper. 502 tests green.)

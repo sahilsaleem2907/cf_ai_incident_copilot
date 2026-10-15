@@ -58,13 +58,16 @@ export function run(deps: LlmDeps, model: string, input: Record<string, unknown>
 
 type Failure = "config" | "allocation" | "retry";
 
+/** An error's message, or the thrown value as text when it isn't an Error. */
+const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
 /**
  * Workers AI errors carry a numeric code at the start of the message (`2001: …`, `5007: …`).
  * 2001 (gateway not configured) fails the same way for both models, and both share one neuron allocation,
  * so neither is worth a fallback call.
  */
 export function failureKind(e: unknown): Failure {
-  const message = e instanceof Error ? e.message : String(e);
+  const message = errText(e);
   if (/^2001\b/.test(message)) return "config";
   if (/allocation|daily (free )?(limit|neurons)|quota exceeded/i.test(message)) return "allocation";
   return "retry";
@@ -82,7 +85,7 @@ export async function withFallback<T>(
   const { primary, fallback } = deps.models ?? { primary: PRIMARY, fallback: FALLBACK };
   const fail = async (e: unknown, model: string): Promise<LlmUnavailable | null> => {
     const kind = failureKind(e);
-    const message = `${model}: ${e instanceof Error ? e.message : String(e)}`;
+    const message = `${model}: ${errText(e)}`;
     if (kind === "config") {
       console.error("llm config error", message);
       return new LlmUnavailable("config", message);
@@ -100,11 +103,11 @@ export async function withFallback<T>(
   } catch (e) {
     const fatal = await fail(e, primary);
     if (fatal) throw fatal;
-    if (!canRetry()) throw new LlmUnavailable("failed", `${primary}: ${(e as Error).message}`);
+    if (!canRetry()) throw new LlmUnavailable("failed", `${primary}: ${errText(e)}`);
   }
   try {
     return await attempt(fallback, true);
   } catch (e) {
-    throw (await fail(e, fallback)) ?? new LlmUnavailable("failed", `${fallback}: ${(e as Error).message}`);
+    throw (await fail(e, fallback)) ?? new LlmUnavailable("failed", `${fallback}: ${errText(e)}`);
   }
 }
