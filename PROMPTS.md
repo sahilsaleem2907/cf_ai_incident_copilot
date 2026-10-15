@@ -156,3 +156,9 @@ Answers to Claude's questions:
 (Plan approved: a pure driver `loop/plan.ts` `diagnose(io, …)` behind a thin `DiagnosisWorkflow`, so every limit (turns, tools, budget, deadline, LLM down, invalid ×2) is unit-tested and always ends in a diagnosis. Integration tests run a real Workflow offline, against an inline "fake internet" Worker and the mock LLM.)
 
 (WP-09 done in `a5ca0ba`; 427 tests green, all offline. Dev smoke with the mock LLM: "diagnose cloudflare.com" ran real DNS and HTTP checks through a local Workflow, came out healthy → resolved, and was narrated with citations in about 3 s.)
+
+### 16:24 · WP-10 Chat UI
+
+> Lets plan WP-10 now.
+
+(Plan approved: routes `/` and `/i/:id`; `useIncident` over `useAgent` with a stream buffer; check cards with lazy evidence; a small safe markdown renderer with clickable `[http-1]` chips; an other-host follow-up offer; a read-only view for link visitors (new `whoami` callable); limit and rule-based notes. Pure helpers are unit-tested; the UI is checked with headless-browser screenshots in light and dark.)
