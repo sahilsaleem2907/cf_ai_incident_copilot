@@ -124,3 +124,5 @@ Answers to Claude's questions:
 > Use /var/folders/…/incident-copilot-handoff.md for context. Lets then continue to WP-06.
 
 (Read the handoff. Found PR #2 already merged into `main` (`0073839`) and refreshed the TASKS review status. Plan for WP-06 approved: `diagnosis/categories.ts`, `classify.ts` (11 rules), `template.ts`, plus keeping the TLS error text in `http_probe` samples so rule 2 can see it.)
+
+(WP-06 done in `6dad2cf`: 11 rules with 39 classify cases and 6 template cases; 286 tests green. Throwaway check: workerd reports expired and self-signed certificates only as `internal error; reference = …`, so `tls_expiry` from HTTP alone is best effort until `cert_info` exists.)

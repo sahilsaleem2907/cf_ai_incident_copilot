@@ -21,9 +21,9 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-06 Rules (started 13:44)
+- **Current:** none (WP-06 ✅ 13:49)
 - **Next:** WP-07 LLM layer
-- **Hours today:** 1.4 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
+- **Hours today:** 1.5 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
   - PR #2 `dev` → `main` ("WP-01 to WP-05") was reviewed by Sift: 5 findings, all false alarms, each answered `/not-helpful` with the reason. **Merged** 2026-10-15 13:40 (`0073839`).
@@ -42,7 +42,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 03 | D1 + workspace cookie + session/health + target parser | 0.75 | 01 | ✅ | 01:16 | 01:18 | `9d691c6`. 0.25 h vs 0.75 est |
 | 04 | Safety core: SSRF, reader, origin pin, budget | 1.0 | 01 | ✅ | 01:26 | 01:30 | `4dbe27d`. 0.25 h vs 1.0 est |
 | 05 | Tools: `dns_lookup`, `http_probe`, `quickCheck`, registry | 1.5 | 04 | ✅ | 01:38 | 01:44 | `307d342`. 0.25 h vs 1.5 est |
-| 06 | Rules: `classify.ts`, `template.ts` | 0.5 | 05 | 🔄 | 13:44 | | |
+| 06 | Rules: `classify.ts`, `template.ts` | 0.5 | 05 | ✅ | 13:44 | 13:49 | `6dad2cf`. 0.1 h vs 0.5 est. TLS spike: workerd hides cert errors (TDD §9.3) |
 | 07 | LLM layer: adapter, fallback, usage, prompts, mock, citations, streaming | 1.5 | 02 | ⬜ | | | |
 | 08 | IncidentAgent: schema, state, roles, RPC, transitions, narrate | 1.5 | 03, 07 | ⬜ | | | |
 | 09 | DiagnosisWorkflow: planning loop, bounds, rule path | 1.5 | 05, 06, 08 | ⬜ | | | |
@@ -169,10 +169,10 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-06</b> Rules</summary>
 
-- [ ] `classify.ts` (11 rules, first match wins)
-- [ ] `template.ts` (four sections with evidence IDs)
-- [ ] `classify.test.ts` (one fixture per category + precedence)
-- [ ] **Done when:** classification tests pass for every category
+- [x] `classify.ts` (11 rules, first match wins) + `categories.ts` (types, `Findings`, one-line definitions)
+- [x] `template.ts` (four sections with evidence IDs)
+- [x] `classify.test.ts` (one fixture per category + precedence + edges, 39 cases) + `template.test.ts`
+- [x] **Done when:** classification tests pass for every category
 </details>
 
 <details>
@@ -404,7 +404,7 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
-| 2026-10-15 13:55 | 06 | Rule 2's "TLS error" is matched on the runtime's error text, which `http_probe` samples now keep (`message`, ≤ 200 chars). Locally, workerd hides the reason (`internal error; reference = …` for expired and self-signed certs), so in practice `tls_expiry` needs `cert_info` (WP-21, below the cut). Other rule details: latest usable result per tool, `no_addresses` → `dns_failure`, `actions` from rules. **Folded into TDD §9.3.** | Throwaway check against expired.badssl.com and self-signed.badssl.com from workerd |
+| 2026-10-15 13:49 | 06 | Rule 2's "TLS error" is matched on the runtime's error text, which `http_probe` samples now keep (`message`, ≤ 200 chars). Locally, workerd hides the reason (`internal error; reference = …` for expired and self-signed certs), so in practice `tls_expiry` needs `cert_info` (WP-21, below the cut). Other rule details: latest usable result per tool, `no_addresses` → `dns_failure`, `actions` from rules. **Folded into TDD §9.3.** | Throwaway check against expired.badssl.com and self-signed.badssl.com from workerd |
 | 2026-10-15 13:44 | review | PR #2 (`dev` → `main`, WP-01 to WP-05) merged at 13:40 (`0073839`) after Sift's 5 findings were answered as false alarms | User merged after the review |
 | 2026-10-15 01:59 | review | Sift CI workflows prepared for `main` (`61b5aef`, local worktree, unpushed until the user confirms). The zip upload (`6cfd23c`) is a binary in the repo and can be removed once the YAML files are in | Sift reviews PRs through GitHub Actions on the default branch |
 | 2026-10-15 01:57 | review | The review target is `main` (the default branch), not `master`. PR #1 `dev` → `main` was closed unmerged. `master` (at `867d8d6`) stays as the first review base but is unused | User raised PR #1 against `main`. Sift runs from `main`'s workflows |
@@ -431,9 +431,9 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 ## Daily wrap-up
 
 ### Day 1 (2026-10-15)
-- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03, WP-04, WP-05. Review setup: `dev` branch, PR #1 (closed), Sift workflows prepared on `main` (unpushed)
+- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03, WP-04, WP-05, WP-06. Review setup: `dev` branch, Sift workflows on `main`, PR #2 (WP-01 to WP-05) merged
 - **Moved / slipped:**
-- **Hours:** 1.4 / 14.75 h
+- **Hours:** 1.5 / 14.75 h
 - **Transcript exported to `prompts/`:** ⬜
 
 ### Day 2 (2026-10-16)
