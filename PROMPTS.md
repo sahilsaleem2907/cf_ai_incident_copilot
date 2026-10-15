@@ -305,3 +305,9 @@ Answers to Claude's questions:
 > done.
 
 (Checked with `gh secret list`: the two secrets were saved with their values as their names, so `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` don't exist yet. The token is treated as exposed and will be rolled. Its value is left out of this log and must be redacted from the Day 2 transcript export.)
+
+### 22:10 · WP-15 secrets check (2)
+
+> check now.
+
+(`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are set under their proper names, and the two misnamed secrets are deleted. Next: the user opens a `dev` → `main` PR.)
