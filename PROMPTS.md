@@ -452,3 +452,7 @@ Answers to Claude's questions:
 **Answer:** the short one: "Add your demo site to the watchlist."
 
 (WP-27b built: centred CTA labels, webhook spacing, every column lined up with its heading, matching uppercase headings, coloured demo and diagnosis pills, the tooltip, a dashed empty watchlist and the signed footer. Also fixed a button nested inside a button on the blocked notifications switch. 601 tests pass; checked in a local browser in light and dark.)
+
+> Center the footer text.
+
+(Footer text centred, part of WP-27b.)

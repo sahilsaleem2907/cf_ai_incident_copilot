@@ -77,7 +77,7 @@ export function AppShell({ sidebar, aside, children, budgetMode }: Props) {
         )}
       </Sidebar.Provider>
 
-      <footer className="shrink-0 border-t border-(--cf-border) bg-(--cf-bg-200) px-4 py-2 text-xs text-(--cf-fg-muted)">
+      <footer className="shrink-0 border-t border-(--cf-border) bg-(--cf-bg-200) px-4 py-2 text-center text-xs text-(--cf-fg-muted)">
         Built on Cloudflare, with <HeartIcon aria-hidden size={12} weight="fill" className="inline align-[-1px] text-cf-orange" />
         <span className="sr-only">love</span> from{" "}
         <a
