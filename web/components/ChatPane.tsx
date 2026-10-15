@@ -3,13 +3,20 @@ import { useEffect, useRef } from "react";
 import type { MessageView } from "../../worker/agent/state";
 import type { Evidence } from "../hooks/useIncident";
 import type { FeedItem } from "../lib/feed";
+import { ApprovalCard } from "./ApprovalCard";
 import { CheckCard } from "./CheckCard";
 import { Markdown } from "./Markdown";
 
-type Props = { feed: FeedItem[]; knownIds: ReadonlySet<string>; getEvidence: (id: string) => Promise<Evidence | null> };
+type Props = {
+  feed: FeedItem[];
+  knownIds: ReadonlySet<string>;
+  getEvidence: (id: string) => Promise<Evidence | null>;
+  /** Owner only; viewers get cards without buttons. */
+  onDecide?: (id: string, decision: "approve" | "reject") => Promise<unknown>;
+};
 
 /** The incident conversation: messages, check cards in run order, and the live narration (TDD §12.2). */
-export function ChatPane({ feed, knownIds, getEvidence }: Props) {
+export function ChatPane({ feed, knownIds, getEvidence, onDecide }: Props) {
   const end = useRef<HTMLDivElement>(null);
   const last = feed.at(-1);
   const lastKey = last ? `${last.key}:${last.kind === "stream" ? last.text.length : ""}` : "";
@@ -25,6 +32,8 @@ export function ChatPane({ feed, knownIds, getEvidence }: Props) {
             return <MessageBubble key={item.key} message={item.message} knownIds={knownIds} />;
           case "check":
             return <CheckCard key={item.key} check={item.check} status={item.status} getEvidence={getEvidence} />;
+          case "approval":
+            return <ApprovalCard key={item.key} approval={item.approval} knownIds={knownIds} {...(onDecide ? { onDecide } : {})} />;
           case "stream":
             return (
               <div key={item.key} aria-live="polite" aria-busy="true" className="rounded-lg bg-(--cf-bg-200) p-4">

@@ -1,6 +1,6 @@
 import type { Agent } from "agents";
-import { AgentWorkflow, type AgentWorkflowEvent, type AgentWorkflowStep } from "agents/workflows";
-import type { IncidentAgent } from "../agent/IncidentAgent";
+import { AgentWorkflow, WorkflowRejectedError, type AgentWorkflowEvent, type AgentWorkflowStep } from "agents/workflows";
+import { APPROVAL_TIMEOUT, type IncidentAgent } from "../agent/IncidentAgent";
 import { callLlm, llmDeps } from "../llm/client";
 import { diagnose, type RunIO, type RunSummary } from "../loop/plan";
 import { devAllowOrigin } from "../safety/ssrf";
@@ -33,12 +33,27 @@ export class DiagnosisWorkflow extends AgentWorkflow<Agent, DiagnosisParams> {
         setFindings: (runId, findings, mode) => agent.setFindings(runId, findings, mode),
         narrate: (runId) => agent.narrate(runId),
         finishRun: (runId, status, stats) => agent.finishRun(runId, status, stats),
+        proposeAction: (runId, workflowId) => agent.proposeAction(runId, workflowId),
+        recordApprovalOutcome: (approvalId, decision, detail) => agent.recordApprovalOutcome(approvalId, decision, detail),
+        executeAction: (approvalId) => agent.executeAction(approvalId),
+        afterAction: (runId, approvalId) => agent.afterAction(runId, approvalId),
       },
       llm: (req) => callLlm(deps, req),
       tool: async (name, args, evidenceId, scope) => {
         const out = await runTool(name, args, { fetch: (input, init) => fetch(input, init), evidenceId, ...(allowOrigin ? { allowOrigin } : {}) }, scope);
         if (!out.ok) throw new Error(out.invalid);
         return { result: out.result, subrequests: out.subrequests };
+      },
+      // `this.instanceId` is undefined in agents 0.28.1 (TDD §8.2).
+      workflowId: this.workflowId,
+      // Spike rule (TDD §8.2): WorkflowRejectedError → rejected; any other error from the wait → expired.
+      waitForApproval: async () => {
+        try {
+          await this.waitForApproval(step, { timeout: APPROVAL_TIMEOUT });
+          return "approved";
+        } catch (e) {
+          return e instanceof WorkflowRejectedError ? "rejected" : "expired";
+        }
       },
     };
     return diagnose(io, event.payload.runId);

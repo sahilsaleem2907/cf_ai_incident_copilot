@@ -1,21 +1,27 @@
 import { Agent, callable, getCurrentAgent, type Connection, type ConnectionContext } from "agents";
-import type { Findings } from "../diagnosis/categories";
+import { ACTION_TITLES, execute, isOwnDemo, pickAction, type ActionOutcome } from "../actions/catalog";
+import type { ActionId, Findings } from "../diagnosis/categories";
 import { classify } from "../diagnosis/classify";
 import { renderTemplate } from "../diagnosis/template";
 import { workspaceFromCookieHeader } from "../lib/cookie";
+import { newId } from "../lib/ids";
 import { llmDeps } from "../llm/client";
 import { LlmUnavailable } from "../llm/models";
 import { narrationSystem, narrationUser, type EvidenceLine } from "../llm/prompts";
 import { streamLlm } from "../llm/stream";
 import { salvageFindings } from "../loop/findings";
 import { finalizeNarration, NARRATION_MAX_TOKENS, type NarrationOutcome } from "../loop/narrate";
+import { devAllowOrigin } from "../safety/ssrf";
 import type { DnsRaw } from "../tools/dns";
+import { quickCheck, type QuickCheckResult } from "../tools/quickcheck";
 import { evidenceId, toolLabel } from "../tools/registry";
 import type { ToolName, ToolResult } from "../tools/types";
+import { MONITOR_MAX_TICKS, MONITOR_TICK_S, tick } from "./monitor";
 import { SCHEMA } from "./schema.sql";
 import {
   EMPTY_STATE,
   STATE_CAPS,
+  type ApprovalStatus,
   type ConnectionRole,
   type ConnectionInfo,
   type IncidentState,
@@ -57,6 +63,18 @@ type CheckRow = {
   finished_at: number | null;
 };
 
+type ApprovalRow = {
+  id: string;
+  run_id: string;
+  action_id: ActionId;
+  status: ApprovalStatus;
+  workflow_id: string | null;
+  created_at: number;
+  decided_at: number | null;
+  outcome_json: string | null;
+};
+type MonitorRow = { kind: "post_action" | "burst"; ticks_left: number; consecutive_passes: number; schedule_id: string | null };
+
 export type InitParams = { workspaceId: string; target: string; origin: Origin; message?: string; watchId?: string };
 export type PlannedCall = { tool: ToolName; args: unknown };
 /** What a Workflow run needs to plan (TDD §7.2). Evidence is digests only, never `raw`. */
@@ -69,7 +87,15 @@ export type RunContext = {
   mode: RunMode;
   evidence: EvidenceLine[];
   scope: { host: string; cnameTargets: string[] };
+  /** The target is this workspace's demo page: the planning prompt says so (TDD §7.6). */
+  isDemo: boolean;
 };
+export type Proposal = { approvalId: string | null; actionId: ActionId | null };
+export type Decision = "rejected" | "expired" | "failed";
+export type VerifyResult = { pass: boolean; text: string };
+
+/** How long a card waits for a decision (FR-21). */
+export const APPROVAL_TIMEOUT = "24 hours";
 
 /** Prior evidence handed to a planning turn: the most recent checks only, to keep prompts small. */
 const CONTEXT_CHECKS = 10;
@@ -77,8 +103,8 @@ const MAX_MESSAGE = 2000;
 
 /**
  * One incident (TDD §3): SQL tables, synced state, owner/viewer roles (D8), the state machine (§10),
- * streamed narration (D4) and the D1 index. Workflow launch (WP-09), approvals (WP-12), watch reports
- * (WP-18) and postmortems (WP-22) are added by their WPs.
+ * streamed narration (D4), the D1 index, approvals with their actions and the post-action monitor (WP-12).
+ * Watch reports (WP-18) and postmortems (WP-22) are added by their WPs.
  */
 export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
   override initialState = EMPTY_STATE;
@@ -190,6 +216,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       mode: "ai",
       evidence: rows.map(toLine),
       scope: { host: new URL(incident.target).hostname, cnameTargets: [...new Set(cnameTargets)] },
+      isDemo: isOwnDemo(incident.target, incident.workspace_id, this.env.DEMO_BASE_URL),
     };
   }
 
@@ -287,6 +314,127 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     return { messageId, source: outcome.source };
   }
 
+  // ---- approvals and actions (TDD §7.6, §8.2–§8.4) ----
+
+  /**
+   * Shows at most one approval card for the run. Idempotent per run. D13: the same action as a pending card is a
+   * duplicate (no new card, the Workflow doesn't wait); a different one supersedes the pending card.
+   */
+  async proposeAction(runId: string, workflowId: string): Promise<Proposal> {
+    const existing = this.sql<ApprovalRow>`SELECT * FROM approvals WHERE run_id = ${runId}`[0];
+    if (existing) return { approvalId: existing.id, actionId: existing.action_id };
+    const run = this.mustRun(runId);
+    const incident = this.mustIncident();
+    if (!run.findings_json) return { approvalId: null, actionId: null };
+    const findings = JSON.parse(run.findings_json) as Findings;
+    const actionId = pickAction(findings, {
+      target: incident.target,
+      workspaceId: incident.workspace_id,
+      demoBaseUrl: this.env.DEMO_BASE_URL,
+      category: findings.category,
+      status: incident.status,
+    });
+    if (!actionId) return { approvalId: null, actionId: null };
+
+    const pending = this.sql<ApprovalRow>`SELECT * FROM approvals WHERE status = 'pending'`;
+    if (pending.some((a) => a.action_id === actionId)) {
+      this.event("proposal_deduped", { runId, actionId });
+      this.syncState();
+      return { approvalId: null, actionId };
+    }
+    const now = Date.now();
+    for (const old of pending) {
+      this.sql`UPDATE approvals SET status = 'superseded', decided_at = ${now} WHERE id = ${old.id}`;
+      this.event("approval", { approvalId: old.id, status: "superseded" });
+    }
+    const approvalId = newId();
+    this.sql`INSERT INTO approvals (id, run_id, action_id, status, workflow_id, created_at)
+      VALUES (${approvalId}, ${runId}, ${actionId}, 'pending', ${workflowId}, ${now})`;
+    this.event("approval", { approvalId, status: "pending", actionId });
+    if (incident.status === "investigating") await this.transition("awaiting_approval", "action proposed");
+    else {
+      this.touch();
+      this.syncState();
+    }
+    // After the new card is stored, so a slow call can't leave the incident without one.
+    for (const old of pending) await this.tellWorkflow(old, false, "superseded");
+    return { approvalId, actionId };
+  }
+
+  /** The Workflow's outcome for a card that didn't run (rejected, expired) or whose action failed. First decision wins. */
+  async recordApprovalOutcome(approvalId: string, decision: Decision, detail?: string): Promise<void> {
+    const a = this.mustApproval(approvalId);
+    const now = Date.now();
+    if (decision === "failed") {
+      if (a.status !== "approved") return;
+      this.setOutcome(a.id, { ok: false, text: `The action failed: ${detail ?? "unknown error"}. Nothing was changed.` });
+    } else if (a.status === "pending" || (decision === "expired" && a.status === "approved" && !a.outcome_json)) {
+      // An approve that raced the timeout never ran, so the card says expired.
+      const text = decision === "expired" ? "No action taken: the approval expired after 24 hours." : "Rejected: no action taken.";
+      this.sql`UPDATE approvals SET status = ${decision}, decided_at = ${now}, outcome_json = ${JSON.stringify({ ok: false, text })} WHERE id = ${a.id}`;
+      this.event("approval", { approvalId: a.id, status: decision });
+    } else return;
+    await this.leaveAwaitingApproval(decision === "failed" ? "action failed" : `approval ${decision}`);
+  }
+
+  /** Runs an approved action (FR-20). Idempotent, so a retried Workflow step is harmless. */
+  async executeAction(approvalId: string): Promise<ActionOutcome> {
+    const a = this.mustApproval(approvalId);
+    if (a.status !== "approved") throw new Error(`approval ${approvalId} is ${a.status}`);
+    const out = await execute(a.action_id, this.env, this.mustIncident().workspace_id);
+    this.setOutcome(a.id, out);
+    this.event("action_executed", { approvalId, actionId: a.action_id, ok: out.ok });
+    this.touch();
+    this.syncState();
+    return out;
+  }
+
+  /**
+   * Re-checks the target after an action (FR-23). The quick check runs here, not in the Workflow, so its fetches
+   * don't use the run's subrequest budget. A pass → mitigated and the monitor starts; a fail → investigating.
+   */
+  async afterAction(runId: string, approvalId: string): Promise<VerifyResult> {
+    this.mustRun(runId);
+    const a = this.mustApproval(approvalId);
+    const prior = a.outcome_json ? (JSON.parse(a.outcome_json) as ActionOutcome & { verified?: boolean }) : null;
+    if (prior?.verified !== undefined) return { pass: prior.verified, text: prior.text };
+
+    const v = await this.quickCheck();
+    const text = `${prior?.text ? `${prior.text} ` : ""}${verifyText(v)}`;
+    this.sql`UPDATE approvals SET outcome_json = ${JSON.stringify({ ok: v.pass, text, verified: v.pass })} WHERE id = ${a.id}`;
+    this.event("verified", { approvalId, pass: v.pass, status: v.status, ms: v.totalMs });
+    const incident = this.mustIncident();
+    if (incident.status === "awaiting_approval") {
+      if (v.pass) {
+        await this.transition("mitigated", "verified after the action");
+        await this.startMonitor(1);
+      } else await this.leaveAwaitingApproval("verify failed after the action");
+    } else this.syncState();
+    return { pass: v.pass, text };
+  }
+
+  /** One monitor tick (D11, TDD §8.4), run by the agent scheduler. Also callable over RPC, which the tests use. */
+  async monitorTick(): Promise<void> {
+    const m = this.sql<MonitorRow>`SELECT * FROM monitor WHERE id = 1`[0];
+    if (!m) return;
+    const incident = this.mustIncident();
+    const v = await this.quickCheck();
+    const r = tick({ ticksLeft: m.ticks_left, passes: m.consecutive_passes }, incident.status, v.pass);
+    this.event("monitor_tick", { pass: v.pass, passes: v.pass ? m.consecutive_passes + 1 : 0, ticksLeft: m.ticks_left - 1 });
+    if (r.monitor) {
+      const next = await this.schedule(MONITOR_TICK_S, "monitorTick");
+      this.sql`UPDATE monitor SET ticks_left = ${r.monitor.ticksLeft}, consecutive_passes = ${r.monitor.passes}, schedule_id = ${next.id} WHERE id = 1`;
+    } else {
+      this.sql`DELETE FROM monitor WHERE id = 1`;
+      if (r.to !== "resolved") this.event("monitor_ended", { reason: "out of ticks" });
+    }
+    if (r.to) await this.transition(r.to, r.to === "resolved" ? "3 passing checks in a row" : v.pass ? "recovered" : "failing again");
+    else {
+      this.touch();
+      this.syncState();
+    }
+  }
+
   /** Ends a run and records why (TDD §8.2). Only the first call counts. */
   async finishRun(runId: string, status: Exclude<RunStatus, "running">, stats: { toolCalls?: number; llmTurns?: number } = {}): Promise<void> {
     const run = this.mustRun(runId);
@@ -319,7 +467,40 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
   async resolve(): Promise<void> {
     this.requireOwner();
     if (this.mustIncident().status === "resolved") return;
+    await this.stopMonitor();
+    // A card can't act on a resolved incident: pending ones end as rejected.
+    const pending = this.sql<ApprovalRow>`SELECT * FROM approvals WHERE status = 'pending'`;
+    const now = Date.now();
+    for (const a of pending) {
+      this.sql`UPDATE approvals SET status = 'rejected', decided_at = ${now},
+        outcome_json = ${JSON.stringify({ ok: false, text: "No action taken: the incident was resolved by hand." })} WHERE id = ${a.id}`;
+      this.event("approval", { approvalId: a.id, status: "rejected" });
+    }
     await this.transition("resolved", "resolved by hand");
+    for (const a of pending) await this.tellWorkflow(a, false, "resolved by hand");
+  }
+
+  /** Approve a card (owner only, D8). Idempotent: a decided card is left alone (D13). */
+  async approve(approvalId: unknown): Promise<{ status: ApprovalStatus }> {
+    this.requireOwner();
+    const a = this.mustApproval(approvalId);
+    if (a.status !== "pending") return { status: a.status };
+    this.sql`UPDATE approvals SET status = 'approved', decided_at = ${Date.now()} WHERE id = ${a.id}`;
+    this.event("approval", { approvalId: a.id, status: "approved" });
+    this.touch();
+    this.syncState();
+    if (!(await this.tellWorkflow(a, true))) await this.recordApprovalOutcome(a.id, "failed", "the waiting run couldn't be reached");
+    return { status: "approved" };
+  }
+
+  /** Reject a card (owner only). The incident goes back to investigating right away; the Workflow then ends. */
+  async reject(approvalId: unknown): Promise<{ status: ApprovalStatus }> {
+    this.requireOwner();
+    const a = this.mustApproval(approvalId);
+    if (a.status !== "pending") return { status: a.status };
+    await this.recordApprovalOutcome(a.id, "rejected");
+    await this.tellWorkflow(a, false, "rejected");
+    return { status: "rejected" };
   }
 
   async markRead(): Promise<void> {
@@ -353,6 +534,59 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     this.syncState();
     await this.upsertIndex();
     // WP-19: NotifyWorkflow for watch incidents on mitigated/resolved (D18).
+  }
+
+  private mustApproval(id: unknown): ApprovalRow {
+    const a = typeof id === "string" ? this.sql<ApprovalRow>`SELECT * FROM approvals WHERE id = ${id}`[0] : undefined;
+    if (!a) throw new Error("unknown_approval");
+    return a;
+  }
+
+  private setOutcome(id: string, outcome: ActionOutcome) {
+    this.sql`UPDATE approvals SET outcome_json = ${JSON.stringify(outcome)} WHERE id = ${id}`;
+  }
+
+  /** Back to investigating once no card is pending any more (a newer card keeps it awaiting approval). */
+  private async leaveAwaitingApproval(reason: string) {
+    const stillPending = this.sql`SELECT 1 FROM approvals WHERE status = 'pending'`.length > 0;
+    if (this.mustIncident().status === "awaiting_approval" && !stillPending) await this.transition("investigating", reason);
+    else {
+      this.touch();
+      this.syncState();
+    }
+  }
+
+  /** Resumes or ends the card's waiting Workflow. Returns false if it couldn't be reached (logged, never thrown). */
+  private async tellWorkflow(a: ApprovalRow, approved: boolean, reason?: string): Promise<boolean> {
+    if (!a.workflow_id) return false;
+    try {
+      if (approved) await this.approveWorkflow(a.workflow_id, { metadata: { approvalId: a.id } });
+      else await this.rejectWorkflow(a.workflow_id, { reason: reason ?? "rejected" });
+      return true;
+    } catch (e) {
+      console.warn("could not reach the approval's workflow", a.workflow_id, (e as Error).message);
+      return false;
+    }
+  }
+
+  private quickCheck(): Promise<QuickCheckResult> {
+    const allowOrigin = devAllowOrigin(this.env);
+    return quickCheck(this.mustIncident().target, { fetch: (input, init) => fetch(input, init), ...(allowOrigin ? { allowOrigin } : {}) });
+  }
+
+  private async startMonitor(passes: number) {
+    await this.stopMonitor();
+    const s = await this.schedule(MONITOR_TICK_S, "monitorTick");
+    this.sql`INSERT INTO monitor (id, kind, ticks_left, consecutive_passes, schedule_id) VALUES (1, 'post_action', ${MONITOR_MAX_TICKS}, ${passes}, ${s.id})`;
+    this.event("monitor_started", { ticks: MONITOR_MAX_TICKS, everySec: MONITOR_TICK_S });
+    this.syncState();
+  }
+
+  private async stopMonitor() {
+    const m = this.sql<MonitorRow>`SELECT * FROM monitor WHERE id = 1`[0];
+    if (!m) return;
+    if (m.schedule_id) await this.cancelSchedule(m.schedule_id);
+    this.sql`DELETE FROM monitor WHERE id = 1`;
   }
 
   private incident(): IncidentRow | undefined {
@@ -410,8 +644,8 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     const checks = this.sql<CheckRow>`SELECT * FROM checks ORDER BY rowid DESC LIMIT ${STATE_CAPS.checks}`.reverse();
     const messages = this.sql<{ id: string; run_id: string | null; role: "user" | "assistant" | "system"; content: string; created_at: number }>`
       SELECT id, run_id, role, content, created_at FROM messages ORDER BY created_at DESC, rowid DESC LIMIT ${STATE_CAPS.messages}`.reverse();
-    const approvals = this.sql<{ id: string; run_id: string; action_id: string; status: IncidentState["approvals"][number]["status"]; created_at: number; decided_at: number | null }>`
-      SELECT id, run_id, action_id, status, created_at, decided_at FROM approvals ORDER BY created_at DESC LIMIT ${STATE_CAPS.approvals}`;
+    const approvals = this.sql<ApprovalRow & { findings_json: string | null }>`
+      SELECT a.*, r.findings_json FROM approvals a LEFT JOIN runs r ON r.id = a.run_id ORDER BY a.created_at DESC LIMIT ${STATE_CAPS.approvals}`;
     const timeline = this.sql<{ id: number; ts: number; event_type: string; detail_json: string }>`
       SELECT * FROM timeline ORDER BY id DESC LIMIT ${STATE_CAPS.timeline}`.reverse();
     const monitor = this.sql<{ kind: "post_action" | "burst"; ticks_left: number; consecutive_passes: number }>`SELECT * FROM monitor WHERE id = 1`[0];
@@ -437,7 +671,22 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
         ...(c.finished_at ? { finishedAt: c.finished_at } : {}),
       })),
       messages: messages.map((m) => ({ id: m.id, runId: m.run_id, role: m.role, content: m.content, createdAt: m.created_at })),
-      approvals: approvals.map((a) => ({ id: a.id, runId: a.run_id, actionId: a.action_id, status: a.status, createdAt: a.created_at, ...(a.decided_at ? { decidedAt: a.decided_at } : {}) })),
+      approvals: approvals.map((a) => {
+        const why = a.findings_json ? (JSON.parse(a.findings_json) as Findings) : null;
+        const outcome = a.outcome_json ? (JSON.parse(a.outcome_json) as ActionOutcome & { verified?: boolean }) : null;
+        return {
+          id: a.id,
+          runId: a.run_id,
+          actionId: a.action_id,
+          title: ACTION_TITLES[a.action_id] ?? a.action_id,
+          status: a.status,
+          cause: why?.cause ?? "",
+          evidence: why?.evidence ?? [],
+          ...(outcome ? { outcome: { ok: outcome.ok, text: outcome.text, ...(outcome.verified !== undefined ? { verified: outcome.verified } : {}) } } : {}),
+          createdAt: a.created_at,
+          ...(a.decided_at ? { decidedAt: a.decided_at } : {}),
+        };
+      }),
       timeline: timeline.map((t) => ({ id: t.id, ts: t.ts, type: t.event_type, detail: JSON.parse(t.detail_json) as Record<string, Scalar> })),
       monitor: monitor ? { kind: monitor.kind, passes: monitor.consecutive_passes, ticksLeft: monitor.ticks_left } : null,
       hasPostmortem: this.sql`SELECT 1 FROM postmortem WHERE id = 1`.length > 0,
@@ -466,8 +715,12 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
  * WebSocket callables. `@callable()` only records the method in the SDK's registry (its decorator context
  * is unused), so registering by hand avoids a Babel decorator transform in Vite and Vitest.
  */
-for (const name of ["sendMessage", "resolve", "markRead", "getEvidence", "whoami"] as const) {
+for (const name of ["sendMessage", "resolve", "markRead", "getEvidence", "whoami", "approve", "reject"] as const) {
   callable()(IncidentAgent.prototype[name] as (...args: unknown[]) => unknown, undefined as unknown as ClassMethodDecoratorContext);
+}
+
+function verifyText(v: QuickCheckResult): string {
+  return v.pass ? `Verified: HTTP ${v.status} in ${v.totalMs} ms.` : `Still failing after the action (${v.reason ?? "check failed"}).`;
 }
 
 function toResult(r: CheckRow): ToolResult {

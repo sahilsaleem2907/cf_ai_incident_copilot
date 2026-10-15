@@ -1,4 +1,4 @@
-import type { CheckView, IncidentState, MessageView } from "../../worker/agent/state";
+import type { ApprovalView, CheckView, IncidentState, MessageView } from "../../worker/agent/state";
 import type { Streams } from "./stream";
 
 export type CheckDisplayStatus = CheckView["status"];
@@ -6,14 +6,16 @@ export type CheckDisplayStatus = CheckView["status"];
 export type FeedItem =
   | { kind: "message"; key: string; message: MessageView }
   | { kind: "check"; key: string; check: CheckView; status: CheckDisplayStatus }
-  | { kind: "stream"; key: string; messageId: string; text: string };
+  | { kind: "stream"; key: string; messageId: string; text: string }
+  | { kind: "approval"; key: string; approval: ApprovalView };
 
 /**
  * The chat in run order: each run's opening message, then that run's checks, then its narration. While a
  * narration is still streaming, its live buffer takes the narration's place. Messages without a run (and
- * checks of runs without an opening message) keep their time order.
+ * checks of runs without an opening message) keep their time order. An approval card follows its run's
+ * narration (the run proposes it right after narrating).
  */
-export function buildFeed(state: Pick<IncidentState, "messages" | "checks" | "activeRunId">, streams: Streams): FeedItem[] {
+export function buildFeed(state: Pick<IncidentState, "messages" | "checks" | "activeRunId" | "approvals">, streams: Streams): FeedItem[] {
   const stored = new Set(state.messages.map((m) => m.id));
   const checksByRun = new Map<string, CheckView[]>();
   for (const c of state.checks) checksByRun.set(c.runId, [...(checksByRun.get(c.runId) ?? []), c]);
@@ -31,10 +33,23 @@ export function buildFeed(state: Pick<IncidentState, "messages" | "checks" | "ac
     if (stream && !stored.has(stream.messageId)) items.push({ kind: "stream", key: `stream-${stream.messageId}`, messageId: stream.messageId, text: stream.text });
   };
 
+  const approvals = [...state.approvals].sort((a, b) => a.createdAt - b.createdAt);
+  const placed = new Set<string>();
+  const cardsFor = (runId: string) => {
+    for (const a of approvals) {
+      if (a.runId !== runId || placed.has(a.id)) continue;
+      placed.add(a.id);
+      items.push({ kind: "approval", key: `approval-${a.id}`, approval: a });
+    }
+  };
+
   for (const m of state.messages) {
     items.push({ kind: "message", key: `msg-${m.id}`, message: m });
     if (m.runId && m.role !== "assistant" && !opened.has(m.runId)) openRun(m.runId);
+    if (m.runId && m.role === "assistant") cardsFor(m.runId);
   }
   for (const runId of checksByRun.keys()) if (!opened.has(runId)) openRun(runId);
+  // Cards whose narration fell out of the message window still show, oldest first.
+  for (const a of approvals) cardsFor(a.runId);
   return items;
 }

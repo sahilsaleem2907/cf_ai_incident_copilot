@@ -3,7 +3,7 @@ import type { RunContext } from "../../worker/agent/IncidentAgent";
 import type { Findings } from "../../worker/diagnosis/categories";
 import { LlmUnavailable, type LlmRequest, type LlmResult } from "../../worker/llm/models";
 import { salvageFindings } from "../../worker/loop/findings";
-import { DEFAULT_LIMITS, diagnose, validateCalls, type DiagnoseLimits, type RunIO } from "../../worker/loop/plan";
+import { DEFAULT_LIMITS, diagnose, validateCalls, type ApprovalDecision, type DiagnoseLimits, type RunIO } from "../../worker/loop/plan";
 import type { ToolName, ToolResult } from "../../worker/tools/types";
 
 const TARGET = "https://shop.example.com/";
@@ -26,13 +26,32 @@ const submit = (evidence: string[], extra: Partial<Findings> = {}): [string, unk
 const RULES: Findings = { category: "inconclusive", confidence: "low", evidence: [], cause: "Rules.", next_steps: ["Retry."], actions: ["restore_demo_service"] };
 
 /** A fake Workflow: steps run inline, an in-memory agent, scripted model turns and a clock that ticks per step. */
-function harness(o: { replies?: Reply[]; tool?: (name: ToolName, id: string) => ToolResult | Error; ctx?: Partial<RunContext>; tick?: number; failSetFindings?: boolean } = {}) {
+function harness(
+  o: {
+    replies?: Reply[];
+    tool?: (name: ToolName, id: string) => ToolResult | Error;
+    ctx?: Partial<RunContext>;
+    tick?: number;
+    failSetFindings?: boolean;
+    /** A card is proposed (approvalId "a-1") and decided like this; omitted → nothing proposed. */
+    approval?: ApprovalDecision;
+    actionFails?: boolean;
+    verifyPass?: boolean;
+  } = {},
+) {
   let t = 1_000_000;
   const steps: string[] = [];
   const requests: LlmRequest[] = [];
   const counters: Record<string, number> = {};
   const recorded: ToolResult[] = [];
-  const log: { findings?: { f: Findings; mode: string }; narrated?: boolean; finish?: { status: string; stats: unknown }; ruleArgs?: unknown } = {};
+  const log: {
+    findings?: { f: Findings; mode: string };
+    narrated?: boolean;
+    finish?: { status: string; stats: unknown };
+    ruleArgs?: unknown;
+    proposedBy?: string;
+    outcome?: { decision: string; detail?: string };
+  } = {};
   const replies = [...(o.replies ?? [])];
 
   const io: RunIO = {
@@ -42,7 +61,18 @@ function harness(o: { replies?: Reply[]; tool?: (name: ToolName, id: string) => 
     },
     now: () => (t += o.tick ?? 100),
     agent: {
-      getRunContext: async (runId) => ({ incidentId: "i", runId, target: TARGET, question: "why is it down?", kind: "initial", mode: "ai", evidence: [], scope: { host: HOST, cnameTargets: [] }, ...o.ctx }),
+      getRunContext: async (runId) => ({
+        incidentId: "i",
+        runId,
+        target: TARGET,
+        question: "why is it down?",
+        kind: "initial",
+        mode: "ai",
+        evidence: [],
+        scope: { host: HOST, cnameTargets: [] },
+        isDemo: false,
+        ...o.ctx,
+      }),
       addPendingChecks: async (_runId, _turn, calls) =>
         calls.map((c) => {
           const prefix = c.tool === "dns_lookup" ? "dns" : "http";
@@ -60,6 +90,21 @@ function harness(o: { replies?: Reply[]; tool?: (name: ToolName, id: string) => 
       },
       narrate: async () => void (log.narrated = true),
       finishRun: async (_runId, status, stats) => void (log.finish = { status, stats: { ...stats } }),
+      proposeAction: async (_runId, workflowId) => {
+        log.proposedBy = workflowId;
+        return o.approval ? { approvalId: "a-1", actionId: "restore_demo_service" } : { approvalId: null, actionId: null };
+      },
+      recordApprovalOutcome: async (_id, decision, detail) => void (log.outcome = { decision, ...(detail ? { detail } : {}) }),
+      executeAction: async () => {
+        if (o.actionFails) throw new Error("demo unreachable");
+        return { ok: true, text: "Restored." };
+      },
+      afterAction: async () => ({ pass: o.verifyPass ?? true, text: "Verified." }),
+    },
+    workflowId: "diag-i-1",
+    waitForApproval: async () => {
+      steps.push("wait-for-approval");
+      return o.approval ?? "expired";
     },
     llm: async (req) => {
       requests.push(req);
@@ -84,7 +129,7 @@ describe("diagnose: normal runs", () => {
     const h = harness({ replies: [reply(dns(), http()), reply(submit(["http-1", "dns-1"]))] });
     const out = await run(h);
     expect(out).toEqual({ status: "done", mode: "ai", toolCalls: 2, llmTurns: 2, category: "origin_5xx" });
-    expect(h.steps).toEqual(["context", "llm-turn-1", "pending-1", "tool-dns-1", "tool-http-1", "llm-turn-2", "findings", "narrate", "finish"]);
+    expect(h.steps).toEqual(["context", "llm-turn-1", "pending-1", "tool-dns-1", "tool-http-1", "llm-turn-2", "findings", "narrate", "propose", "finish"]);
     expect(h.log.findings).toEqual({ f: expect.objectContaining({ category: "origin_5xx", evidence: ["http-1", "dns-1"] }), mode: "ai" });
     expect(h.log.finish).toEqual({ status: "done", stats: { toolCalls: 2, llmTurns: 2 } });
     expect(h.requests[0]).toMatchObject({ toolChoice: "required" });
@@ -141,7 +186,7 @@ describe("diagnose: every limit still ends in findings (TDD §8.2)", () => {
     const h = harness({ replies: [new LlmUnavailable("failed", "both models down")] });
     const out = await run(h);
     expect(h.recorded.map((r) => r.tool)).toEqual(["dns_lookup", "http_probe"]);
-    expect(h.steps).toEqual(["context", "llm-turn-1", "pending-rules", "tool-dns-1", "tool-http-1", "rules", "findings", "narrate", "finish"]);
+    expect(h.steps).toEqual(["context", "llm-turn-1", "pending-rules", "tool-dns-1", "tool-http-1", "rules", "findings", "narrate", "propose", "finish"]);
     expect(out).toMatchObject({ status: "llm_unavailable", mode: "rule_based", llmTurns: 1 });
     expect(h.log.finish?.status).toBe("llm_unavailable");
   });
@@ -179,13 +224,14 @@ describe("diagnose: every limit still ends in findings (TDD §8.2)", () => {
   });
 
   it("budget → skips what doesn't fit, finishes with the model's findings, limit_budget; the tail still runs", async () => {
-    // 1 context + 4 tail + 3 per turn: 18 leaves room for one http probe (20 cap) only if… it doesn't.
+    // 1 context + 8 tail + 3 for turn 1 + 5 for the DNS check = 17 of 22: the http probe (20 cap) can't fit,
+    // and 5 left is too little for another tool + turn, so turn 2 is finish-only.
     const h = harness({ replies: [reply(dns(), http()), reply(submit(["dns-1"]))] });
-    const out = await run(h, { budget: 18 });
+    const out = await run(h, { budget: 22 });
     expect(h.recorded.map((r) => r.tool)).toEqual(["dns_lookup"]);
     expect(offered(h.requests[1]!)).toEqual(["submit_findings"]);
     expect(out).toMatchObject({ status: "limit_budget", category: "origin_5xx" });
-    expect(h.steps.slice(-3)).toEqual(["findings", "narrate", "finish"]);
+    expect(h.steps.slice(-4)).toEqual(["findings", "narrate", "propose", "finish"]);
   });
 
   it("deadline → no more LLM turns; rules keep the evidence so far, limit_deadline", async () => {
@@ -210,6 +256,52 @@ describe("diagnose: every limit still ends in findings (TDD §8.2)", () => {
     expect(out.status).toBe("failed");
     expect(h.log.finish?.status).toBe("failed");
     expect(h.steps.at(-1)).toBe("finish-failed");
+  });
+});
+
+describe("diagnose: approval tail (TDD §8.2)", () => {
+  const broken = () => [reply(http()), reply(submit(["http-1"]))];
+
+  it("doesn't wait when nothing is proposed", async () => {
+    const h = harness({ replies: broken() });
+    const out = await run(h);
+    expect(h.steps).not.toContain("wait-for-approval");
+    expect(out.action).toBeUndefined();
+    expect(h.log.proposedBy).toBe("diag-i-1");
+  });
+
+  it("finishes the run before waiting, then acts and verifies on approval", async () => {
+    const h = harness({ replies: broken(), approval: "approved" });
+    const out = await run(h);
+    expect(h.steps.slice(-6)).toEqual(["narrate", "propose", "finish", "wait-for-approval", "action", "verify"]);
+    expect(out).toMatchObject({ status: "done", category: "origin_5xx", action: { approvalId: "a-1", decision: "approved", verified: true } });
+  });
+
+  it("reports a verify that still fails", async () => {
+    const out = await run(harness({ replies: broken(), approval: "approved", verifyPass: false }));
+    expect(out.action).toEqual({ approvalId: "a-1", decision: "approved", verified: false });
+  });
+
+  it.each(["rejected", "expired"] as const)("records a %s card and runs nothing", async (decision) => {
+    const h = harness({ replies: broken(), approval: decision });
+    const out = await run(h);
+    expect(h.steps.slice(-2)).toEqual(["wait-for-approval", `approval-${decision}`]);
+    expect(h.log.outcome).toEqual({ decision });
+    expect(out.action).toEqual({ approvalId: "a-1", decision });
+  });
+
+  it("records a failed action and skips verify", async () => {
+    const h = harness({ replies: broken(), approval: "approved", actionFails: true });
+    const out = await run(h);
+    expect(h.steps.slice(-3)).toEqual(["wait-for-approval", "action", "action-failed"]);
+    expect(h.log.outcome).toEqual({ decision: "failed", detail: "demo unreachable" });
+    expect(out.action).toEqual({ approvalId: "a-1", decision: "approved", verified: false });
+  });
+
+  it("tells the model when the target is the demo", async () => {
+    const h = harness({ replies: broken(), ctx: { isDemo: true } });
+    await run(h);
+    expect(h.requests[0]!.system).toContain("This target is the user's own demo service");
   });
 });
 

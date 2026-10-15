@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { CheckView, IncidentState, MessageView } from "../../../worker/agent/state";
+import type { ApprovalView, CheckView, IncidentState, MessageView } from "../../../worker/agent/state";
+import { cardState, whyText } from "../../../web/lib/approval";
 import { buildFeed } from "../../../web/lib/feed";
 import { applyFrame, parseFrame, type Streams } from "../../../web/lib/stream";
 
@@ -29,7 +30,18 @@ describe("stream frames", () => {
 
 const msg = (id: string, runId: string | null, role: MessageView["role"], t: number): MessageView => ({ id, runId, role, content: id, createdAt: t });
 const check = (evidenceId: string, runId: string, status: CheckView["status"] = "pass"): CheckView => ({ evidenceId, runId, tool: "http_probe", label: "HTTP probe", status, summary: "", startedAt: 0 });
-const state = (p: Partial<IncidentState>) => ({ messages: [], checks: [], activeRunId: null, ...p });
+const approval = (id: string, runId: string, createdAt: number, over: Partial<ApprovalView> = {}): ApprovalView => ({
+  id,
+  runId,
+  actionId: "restore_demo_service",
+  title: "Restore",
+  status: "pending",
+  cause: "The origin returns 500.",
+  evidence: ["http-1"],
+  createdAt,
+  ...over,
+});
+const state = (p: Partial<IncidentState>) => ({ messages: [], checks: [], activeRunId: null, approvals: [], ...p });
 const keys = (items: ReturnType<typeof buildFeed>) => items.map((i) => i.key);
 
 describe("buildFeed", () => {
@@ -63,5 +75,34 @@ describe("buildFeed", () => {
   it("keeps a pending check of a finished run as pending, and shows orphan checks at the end", () => {
     const feed = buildFeed(state({ messages: [msg("sys", null, "system", 0)], checks: [check("http-1", "run-9", "pending")] }), {});
     expect(feed).toEqual([expect.objectContaining({ key: "msg-sys" }), expect.objectContaining({ key: "check-http-1", status: "pending" })]);
+  });
+});
+
+describe("approval cards", () => {
+  it("follow their run's narration, and survive a narration that left the message window", () => {
+    const feed = buildFeed(
+      state({
+        messages: [msg("u1", "run-1", "user", 1), msg("narr-run-1", "run-1", "assistant", 5), msg("u2", "run-2", "user", 6), msg("narr-run-2", "run-2", "assistant", 9)],
+        approvals: [approval("a2", "run-2", 10), approval("a1", "run-1", 6, { status: "superseded" }), approval("a0", "run-0", 0, { status: "expired" })],
+      }),
+      {},
+    );
+    expect(keys(feed)).toEqual(["msg-u1", "msg-narr-run-1", "approval-a1", "msg-u2", "msg-narr-run-2", "approval-a2", "approval-a0"]);
+  });
+
+  it("say their state in words", () => {
+    expect(cardState({ status: "pending" }).text).toBe("Waiting for your approval");
+    expect(cardState({ status: "approved" })).toEqual({ text: "Approved, working on it…", tone: "working" });
+    expect(cardState({ status: "approved", outcome: { ok: true, text: "" } })).toEqual({ text: "Approved, checking it…", tone: "working" });
+    expect(cardState({ status: "approved", outcome: { ok: true, text: "", verified: true } })).toEqual({ text: "Approved and verified", tone: "good" });
+    expect(cardState({ status: "approved", outcome: { ok: false, text: "", verified: false } }).text).toBe("Approved, but still failing");
+    expect(cardState({ status: "approved", outcome: { ok: false, text: "" } }).text).toBe("Approved, but the action failed");
+    expect(cardState({ status: "expired" }).text).toBe("Expired, no action taken");
+    expect(cardState({ status: "superseded" }).tone).toBe("closed");
+  });
+
+  it("cite the evidence in the why", () => {
+    expect(whyText({ cause: "The origin returns 500.", evidence: ["http-1", "dns-1"] })).toBe("The origin returns 500 [http-1] [dns-1].");
+    expect(whyText({ cause: "Cited already [http-1].", evidence: ["http-1"] })).toBe("Cited already [http-1].");
   });
 });

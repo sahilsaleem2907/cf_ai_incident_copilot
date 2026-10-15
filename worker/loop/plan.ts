@@ -1,4 +1,5 @@
-import type { RunContext } from "../agent/IncidentAgent";
+import type { Decision, Proposal, RunContext, VerifyResult } from "../agent/IncidentAgent";
+import type { ActionOutcome } from "../actions/catalog";
 import type { RunMode, RunStatus } from "../agent/state";
 import type { Findings } from "../diagnosis/categories";
 import { LlmUnavailable, type LlmRequest, type LlmResult, type ToolCall } from "../llm/models";
@@ -10,14 +11,17 @@ import type { ToolName, ToolResult } from "../tools/types";
 import { MAX_PLAN_TURNS, MAX_TOOL_CALLS, RUN_DEADLINE_MS, SUBREQUEST_BUDGET, SubrequestBudget } from "./budget";
 import { parseFindings, SUBMIT_FINDINGS } from "./findings";
 
-/** Bounds for one run (TDD §5.2). `tailReserve` keeps room for rules, findings, narrate and finish. */
+/**
+ * Bounds for one run (TDD §5.2). `tailReserve` keeps room for rules, findings, narrate, finish and the approval
+ * tail (propose, outcome, action, verify). Each is one agent call: verify's own fetches run inside the agent.
+ */
 export type DiagnoseLimits = { maxTurns: number; maxTools: number; deadlineMs: number; budget: number; tailReserve: number };
 export const DEFAULT_LIMITS: DiagnoseLimits = {
   maxTurns: MAX_PLAN_TURNS,
   maxTools: MAX_TOOL_CALLS,
   deadlineMs: RUN_DEADLINE_MS,
   budget: SUBREQUEST_BUDGET,
-  tailReserve: 4,
+  tailReserve: 8,
 };
 /** gpt-oss spends part of `max_tokens` on reasoning; a cut-off submit_findings would be wasted. */
 export const PLAN_MAX_TOKENS = 1500;
@@ -37,7 +41,13 @@ export type RunAgent = {
   setFindings(runId: string, findings: Findings, mode: RunMode): Promise<void>;
   narrate(runId: string): Promise<unknown>;
   finishRun(runId: string, status: Exclude<RunStatus, "running">, stats: { toolCalls: number; llmTurns: number }): Promise<void>;
+  proposeAction(runId: string, workflowId: string): Promise<Proposal>;
+  recordApprovalOutcome(approvalId: string, decision: Decision, detail?: string): Promise<void>;
+  executeAction(approvalId: string): Promise<ActionOutcome>;
+  afterAction(runId: string, approvalId: string): Promise<VerifyResult>;
 };
+
+export type ApprovalDecision = "approved" | "rejected" | "expired";
 
 /**
  * What the Workflow provides. `step` is `step.do` (durable, retried; results replay after a restart);
@@ -49,6 +59,10 @@ export type RunIO = {
   agent: RunAgent;
   llm(req: LlmRequest): Promise<LlmResult>;
   tool(name: ToolName, args: unknown, evidenceId: string, scope: Scope): Promise<{ result: ToolResult; subrequests: number }>;
+  /** This Workflow instance's ID, stored on the approval so the agent can resume it. */
+  workflowId: string;
+  /** Waits (durably, up to 24 h) for the card's decision. A rejection or a timeout is returned, not thrown. */
+  waitForApproval(): Promise<ApprovalDecision>;
 };
 
 export type ValidCall = { tool: ToolName; args: unknown; cap: number };
@@ -109,7 +123,15 @@ type TurnResult =
 
 type CheckOut = { line: EvidenceLine; tool: ToolName; cnameTargets: string[]; subrequests: number; at: number };
 
-export type RunSummary = { status: Exclude<RunStatus, "running">; mode: RunMode; toolCalls: number; llmTurns: number; category?: string };
+export type ActionSummary = { approvalId: string; decision: ApprovalDecision | "error"; verified?: boolean };
+export type RunSummary = {
+  status: Exclude<RunStatus, "running">;
+  mode: RunMode;
+  toolCalls: number;
+  llmTurns: number;
+  category?: string;
+  action?: ActionSummary;
+};
 
 /**
  * One bounded diagnosis run (TDD §8.2). Every limit ends in findings built from what was gathered
@@ -117,6 +139,13 @@ export type RunSummary = { status: Exclude<RunStatus, "running">; mode: RunMode;
  * unavailable or a second invalid call go to the rules, which keep the model's valid fields.
  */
 export async function diagnose(io: RunIO, runId: string, limits: DiagnoseLimits = DEFAULT_LIMITS): Promise<RunSummary> {
+  const { summary, approvalId } = await investigate(io, runId, limits);
+  if (!approvalId) return summary;
+  return { ...summary, action: await approvalTail(io, runId, approvalId) };
+}
+
+/** Plan, check, find, narrate, propose, finish. The run is finished before any approval wait (D13). */
+async function investigate(io: RunIO, runId: string, limits: DiagnoseLimits): Promise<{ summary: RunSummary; approvalId: string | null }> {
   const stats = { toolCalls: 0, llmTurns: 0 };
   let mode: RunMode = "ai";
   try {
@@ -189,7 +218,7 @@ export async function diagnose(io: RunIO, runId: string, limits: DiagnoseLimits 
         const r = await io.step(`llm-turn-${turn}`, async (): Promise<TurnResult> => {
           try {
             const res = await io.llm({
-              system: planningSystem({ target: ctx.target, toolsLeft: finishReason ? 0 : toolsLeft, turnsLeft: limits.maxTurns - turn + 1 }),
+              system: planningSystem({ target: ctx.target, toolsLeft: finishReason ? 0 : toolsLeft, turnsLeft: limits.maxTurns - turn + 1, isDemo: ctx.isDemo }),
               messages: planningUser({ question: ctx.question, evidence, ...(feedback ? { invalid: feedback } : {}) }),
               tools: llmTools({ finishOnly: !!finishReason }),
               toolChoice: "required",
@@ -270,10 +299,10 @@ export async function diagnose(io: RunIO, runId: string, limits: DiagnoseLimits 
     const final = findings;
     await io.step("findings", () => io.agent.setFindings(runId, final, mode));
     await io.step("narrate", () => io.agent.narrate(runId));
-    // WP-12: propose an action and wait for approval here.
+    const proposal = await io.step("propose", () => io.agent.proposeAction(runId, io.workflowId));
     const status = limit ?? (mode === "rule_based" && ctx.mode === "ai" ? "llm_unavailable" : "done");
     await io.step("finish", () => io.agent.finishRun(runId, status, stats));
-    return { status, mode, ...stats, category: final.category };
+    return { summary: { status, mode, ...stats, category: final.category }, approvalId: proposal.approvalId };
   } catch (e) {
     console.error("diagnosis run failed", runId, (e as Error).message);
     try {
@@ -281,7 +310,37 @@ export async function diagnose(io: RunIO, runId: string, limits: DiagnoseLimits 
     } catch {
       // Nothing more to do: the agent's activeRunId stays set until someone resolves the incident.
     }
-    return { status: "failed", mode, ...stats };
+    return { summary: { status: "failed", mode, ...stats }, approvalId: null };
+  }
+}
+
+/**
+ * The approval tail (TDD §8.2, FR-20 to FR-23): wait for the human, then run the action and verify it. Rejected
+ * or expired cards are recorded, and nothing runs. A failure here never touches the finished run.
+ */
+async function approvalTail(io: RunIO, runId: string, approvalId: string): Promise<ActionSummary> {
+  try {
+    const decision = await io.waitForApproval();
+    if (decision !== "approved") {
+      await io.step(`approval-${decision}`, () => io.agent.recordApprovalOutcome(approvalId, decision));
+      return { approvalId, decision };
+    }
+    let out: ActionOutcome;
+    try {
+      out = await io.step("action", () => io.agent.executeAction(approvalId));
+    } catch (e) {
+      out = { ok: false, text: (e as Error).message };
+    }
+    if (!out.ok) {
+      const detail = out.text;
+      await io.step("action-failed", () => io.agent.recordApprovalOutcome(approvalId, "failed", detail));
+      return { approvalId, decision, verified: false };
+    }
+    const v = await io.step("verify", () => io.agent.afterAction(runId, approvalId));
+    return { approvalId, decision, verified: v.pass };
+  } catch (e) {
+    console.error("approval tail failed", runId, approvalId, (e as Error).message);
+    return { approvalId, decision: "error" };
   }
 }
 

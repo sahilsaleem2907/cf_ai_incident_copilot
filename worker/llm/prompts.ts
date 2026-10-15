@@ -11,10 +11,10 @@ const list = (entries: Record<string, string>) =>
     .join("\n");
 
 /** Planning system prompt (TDD §9.1). The `Target:` line is also what the mock reads. */
-export function planningSystem(p: { target: string; toolsLeft: number; turnsLeft: number }): string {
+export function planningSystem(p: { target: string; toolsLeft: number; turnsLeft: number; isDemo?: boolean }): string {
   const host = new URL(p.target).hostname;
   return `You are an on-call triage assistant for one endpoint.
-Target: ${p.target}
+Target: ${p.target}${p.isDemo ? "\nThis target is the user's own demo service. If it isn't healthy, propose restore_demo_service." : ""}
 
 Rules:
 - Only investigate ${host}. http_probe accepts any path on ${host}; dns_lookup accepts ${host} or CNAME targets found in this incident's DNS evidence. Calls for other hosts are refused.

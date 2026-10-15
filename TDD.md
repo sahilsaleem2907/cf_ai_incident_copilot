@@ -248,6 +248,8 @@ interface CheckView { evidenceId: string; tool: ToolName; label: string;
 - `stream_start` resets the client buffer when a retried narration streams again.
 - `syncState()` rebuilds the state from SQL after every change, and `validateStateChange` rejects every client-originated write.
 
+*WP-12:* `ApprovalView` is `{id, runId, actionId, title, status, cause, evidence, outcome?: {ok, text, verified?}, createdAt, decidedAt?}`. `cause` and `evidence` are read from the proposing run's `findings_json`, so an old card keeps its own "why". `outcome` comes from `approvals.outcome_json`, and `verified` is set only once the re-check after the action has run. No schema change was needed.
+
 ### 6.4 IDs
 
 Incident, workspace and approval IDs are 128-bit random hex values (`crypto.getRandomValues`). Evidence IDs are `<tool>-<n>`, with prefixes `dns`, `http`, `cert` and `status`, and n is unique per incident. Workflow IDs are `diag-<incidentId>-<seq>`, `watch-<watchId>-<epochMinute>` and `notify-<incidentId>-<status>`.
@@ -279,9 +281,11 @@ addPendingChecks(runId, calls: PlannedCall[]): Promise<string[]>   // allocates 
 recordCheck(evidenceId, result: ToolResult): Promise<void>         // upsert → idempotent
 setFindings(runId, f: Findings): Promise<void>
 narrate(runId): Promise<{ messageId: string }>                    // streams; idempotent per runId (D4)
-proposeAction(runId, action: ProposedAction, workflowId): Promise<{ approvalId: string | null }>
-recordApprovalOutcome(approvalId, outcome): Promise<void>
-afterAction(runId, verify: QuickCheckResult): Promise<void>        // → mitigated + monitor schedule
+proposeAction(runId, workflowId): Promise<{ approvalId: string | null; actionId }>   // picks the action itself (§7.6)
+recordApprovalOutcome(approvalId, "rejected"|"expired"|"failed", detail?): Promise<void>
+executeAction(approvalId): Promise<{ ok, text }>                   // WP-12: idempotent
+afterAction(runId, approvalId): Promise<{ pass, text }>            // WP-12: runs quickCheck itself → mitigated + monitor
+monitorTick(): Promise<void>                                       // WP-12: agent schedule callback (also RPC for tests)
 reportWatchCheck(pass: boolean, digest): Promise<void>             // from cron
 // @callable (WebSocket). Every method except getEvidence requires role=owner (D8)
 sendMessage(text) · approve(approvalId) · reject(approvalId) · resolve() · generatePostmortem()
@@ -406,6 +410,17 @@ The canonical order is `DEMO_MODES` order, for example `["slow", "errors"]`. The
 
 The Workflow drops any action that isn't proposable. At most one action per run.
 
+*As built (WP-12), `worker/actions/catalog.ts`:*
+- `proposable(action, ctx)` is pure. `restore_demo_service` needs:
+  - the target to be **this workspace's** demo page (`isOwnDemo`: the same origin as `DEMO_BASE_URL`, and a path under `/w/<workspaceId>/`);
+  - a category that isn't `healthy`;
+  - a status of `investigating` or `awaiting_approval` (§10 has no edge from `mitigated` or `resolved` to `awaiting_approval`).
+
+  The other three actions return false until their WPs (18, 22, 24).
+- **Rule merge (user decision):** `pickAction` takes the model's `actions`, then the rule actions (`restore_demo_service` for any non-healthy category), removes duplicates, and uses the first proposable one. A broken demo therefore always gets the card, even when the model leaves it out. In WP-11's live runs it did leave it out for slow, redirect loop and bad caching.
+- The planning prompt says "This target is the user's own demo service" when `RunContext.isDemo` is true.
+- `execute` for restore calls `env.DEMO.setModes(ws, ["healthy"])`. `ACTION_TITLES` gives the card titles.
+
 ## 8. Core flows
 
 ### 8.1 New incident (chat)
@@ -465,7 +480,14 @@ Tool steps retry with `{limit: 2}` because each retry spends subrequest budget. 
 - **`finishRun`** marks checks that were planned but never run as `unavailable` ("Not run: the run stopped before this check.").
 - **Launch.** `startRun` → `launchRun(runId)` (idempotent, ID `diag-<incidentId>-<seq>`, stored in `runs.workflow_id`). If the Workflow can't start, the run finishes `failed` with a system message. Test seam: `DIAGNOSIS_AUTOSTART=off` (integration config only) skips the auto-launch so agent tests can drive runs by hand.
 - `PLAN_MAX_TOKENS` = 1500, because gpt's reasoning shares the budget.
-- **Approval tail:** not built yet. WP-12 inserts propose → wait → act → verify after `narrate` (marked in `plan.ts`).
+- **Approval tail (WP-12).** The order after `narrate` is:
+  - `propose`, then `finish`. The run ends before the wait, so the input is enabled again (D13).
+  - Then `io.waitForApproval()` (24 h) returns `approved`, `rejected` or `expired`.
+  - **approved:** steps `action` then `verify`. **rejected / expired:** step `approval-<decision>`. **The action failed:** step `action-failed`.
+
+  The tail runs outside the main `try`, so a failure there never turns a finished run into `failed`. `RunSummary.action = {approvalId, decision, verified?}`.
+- **Budget.** `tailReserve` is now 8: rules, findings, narrate and finish, plus propose, outcome, action and verify. Each of these is one agent call. **The verify and monitor quick checks run inside the agent** (`afterAction`, `monitorTick`), so their up to 10 fetches don't use the Workflow's subrequest budget.
+- **The wait's error class.** Locally, a timeout throws `WorkflowTimeoutError`. The rule stays: anything that isn't `WorkflowRejectedError` counts as expired.
 
 **`waitForApproval` behaviour (WP-02, local Workflows, `agents` 0.28.1):**
 - **Approve:** returns the `metadata` passed to `approveWorkflow`.
@@ -482,6 +504,17 @@ Tool steps retry with `{limit: 2}` because each retry spends subrequest budget. 
 3. The Workflow resumes.
 4. Reject calls `rejectWorkflow`. A supersede calls `rejectWorkflow(..., {reason: "superseded"})`.
 
+*As built (WP-12):*
+- **Decisions are recorded in the agent first, then the Workflow is told.**
+  - `reject` moves the incident to `investigating` right away.
+  - `approve` marks the card approved. If the waiting Workflow can't be reached, the card is recorded as `failed`.
+  - The Workflow's later outcome steps are first-decision-wins no-ops.
+- **`expired` overrides an `approved` card that never ran.** This happens when an approve races the timeout.
+- **The status leaves `awaiting_approval` only when no card is pending any more.**
+- **Duplicates (D13):** the same action as a pending card is a duplicate, gets a `proposal_deduped` timeline event, and that run doesn't wait.
+- **Resolving by hand** closes pending cards as rejected ("resolved by hand") and stops the monitor.
+- **Errors from `approveWorkflow` / `rejectWorkflow`** are logged and never thrown.
+
 ### 8.4 Monitoring (D11), in `agent/monitor.ts`
 
 1. `afterAction(pass)` sets passes = 1, status = `mitigated`, and schedules `monitorTick` every 15 s (10 ticks at most).
@@ -489,6 +522,12 @@ Tool steps retry with `{limit: 2}` because each retry spends subrequest budget. 
 3. When the ticks run out, the incident stays `mitigated`.
 4. Bursts work the same way at 60 s × 15.
 5. For watch incidents, `reportWatchCheck` from cron feeds the same counter. In that case a pass while `investigating` moves to `mitigated` (recovered without action).
+
+*As built (WP-12):*
+- **The pure reducer.** `monitor.ts` `tick(state, status, pass)` holds the logic, with `MONITOR_TICK_S` 15, `MONITOR_MAX_TICKS` 10 and `MONITOR_PASSES` 3.
+- **One tick at a time.** Each tick is a one-shot `this.schedule(15, "monitorTick")`, chained to the next, and its `schedule_id` is stored. `resolve()` cancels it.
+- **Timeline.** Every tick writes a `monitor_tick` event, and running out of ticks writes `monitor_ended`.
+- **How long it takes.** The verify check counts as pass 1, so a restored demo resolves about 30 s after Approve.
 
 ### 8.5 Watch (cron, D12)
 
@@ -637,6 +676,18 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 - **`ChatPane`:** messages, check cards inline in run order, approval cards, and a composer that's disabled while `activeRunId` is set. The empty state shows chips for "Use demo service" and "diagnose cloudflare.com". The composer includes `VoiceButton`.
 - **`CheckCard`:** tool icon, label, and a `StatusBadge` with icon **and** text (`Pending`, `Running` with a `Loader`, `✓ Pass`, `✕ Fail`, `Unavailable`). It shows a summary and expands with `Collapsible` to show evidence in `Code`, which is fetched lazily with `getEvidence`. Clicking an `[http-1]` chip scrolls to the card and flashes an orange ring.
 - **`ApprovalCard`:** the action title, why it's proposed (cause plus refs), and **Approve** (orange primary) and **Reject** buttons. It shows the resolved state: approved, rejected, expired or superseded. For viewers, the buttons are hidden and `ReadOnlyBanner` is shown.
+  - *As built (WP-12):* the card sits right after its run's narration in the feed. Its status badge reads, in words:
+    - Waiting for your approval;
+    - Approved, working on it… / checking it…;
+    - Approved and verified;
+    - Approved, but still failing / the action failed;
+    - Rejected;
+    - Expired, no action taken;
+    - Replaced by a newer proposal.
+
+    A pending card has an orange border. Viewers see "Only the incident's owner can approve this."
+  - The header has a **Resolve** button (owner, not resolved) and a "Watching after the fix: n of 3" line while the monitor runs.
+  - A finished restore fires `demo:changed`, so the `DemoPanel` reloads.
 - **Status chip in the incident header:** `investigating`, `awaiting approval`, `mitigated` or `resolved`, always with text. It's followed by Resolve and Postmortem buttons.
 
 ### 12.3 State
@@ -712,7 +763,7 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | | `incidents.test.ts` | `need_target`, create, list per workspace, owner-only snapshot, read |
 | | `diagnosis.test.ts` | Real Workflow, mock LLM, fake internet: tools → findings → narrate; healthy → resolved; `#llm-down` → rules; `#llm-invalid` ×2 → rules; NXDOMAIN; follow-up run |
 | Unit | `plan.test.ts` | The driver with a fake `io`: happy path, invalid once/twice, origin pin, LLM down, tool cap, turn cap, budget, deadline, throwing check, unexpected failure, rule-based mode |
-| | `approval.test.ts` | Propose → approve → `setModes(["healthy"])` called → verify → `mitigated` → 2 ticks → `resolved`. Reject → `investigating`. Supersede. |
+| | `approval.test.ts` | Propose → approve → `setModes(["healthy"])` called → verify → `mitigated` → 2 ticks → `resolved`. Reject → `investigating`. Timeout (`forceEventTimeout("wait-for-approval")`) → expired. Approve twice, a viewer, resolving by hand, a duplicate follow-up, a retried proposal. The demo stub's default `fetch` serves `/w/<ws>/` by mode, and the fake internet routes the test demo host to it. Supersede itself is covered at the agent level: with one proposable action, it can't happen end to end yet. |
 | | `cron.test.ts` | Due-watch query with LIMIT and caps; failure starts WatchWorkflow; duplicate ID ignored |
 | Demo (`@cloudflare/vitest-plugin`, demo Worker) | `demo.test.ts` | Every mode's status, headers and timing, through `exports.default` and the `DemoAdmin` RPC; per-workspace state; bad input; no admin route |
 

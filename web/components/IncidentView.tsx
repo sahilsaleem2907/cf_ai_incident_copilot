@@ -1,16 +1,17 @@
 import { Badge, Banner, Button, Loader } from "@cloudflare/kumo";
-import { EyeIcon, InfoIcon, RobotIcon } from "@phosphor-icons/react";
+import { CheckCircleIcon, EyeIcon, InfoIcon, PulseIcon, RobotIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useIncident } from "../hooks/useIncident";
-import { createIncident, ERROR_TEXT, notifyIncidentsChanged } from "../lib/api";
+import { MONITOR_PASSES } from "../../worker/agent/monitor";
+import { createIncident, DEMO_CHANGED, ERROR_TEXT, notifyIncidentsChanged } from "../lib/api";
 import { CATEGORY_TEXT, otherHost, runNote } from "../lib/incident";
 import { ChatPane } from "./ChatPane";
 import { Composer } from "./Composer";
 import { IncidentStatusBadge } from "./StatusBadge";
 
 export function IncidentView({ id }: { id: string }) {
-  const { state, feed, role, notFound, send, getEvidence } = useIncident(id);
+  const { state, feed, role, notFound, send, getEvidence, decide, resolve } = useIncident(id);
   const [, navigate] = useLocation();
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -20,10 +21,18 @@ export function IncidentView({ id }: { id: string }) {
   const other = state ? otherHost(text, host) : null;
   const status = state?.status;
 
+  const [resolving, setResolving] = useState(false);
+
   // Keep the sidebar's badge in step with the open incident.
   useEffect(() => {
     if (status) notifyIncidentsChanged();
   }, [status]);
+
+  // A finished demo restore changed the demo's mode: the DemoPanel reloads it.
+  const restored = state?.approvals.filter((a) => a.actionId === "restore_demo_service" && a.outcome && a.status === "approved").length ?? 0;
+  useEffect(() => {
+    if (restored) window.dispatchEvent(new Event(DEMO_CHANGED));
+  }, [restored]);
 
   if (notFound) {
     return <p className="m-auto p-8 text-(--cf-fg-muted)">This incident doesn't exist.</p>;
@@ -71,7 +80,30 @@ export function IncidentView({ id }: { id: string }) {
               View only
             </Badge>
           )}
+          {role === "owner" && state.status !== "resolved" && (
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={CheckCircleIcon}
+              className="ml-auto"
+              loading={resolving}
+              onClick={() => {
+                setResolving(true);
+                resolve()
+                  .catch(() => setError("Couldn't resolve the incident. Try again."))
+                  .finally(() => setResolving(false));
+              }}
+            >
+              Resolve
+            </Button>
+          )}
         </div>
+        {state.monitor && (
+          <p className="mx-auto mt-1 flex max-w-3xl items-center gap-1.5 text-sm text-(--cf-fg-muted)" aria-live="polite">
+            <PulseIcon aria-hidden size={14} />
+            Watching after the fix: {Math.min(state.monitor.passes, MONITOR_PASSES)} of {MONITOR_PASSES} checks passed in a row · {state.monitor.ticksLeft} checks left
+          </p>
+        )}
       </div>
 
       <div className="mx-auto mt-3 flex w-full max-w-3xl flex-col gap-2 px-4">
@@ -83,7 +115,7 @@ export function IncidentView({ id }: { id: string }) {
       </div>
 
       <div className="flex-1">
-        <ChatPane feed={feed} knownIds={knownIds} getEvidence={getEvidence} />
+        <ChatPane feed={feed} knownIds={knownIds} getEvidence={getEvidence} {...(role === "owner" ? { onDecide: decide } : {})} />
       </div>
 
       {!viewer && (

@@ -26,7 +26,21 @@ export type CheckView = {
   finishedAt?: number;
 };
 export type MessageView = { id: string; runId: string | null; role: "user" | "assistant" | "system"; content: string; createdAt: number };
-export type ApprovalView = { id: string; runId: string; actionId: string; status: "pending" | "approved" | "rejected" | "expired" | "superseded"; createdAt: number; decidedAt?: number };
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired" | "superseded";
+/** An approval card (TDD §12.2). `cause`/`evidence` come from the proposing run's findings, so an old card keeps its own "why". */
+export type ApprovalView = {
+  id: string;
+  runId: string;
+  actionId: string;
+  title: string;
+  status: ApprovalStatus;
+  cause: string;
+  evidence: string[];
+  /** What happened after the decision. `verified` is set once the re-check after the action has run. */
+  outcome?: { ok: boolean; text: string; verified?: boolean };
+  createdAt: number;
+  decidedAt?: number;
+};
 export type TimelineView = { id: number; ts: number; type: string; detail: Record<string, Scalar> };
 
 export type IncidentState = {

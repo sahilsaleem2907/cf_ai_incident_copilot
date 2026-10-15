@@ -30,7 +30,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
   - PR #1 was closed unmerged; `master` (`867d8d6`) is unused.
   - **PR #3** `dev` → `main` ("WP-06 to WP-10 …") opened 16:47: https://github.com/sahilsaleem2907/cf_ai_incident_copilot/pull/3. Waiting for Sift review.
 - **Blockers / risks:** none blocking. Watch gpt latency in WP-09: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
-  - **Eval risk (WP-11 local run, live model):** the model proposed `restore_demo_service` only for `errors`; for slow, redirect_loop and bad_cache it returned no actions. The eval's check ③ (TDD §14) needs it, so look at the planning prompt in WP-12 or the eval WP.
+  - **Possible flaky test (WP-12):** the main `approval.test.ts` case failed once on a cold full run and passed in 8 reruns since. The error wasn't captured. The wait for the card was raised from 8 s to 20 s; if it fails again, capture the output.
 
 ---
 
@@ -251,15 +251,15 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-12</b> Act</summary>
 
-- [ ] Action catalog + proposable checks
-- [ ] Propose / supersede / dedupe
-- [ ] `waitForApproval`, approve/reject callables
-- [ ] Execute + verify + `afterAction`
-- [ ] Monitor ticks (15 s × 10, 3 passes → resolved)
-- [ ] `ApprovalCard`: action title, why it's proposed (cause + refs), real `<button>`s for Approve (orange) and Reject; shows approved, rejected, expired or superseded; buttons hidden for viewers
-- [ ] Resolve button in the incident header
-- [ ] `approval.test.ts`
-- [ ] **Done when:** approval test passes; local walkthrough break → approve → resolved works
+- [x] Action catalog + proposable checks
+- [x] Propose / supersede / dedupe
+- [x] `waitForApproval`, approve/reject callables
+- [x] Execute + verify + `afterAction`
+- [x] Monitor ticks (15 s × 10, 3 passes → resolved)
+- [x] `ApprovalCard`: action title, why it's proposed (cause + refs), real `<button>`s for Approve (orange) and Reject; shows approved, rejected, expired or superseded; buttons hidden for viewers
+- [x] Resolve button in the incident header
+- [x] `approval.test.ts`
+- [x] **Done when:** approval test passes; local walkthrough break → approve → resolved works
 </details>
 
 <details>
@@ -407,6 +407,7 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
+| 2026-10-15 18:01 | 12 | **Act as built.** (1) **Rule merge** (user decision): `pickAction` adds `restore_demo_service` to the model's actions for any non-healthy category, and the planning prompt says when the target is the user's demo, so a broken demo always gets the card. (2) **Verify and monitor quick checks run inside the agent** (`afterAction`, `monitorTick`), not in the Workflow, so they don't use its 45-subrequest budget; `tailReserve` 4 → 8 for propose, outcome, action and verify. (3) The run finishes before the approval wait (D13), and the tail runs outside the main `try`. (4) Decisions are recorded in the agent first, then the Workflow is told; `expired` overrides an `approved` card that never ran; resolving by hand closes pending cards and stops the monitor. (5) The card says "verified" only after the re-check (`outcome.verified`). **Folded into TDD §6.3, §7.2, §7.6, §8.2–§8.4, §12.2, §14.** | WP-11's live runs showed the model leaving the action out. The browser walkthrough found the card saying "verified" before the re-check ran; fixed. Local walkthrough with the mock LLM: errors, slow, redirect_loop, bad_cache and slow + errors all went break → card → Approve → mitigated → resolved in 32–45 s; reject → investigating; a viewer sees no buttons |
 | 2026-10-15 17:30 | 11 | **Combined demo modes** (user request): the demo holds a set of modes, either `["healthy"]` or one main problem (errors, redirect_loop, bad_cache) plus an optional `slow`. The RPC is now `getModes`/`setModes` and the API takes `{modes}` (400 `invalid_modes`). `restore_demo_service` will call `setModes(ws, ["healthy"])`. The panel is a "Problem" radio group plus an "Also slow" checkbox. The diagnosis still names one category; slow + bad_cache comes out as `high_latency` because latency is checked before caching. **Folded into TDD §7.1, §7.5, §7.6, §8.2, §14.** | The user chose "one problem + slow" and "main problem, slowness as evidence". The other problems clash: a page can't both 500 and redirect, and bad caching is invisible behind either |
 | 2026-10-15 17:11 | 11 | **Local demo URL:** under `vite dev` the demo Worker has no port of its own, and a separate `wrangler dev` would keep its own mode state. So the main Worker passes `/w/*` through `env.DEMO.fetch()` only when `DEMO_BASE_URL` is its own origin (local dev), and `.dev.vars` points both `DEMO_BASE_URL` and `SSRF_DEV_ALLOW_ORIGIN` at `http://localhost:5173`. Deployed, `/w/*` on the main Worker is a 404. `DemoAdmin` throws plain `invalid_mode`/`invalid_workspace` (a ZodError loses its message over RPC). Below `lg` the panel is a closed disclosure instead of hidden. **Folded into TDD §4, §5.1, §7.1, §7.5, §12.1, §14.** | Spike: local Workflow probes reach `localhost:5173` despite `global_fetch_strictly_public`. A local run of all five modes gave the right category each time. Note: the local `.dev.vars` had `LLM_MODE=live`, so these 12 runs used the live model; the daily local estimate is 2,656 neurons |
 | 2026-10-15 16:34 | 10 | New `whoami()` callable for the read-only UI. Kumo's brand token is set to Cloudflare orange (it's blue by default). The sidebar becomes an off-canvas sheet below 768 px. The evidence disclosure is a plain `aria-expanded` button rather than Kumo `Collapsible`. Vite pre-bundles `agents/react` and `wouter`. Browser checks used `playwright-core` from the session scratchpad with the cached headless Chromium; nothing was added to the repo. **Folded into TDD §12.3.** | Screenshots found three layout bugs (narrow screens, sticky header lost on scroll, banner off-screen for viewers) and a first-load reload; all fixed |
