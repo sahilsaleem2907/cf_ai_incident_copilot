@@ -1,6 +1,7 @@
 import { introspectWorkflow } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
+import type { RunMode } from "../../worker/agent/state";
 import { incidentAgent } from "../../worker/agent/stub";
 import { newId } from "../../worker/lib/ids";
 
@@ -8,12 +9,12 @@ import { newId } from "../../worker/lib/ids";
  * Real DiagnosisWorkflow runs: local Workflows, the mock LLM (LLM_MODE=mock) and the fake internet from
  * vitest.config.ts (broken.example.com → 500, ok.example.com → 200, DoH for *.example.com).
  */
-async function diagnoseRun(message: string, target: string) {
+async function diagnoseRun(message: string, target: string, mode?: RunMode) {
   const introspector = await introspectWorkflow(env.DIAGNOSIS_WORKFLOW);
   try {
     const id = newId();
     const agent = await incidentAgent(env, id);
-    const { runId } = await agent.init({ workspaceId: newId(), target, origin: "chat", message });
+    const { runId } = await agent.init({ workspaceId: newId(), target, origin: "chat", message, ...(mode ? { mode } : {}) });
     expect(await agent.launchRun(runId!)).toBe(`diag-${id}-1`);
     const [instance] = await introspector.get();
     await instance!.waitForStatus("complete");
@@ -43,6 +44,19 @@ describe("DiagnosisWorkflow (mock LLM, fake internet)", () => {
   it("resolves a healthy site on its first run", async () => {
     const { snapshot: s } = await diagnoseRun("is ok.example.com up?", "https://ok.example.com/");
     expect(s).toMatchObject({ category: "healthy", status: "resolved", activeRunId: null });
+  });
+
+  it("a rule_based run (the deploy smoke test) diagnoses the healthy demo without an LLM turn", async () => {
+    const { snapshot: s, output, runId } = await diagnoseRun("diagnose demo", `${env.DEMO_BASE_URL}/w/${newId()}/`, "rule_based");
+    expect(output).toMatchObject({ status: "done", mode: "rule_based", llmTurns: 0, category: "healthy" });
+    expect(s).toMatchObject({ category: "healthy", status: "resolved", mode: "rule_based", activeRunId: null });
+    expect(s.checks.map((c) => [c.evidenceId, c.status])).toEqual([
+      ["dns-1", "pass"],
+      ["http-1", "pass"],
+    ]);
+    // The narration is the rule template, cited like a model's.
+    expect(s.messages.find((m) => m.id === `narr-${runId}`)!.content).toContain("[http-1]");
+    expect(finished(s)).toEqual(["done"]);
   });
 
   it("falls back to the rules when the LLM is down", async () => {

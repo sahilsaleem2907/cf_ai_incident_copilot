@@ -75,7 +75,8 @@ type ApprovalRow = {
 };
 type MonitorRow = { kind: "post_action" | "burst"; ticks_left: number; consecutive_passes: number; schedule_id: string | null };
 
-export type InitParams = { workspaceId: string; target: string; origin: Origin; message?: string; watchId?: string };
+/** `mode: "rule_based"` runs the first diagnosis without the LLM (the deploy smoke test, TDD §15). */
+export type InitParams = { workspaceId: string; target: string; origin: Origin; message?: string; watchId?: string; mode?: RunMode };
 export type PlannedCall = { tool: ToolName; args: unknown };
 /** What a Workflow run needs to plan (TDD §7.2). Evidence is digests only, never `raw`. */
 export type RunContext = {
@@ -157,18 +158,18 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       VALUES (${this.name}, ${p.workspaceId}, ${p.target}, ${p.origin}, 'investigating', ${p.watchId ?? null}, ${now}, ${now})`;
     this.event("opened", { origin: p.origin, target: p.target });
     const question = p.message ?? `Scheduled check failed for ${p.target}`;
-    const runId = await this.startRun(question, "initial", p.message ? "user" : "system");
+    const runId = await this.startRun(question, "initial", p.message ? "user" : "system", p.mode);
     return { runId };
   }
 
   /** One planning run at a time (D13). The check and insert run without an await in between. */
-  async startRun(question: string, kind: RunKind, role: "user" | "system" = "user"): Promise<string> {
+  async startRun(question: string, kind: RunKind, role: "user" | "system" = "user", mode: RunMode = "ai"): Promise<string> {
     if (!this.incident()) throw new Error("not_initialized");
     if (this.activeRunId()) throw new Error("run_active");
     const seq = (this.sql<{ seq: number | null }>`SELECT MAX(seq) AS seq FROM runs`[0]?.seq ?? 0) + 1;
     const runId = `run-${seq}`;
     const now = Date.now();
-    this.sql`INSERT INTO runs (id, seq, kind, question, status, started_at) VALUES (${runId}, ${seq}, ${kind}, ${question}, 'running', ${now})`;
+    this.sql`INSERT INTO runs (id, seq, kind, question, status, mode, started_at) VALUES (${runId}, ${seq}, ${kind}, ${question}, 'running', ${mode}, ${now})`;
     this.addMessage(runId, role, question);
     this.event("run_started", { runId, kind });
     this.touch();
@@ -212,8 +213,8 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       target: incident.target,
       question: run.question,
       kind: run.kind,
-      // WP-17 switches this to rule_based when the neuron budget guard trips.
-      mode: "ai",
+      // Set when the run starts: rule_based for the smoke test, and (WP-17) when the neuron budget guard trips.
+      mode: run.mode,
       evidence: rows.map(toLine),
       scope: { host: new URL(incident.target).hostname, cnameTargets: [...new Set(cnameTargets)] },
       isDemo: isOwnDemo(incident.target, incident.workspace_id, this.env.DEMO_BASE_URL),
