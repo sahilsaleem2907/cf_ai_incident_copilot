@@ -27,7 +27,10 @@ function fail(code: SsrfCode, message: string): GuardFail {
   return { ok: false, code, message };
 }
 
-/** Reads the dev-only exception without adding it to the generated `Env` (it only exists in `.dev.vars`). */
+/**
+ * Reads the dev-only exception. It's set only in `.dev.vars`, so it's missing in production even though
+ * `pnpm cf-typegen` (which reads `.dev.vars`) lists it in the generated `Env`.
+ */
 export function devAllowOrigin(env: object): string | undefined {
   const value = (env as { SSRF_DEV_ALLOW_ORIGIN?: unknown }).SSRF_DEV_ALLOW_ORIGIN;
   return typeof value === "string" && value !== "" ? value : undefined;

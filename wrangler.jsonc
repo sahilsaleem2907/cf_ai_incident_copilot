@@ -21,7 +21,7 @@
   "workflows": [{ "name": "diagnosis", "binding": "DIAGNOSIS_WORKFLOW", "class_name": "DiagnosisWorkflow" }],
   "services": [{ "binding": "DEMO", "service": "incident-copilot-demo", "entrypoint": "DemoAdmin" }],
   "vars": {
-    "DEMO_BASE_URL": "https://incident-copilot-demo.<sub>.workers.dev",
+    "DEMO_BASE_URL": "https://incident-copilot-demo.sahilcs1111.workers.dev",
     "AI_GATEWAY_ID": "incident-copilot",
     "LLM_MODE": "live"
   }
