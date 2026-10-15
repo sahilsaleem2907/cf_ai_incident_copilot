@@ -1,10 +1,53 @@
 # Prompts
 
-How AI was used to build Incident Copilot. This file is a running log: every prompt from the build session is added as it happens, along with the answers given to Claude's clarifying questions. Full, unedited transcripts go in [`prompts/`](prompts/) at the end of each day (PRD §14). The curated overview by phase is added in WP-16.
+How AI was used to build Incident Copilot. The first part is a short overview with the most important prompts, grouped by phase. The second part is a running log of every prompt in the build sessions, added as it happened, along with the answers given to Claude's clarifying questions. Full, unedited transcripts are in [`prompts/`](prompts/), exported at the end of each day (PRD §14).
 
 Secrets (API keys, account IDs, tokens) are removed. Nothing else is edited.
 
+## How AI was used
+
+Everything was built in Claude Code sessions inside this repo: the PRD, the TDD, the task board, all the code, the tests, the deploys and these docs. The split of work was:
+
+- **The developer** chose the product and made every product and risk decision (the accepted risks D2 and D7, "limits keep progress", combined demo modes, fixing live speed before moving on). They created the Cloudflare resources that need the dashboard, and merged every PR after a Sift code review.
+- **Claude** asked questions before each plan (often with the `/grill-me` skill), wrote a plan for each work package (WP), and wrote the code and the tests. It ran spikes, live checks and the browser checks, and wrote every finding back into the TDD and the [`TASKS.md`](TASKS.md) decisions log.
+
+The pattern was the same for each WP: "continue to WP-n" → plan mode → questions → approved plan → code + tests → commit → board update.
+
+## Key prompts by phase
+
+Each item gives the time (IST) of its entry in the running log below, and links the transcript that holds the full conversation.
+
+### Planning (PRD → TDD → task board)
+- *"Lets plan the Implementation based on the @PRD.md . One note for styling is using the same fonts and design system as https://www.cloudflare.com/"*, followed by a `/grill-me` interview that settled the decisions D1–D18 in TDD §1. ([transcript](prompts/2026-10-14-1647-6128303f.md))
+- *"I jist wanted to create a final TDD off of which I will create tasks for 2 days and build the whole thing."* This turned the plan into [`TDD.md`](TDD.md) with a build plan and a cut line. ([transcript](prompts/2026-10-14-1647-6128303f.md))
+- *"Lets build a task board with 2 days vision from the @TDD.md . Simple .md file."*, then *"what about the UI tasks?"*, which added the UI map to [`TASKS.md`](TASKS.md). ([transcript](prompts/2026-10-15-0009-45c103a1.md))
+
+### The agent loop (LLM layer, planning loop, narration)
+- **14:33**: *"even if the model runs into a limit, it should return whatever findings it has acheived till then and not drop the context."* This became the "limits keep progress" rule (TDD §8.2): every limit ends in findings, and `plan.test.ts` has a test per limit. ([transcript](prompts/2026-10-15-1342-3eb514ab.md))
+- **14:06 · WP-07**: the live check found that glm rejects regex look-around in tool schemas, that gpt cites as `【id】`, and that one stream was all `!!!`. Each one got a fix and a test. ([transcript](prompts/2026-10-15-1342-3eb514ab.md))
+- **19:39 · WP-13b**: after the first live walkthrough took about 100 s, the developer picked "Fix now, small extra WP". Baseline checks moved before the first AI turn, and the approval card moved before the narration. The first card dropped from 35 s to 10 s. ([transcript](prompts/2026-10-15-1648-5ac328ad.md))
+
+### Durable Objects and Workflows
+- **01:00 · WP-02 spike**: a local-only check of `waitForApproval` timeouts and the request and tool-call shapes of both models. The recorded responses became the test fixtures. ([transcript](prompts/2026-10-15-0019-26bdd860.md))
+- **14:40 · WP-08** and **15:15 · WP-09**: `IncidentAgent` with owner and viewer roles, and `DiagnosisWorkflow` as a thin wrapper around a pure planning loop, so every limit could be unit-tested. ([transcript](prompts/2026-10-15-1342-3eb514ab.md))
+- **17:49 · WP-12**: approvals through `waitForApproval`, with verify and monitor checks running in the agent so they don't use the Workflow's 50-subrequest limit. ([transcript](prompts/2026-10-15-1648-5ac328ad.md))
+
+### Safety
+- **01:23**: *"in local environment (set via env) we can allow that url as well, in others (prod only for our case) we can let it be blocked naturally."* This became the dev-only, exact-origin `SSRF_DEV_ALLOW_ORIGIN` (TDD §11). ([transcript](prompts/2026-10-15-0019-26bdd860.md))
+- **01:26 · WP-04**: the SSRF guard and its table of 118 cases, plus extra blocked IPv6 forms that can reach private IPv4 addresses. ([transcript](prompts/2026-10-15-0019-26bdd860.md))
+- **01:38 · WP-05**: the developer decided that DNS "mismatch" means a real disagreement between resolvers, so CDN sites with different addresses per resolver aren't flagged. ([transcript](prompts/2026-10-15-0019-26bdd860.md))
+
+### Tests and CI
+- **18:54**: *"lets verify the flaky test again and lets run the real AI checkl"*. The cause was a race in the test, not a timeout; polling every 1 ms reproduced it, and it was fixed. ([transcript](prompts/2026-10-15-1648-5ac328ad.md))
+- **21:24**: *"Lets continue and implement WP-14, 15 and 16 in one plan"* produced the coverage top-up, `ci.yml`/`deploy.yml`, and a smoke test that uses no LLM (`?smoke=rule`). (Transcript in the Day 2 export.)
+
+### Review and debugging
+- **13:38** and **21:20**: Sift reviews of PRs #2 and #3. Each finding was checked against the code; false alarms got a `/not-helpful` reply with the reason, and the one real clean-up was fixed. ([PR #2 transcript](prompts/2026-10-15-1335-0085bc8e.md); PR #3 is in the Day 2 export.)
+- **17:26**: *"we should be able to choose multiple modes in demo at the same time. But in only logical combo."* This changed the demo to one main problem plus an optional "slow". ([transcript](prompts/2026-10-15-1648-5ac328ad.md))
+
 ---
+
+## Running log
 
 ## Day 1 (2026-10-15)
 

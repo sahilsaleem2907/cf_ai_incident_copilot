@@ -16,6 +16,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 - Work happens on `dev`. Review is a PR from `dev` into `main`, checked by Sift (GitHub Actions). Nothing goes to `main` directly without the user's OK.
 - At the end of each day, export the session transcript to `prompts/`.
 - Don't share the deployed URL until WP-17 is ✅ (D2).
+- When a Day 2 WP lands, move it out of the README's "Designed, not built" table (and add the live URL to the README once WP-17 is ✅).
 
 ---
 
@@ -298,12 +299,12 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-16</b> README and PROMPTS</summary>
 
-- [ ] Architecture + Agents SDK explanation
-- [ ] Security section with accepted risks (D2, D7, single location, DNS rebinding)
-- [ ] Terraform / wrangler split
-- [ ] "Designed, not built" list (from cut items in this file)
-- [ ] `PROMPTS.md` + `prompts/` transcripts, secrets removed
-- [ ] **Done when:** docs complete, no secrets
+- [x] Architecture + Agents SDK explanation (mermaid diagram, request flow, loop limits)
+- [x] Security section with accepted risks (D2, D7, single location, DNS rebinding)
+- [x] Terraform / wrangler split
+- [x] "Designed, not built" list (WP-17 to WP-26 for now; items leave it as they land)
+- [x] `PROMPTS.md` (curated overview by phase on top of the running log) + `prompts/` transcripts, secrets removed (sweep clean)
+- [x] **Done when:** docs complete, no secrets
 </details>
 
 <details>
