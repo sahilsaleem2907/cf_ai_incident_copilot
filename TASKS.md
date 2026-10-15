@@ -21,9 +21,9 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-08 IncidentAgent (started 14:40)
+- **Current:** none (WP-08 ✅ 14:50)
 - **Next:** WP-09 DiagnosisWorkflow
-- **Hours today:** 1.7 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
+- **Hours today:** 1.9 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
   - PR #2 `dev` → `main` ("WP-01 to WP-05") was reviewed by Sift: 5 findings, all false alarms, each answered `/not-helpful` with the reason. **Merged** 2026-10-15 13:40 (`0073839`).
@@ -44,7 +44,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 05 | Tools: `dns_lookup`, `http_probe`, `quickCheck`, registry | 1.5 | 04 | ✅ | 01:38 | 01:44 | `307d342`. 0.25 h vs 1.5 est |
 | 06 | Rules: `classify.ts`, `template.ts` | 0.5 | 05 | ✅ | 13:44 | 13:49 | `6dad2cf`. 0.1 h vs 0.5 est. TLS spike: workerd hides cert errors (TDD §9.3) |
 | 07 | LLM layer: adapter, fallback, usage, prompts, mock, citations, streaming | 1.5 | 02 | ✅ | 14:06 | 14:18 | `4e82395`. 0.2 h vs 1.5 est. Live check ≈ 370 neurons; found the glm grammar bug and `【id】` citations |
-| 08 | IncidentAgent: schema, state, roles, RPC, transitions, narrate | 1.5 | 03, 07 | 🔄 | 14:40 | | |
+| 08 | IncidentAgent: schema, state, roles, RPC, transitions, narrate | 1.5 | 03, 07 | ✅ | 14:40 | 14:50 | `7b2bc3c`. 0.25 h vs 1.5 est. Also `/api/incidents` (nobody owned it; WP-10 needs it) |
 | 09 | DiagnosisWorkflow: planning loop, bounds, rule path | 1.5 | 05, 06, 08 | ⬜ | | | |
 | 10 | Chat UI | 1.75 | 08 | ⬜ | | | |
 | 11 | Demo service + `DemoPanel` | 1.0 | 03 | ⬜ | | | |
@@ -192,14 +192,15 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-08</b> IncidentAgent</summary>
 
-- [ ] SQL schema
-- [ ] Synced `IncidentState`
-- [ ] `onConnect` roles (owner / viewer)
-- [ ] RPC methods + owner-only callables
-- [ ] `transitions.ts` (+ `transitions.test.ts`)
-- [ ] `narrate` (streams, idempotent per `runId`); a cut-off stream keeps its partial text if well formed (TDD §8.2 "Limits keep progress")
-- [ ] D1 index sync
-- [ ] **Done when:** agent integration tests for init, roles, narration pass
+- [x] SQL schema (+ `checks.turn/seq` for retry-safe evidence IDs)
+- [x] Synced `IncidentState` (rebuilt from SQL; client writes rejected)
+- [x] `onConnect` roles (owner / viewer; viewers also readonly)
+- [x] RPC methods + owner-only callables (approval/watch/postmortem methods in WP-12/18/22)
+- [x] `transitions.ts` (+ `transitions.test.ts`)
+- [x] `narrate` (streams, idempotent per `runId`); a cut-off stream keeps its partial text if well formed (TDD §8.2 "Limits keep progress")
+- [x] D1 index sync
+- [x] `/api/incidents` (create, list, snapshot, read)
+- [x] **Done when:** agent integration tests for init, roles, narration pass
 </details>
 
 <details>
@@ -435,9 +436,9 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 ## Daily wrap-up
 
 ### Day 1 (2026-10-15)
-- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03, WP-04, WP-05, WP-06, WP-07. Review setup: `dev` branch, Sift workflows on `main`, PR #2 (WP-01 to WP-05) merged
+- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03, WP-04, WP-05, WP-06, WP-07, WP-08. Review setup: `dev` branch, Sift workflows on `main`, PR #2 (WP-01 to WP-05) merged
 - **Moved / slipped:**
-- **Hours:** 1.7 / 14.75 h
+- **Hours:** 1.9 / 14.75 h
 - **Transcript exported to `prompts/`:** ⬜
 
 ### Day 2 (2026-10-16)
