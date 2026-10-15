@@ -244,3 +244,9 @@ Answers to Claude's questions:
 - **Sift replies:** Yes, reply `/not-helpful` with the reason on every false alarm.
 
 (The latest two Sift reviews on `6dd092c` raised 18 items; none is a real bug. Most are parser false alarms (`satisfies`, the generated `import()` types, the Workers `scheduler` global). The rest are guarded already: exhaustive switches, `?.` chains, `isId(unknown)`, `getSession` catching its own errors, `state` null until set, no SSR. One clean-up: `client.ts` read `(e as Error).message`, which gives "undefined" if something other than an Error is thrown; now an `errText` helper. 502 tests green.)
+
+### 21:24 · WP-14 to WP-16 (tests, CI/CD, README), started early on Day 1 evening
+
+> Lets continue and implement WP-14, 15 and 16 in one plan since its tests and readme.
+
+(Plan approved: WP-14 adds tests for the untested helpers (`toolParameters`, the approval card text, the cookie header parser) and `it.todo` stubs for the cron tests (WP-18). WP-15 adds a `?smoke=rule` flag (a run with no AI, so the smoke test costs nothing), `scripts/smoke.ts`, `ci.yml` and `deploy.yml`. WP-16 writes the README and the curated overview in this file. One commit per WP on `dev`; the user sets the Cloudflare API token secret and merges.)

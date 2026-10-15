@@ -21,8 +21,8 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** none (WP-13 ✅ 19:15). Day 1 Musts done
-- **Next:** WP-14 Tests (Day 2)
+- **Current:** WP-14 Tests 🔄 (started 21:24 on Day 1 evening; WP-14 to WP-16 run as one plan)
+- **Next:** WP-15 CI/CD, then WP-16 README + PROMPTS
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
@@ -60,7 +60,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 | WP | Task | Est | Deps | Status | Started | Done | Commit / notes |
 |---|---|---|---|---|---|---|---|
-| 14 | Tests (Must): fill coverage gaps | 1.25 | 12 | ⬜ | | | |
+| 14 | Tests (Must): fill coverage gaps | 1.25 | 12 | 🔄 | 21:24 (D1) | | |
 | 15 | CI/CD (Must): `ci.yml`, `deploy.yml`, smoke | 0.75 | 14 | ⬜ | | | |
 | 16 | README + PROMPTS (Must, **protected time**) | 1.0 | — | ⬜ | | | |
 | 17 | Limits + budget guard | 1.0 | 15 | ⬜ | | | |
