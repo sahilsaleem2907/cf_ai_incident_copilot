@@ -50,7 +50,7 @@ export type RunAgent = {
   ruleFindings(runId: string, modelArgs: unknown): Promise<Findings>;
   setFindings(runId: string, findings: Findings, mode: RunMode): Promise<void>;
   narrate(runId: string): Promise<unknown>;
-  finishRun(runId: string, status: Exclude<RunStatus, "running">, stats: { toolCalls: number; llmTurns: number }): Promise<void>;
+  finishRun(runId: string, status: Exclude<RunStatus, "running">, stats: FinishStats): Promise<void>;
   proposeAction(runId: string, workflowId: string): Promise<Proposal>;
   recordApprovalOutcome(approvalId: string, decision: Decision, detail?: string): Promise<void>;
   executeAction(approvalId: string): Promise<ActionOutcome>;
@@ -58,6 +58,13 @@ export type RunAgent = {
 };
 
 export type ApprovalDecision = "approved" | "rejected" | "expired";
+
+/**
+ * Who made the findings (WP-20, for the eval): the model's valid `submit_findings`, the rules keeping the
+ * valid fields of an invalid one, or the rules alone. Recorded with `fallbackTurns` on `run_finished`.
+ */
+export type FindingsSource = "model" | "model+rules" | "rules";
+export type FinishStats = { toolCalls: number; llmTurns: number; fallbackTurns?: number; source?: FindingsSource };
 
 /**
  * What the Workflow provides. `step` is `step.do` (durable, retried; results replay after a restart);
@@ -175,6 +182,8 @@ async function investigate(io: RunIO, runId: string, limits: DiagnoseLimits): Pr
 
     let findings: Findings | null = null;
     let lastFindingsArgs: unknown = null;
+    let fromModel = false;
+    let fallbackTurns = 0;
     let limit: Exclude<RunStatus, "running" | "done" | "failed"> | null = null;
     let invalidTurns = 0;
     let feedback: string | undefined;
@@ -279,9 +288,11 @@ async function investigate(io: RunIO, runId: string, limits: DiagnoseLimits): Pr
           mode = "rule_based";
           break;
         }
+        if (r.attempts === 2) fallbackTurns++;
         if (r.findingsArgs !== null) lastFindingsArgs = r.findingsArgs;
         if (r.findings) {
           findings = r.findings;
+          fromModel = true;
           if (finishReason) limit ??= finishReason;
           break;
         }
@@ -324,7 +335,8 @@ async function investigate(io: RunIO, runId: string, limits: DiagnoseLimits): Pr
     const proposal = await io.step("propose", () => io.agent.proposeAction(runId, io.workflowId));
     await io.step("narrate", () => io.agent.narrate(runId));
     const status = limit ?? (mode === "rule_based" && ctx.mode === "ai" ? "llm_unavailable" : "done");
-    await io.step("finish", () => io.agent.finishRun(runId, status, stats));
+    const source: FindingsSource = fromModel ? "model" : lastFindingsArgs !== null ? "model+rules" : "rules";
+    await io.step("finish", () => io.agent.finishRun(runId, status, { ...stats, fallbackTurns, source }));
     return { summary: { status, mode, ...stats, category: final.category }, approvalId: proposal.approvalId };
   } catch (e) {
     console.error("diagnosis run failed", runId, (e as Error).message);

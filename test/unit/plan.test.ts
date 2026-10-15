@@ -132,7 +132,7 @@ describe("diagnose: normal runs", () => {
     expect(out).toEqual({ status: "done", mode: "ai", toolCalls: 2, llmTurns: 2, category: "origin_5xx" });
     expect(h.steps).toEqual(["context", "llm-turn-1", "pending-1", "tool-dns-1", "tool-http-1", "llm-turn-2", "findings", "propose", "narrate", "finish"]);
     expect(h.log.findings).toEqual({ f: expect.objectContaining({ category: "origin_5xx", evidence: ["http-1", "dns-1"] }), mode: "ai" });
-    expect(h.log.finish).toEqual({ status: "done", stats: { toolCalls: 2, llmTurns: 2 } });
+    expect(h.log.finish).toEqual({ status: "done", stats: { toolCalls: 2, llmTurns: 2, fallbackTurns: 0, source: "model" } });
     expect(h.requests[0]).toMatchObject({ toolChoice: "required" });
     expect(offered(h.requests[0]!)).toEqual(["dns_lookup", "http_probe", "submit_findings"]);
     expect(h.requests[1]!.messages[0]!.content).toContain("[http-1] http_probe (fail): http_probe ok");
@@ -145,6 +145,13 @@ describe("diagnose: normal runs", () => {
     expect(h.recorded.map((r) => r.tool)).toEqual(["dns_lookup", "http_probe"]);
     expect(out).toMatchObject({ status: "done", mode: "rule_based" });
     expect(h.log.findings?.mode).toBe("rule_based");
+    expect(h.log.finish?.stats).toMatchObject({ source: "rules", fallbackTurns: 0 });
+  });
+
+  it("counts the turns the fallback model answered (WP-20)", async () => {
+    const h = harness({ replies: [{ ...reply(http()), fallback: true }, reply(submit(["http-1"]))] });
+    await run(h);
+    expect(h.log.finish?.stats).toMatchObject({ fallbackTurns: 1, source: "model" });
   });
 });
 
@@ -173,6 +180,7 @@ describe("diagnose: invalid calls (FR-12)", () => {
     expect(h.log.ruleArgs).toMatchObject({ category: "high_latency" });
     expect(h.log.findings?.f).toMatchObject({ category: "high_latency", cause: "It is slow.", evidence: ["http-1"] });
     expect(out).toMatchObject({ status: "done", mode: "ai" });
+    expect(h.log.finish?.stats).toMatchObject({ source: "model+rules" });
   });
 
   it("rejects findings that cite checks which don't exist", async () => {
@@ -190,6 +198,7 @@ describe("diagnose: every limit still ends in findings (TDD §8.2)", () => {
     expect(h.steps).toEqual(["context", "llm-turn-1", "pending-rules", "tool-dns-1", "tool-http-1", "rules", "findings", "propose", "narrate", "finish"]);
     expect(out).toMatchObject({ status: "llm_unavailable", mode: "rule_based", llmTurns: 1 });
     expect(h.log.finish?.status).toBe("llm_unavailable");
+    expect(h.log.finish?.stats).toMatchObject({ source: "rules", fallbackTurns: 0 });
   });
 
   it("only runs the baseline checks this run hasn't done", async () => {

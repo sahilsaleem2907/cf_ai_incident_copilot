@@ -852,6 +852,13 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 
 A full run costs about 3k neurons, so don't run it on a review day.
 
+*As built (WP-20):*
+- **Files:** `eval/cases.ts` (cases, `score`, `renderResults`; pure and import-free, unit-tested in `test/unit/eval-score.test.ts`) and `eval/run.ts` (`pnpm eval --base <url> [--note "<text>"]`, Node type stripping like `scripts/smoke.ts`). Not part of CI.
+- **Scoring:** ② needs an `http-*` ID in `findings.evidence` whose check finished (not pending or `unavailable`). ③ needs a `restore_demo_service` approval card; for `healthy`, neither a card nor the action in the findings. A `rule_based` run fails whatever it found, since the eval measures the AI.
+- **Who made the findings:** `run_finished` now records `source` (`model`, `model+rules` or `rules`) and `fallbackTurns` (turns glm answered), from `loop/plan.ts`. No schema change.
+- **Run limit:** a 429 waits `retryAfter` and retries (3 tries). The demo is set back to `healthy` at the end; the pending cards wait out their timeout.
+- **First run (2026-10-16, local `pnpm dev` with the live model):** 5/5, 642 neurons (about 130 per case, well under the 3k estimate). `redirect_loop` was `model+rules`: an invalid `submit_findings` was filled in by the rules. Check ③ is mostly guaranteed by `pickAction` (WP-12). Results in `eval/results.md`.
+
 ## 17. Build plan (2 days)
 
 The estimates are focused hours with heavy AI help. **Day 1 is heavy (about 14 h).** If it runs over, WP-12 and WP-13 move to the start of Day 2 ahead of all Should items. Commit after each WP, and export the session transcript into `prompts/` when the day ends.

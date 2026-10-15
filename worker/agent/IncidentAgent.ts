@@ -12,6 +12,7 @@ import { streamLlm } from "../llm/stream";
 import { budgetMode, d1Usage } from "../llm/usage";
 import { salvageFindings } from "../loop/findings";
 import { finalizeNarration, NARRATION_MAX_TOKENS, type NarrationOutcome } from "../loop/narrate";
+import type { FinishStats } from "../loop/plan";
 import { ipKey, takeRun } from "../safety/quota";
 import { devAllowOrigin } from "../safety/ssrf";
 import type { DnsRaw } from "../tools/dns";
@@ -482,7 +483,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
   }
 
   /** Ends a run and records why (TDD §8.2). Only the first call counts. */
-  async finishRun(runId: string, status: Exclude<RunStatus, "running">, stats: { toolCalls?: number; llmTurns?: number } = {}): Promise<void> {
+  async finishRun(runId: string, status: Exclude<RunStatus, "running">, stats: Partial<FinishStats> = {}): Promise<void> {
     const run = this.mustRun(runId);
     if (run.status !== "running") return;
     const now = Date.now();
@@ -491,7 +492,8 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     // Checks planned but never run (the run stopped first) shouldn't spin forever in the UI.
     this.sql`UPDATE checks SET status = 'unavailable', summary = 'Not run: the run stopped before this check.', finished_at = ${now}
       WHERE run_id = ${runId} AND finished_at IS NULL`;
-    this.event("run_finished", { runId, status });
+    // WP-20: who made the findings, for the eval. Only a Workflow run passes it.
+    this.event("run_finished", { runId, status, ...(stats.source ? { source: stats.source, fallbackTurns: stats.fallbackTurns ?? 0 } : {}) });
     this.touch();
     this.syncState();
     await this.upsertIndex();

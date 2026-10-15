@@ -130,6 +130,7 @@ pnpm dev                         # http://localhost:5173
 | `pnpm test` | All three Vitest projects (below) |
 | `pnpm build` | Builds the client and both Workers into `dist/` |
 | `pnpm smoke <url>` | The deploy smoke test against any running copy |
+| `pnpm eval --base <url>` | The LLM eval (below). Uses real neurons, so it isn't in CI |
 
 ## Tests
 
@@ -138,6 +139,8 @@ pnpm dev                         # http://localhost:5173
 - **`unit`** (Node): the SSRF tables, the target parser, the DNS/HTTP parsers, classification for every category, the citation check, the LLM adapter run on recorded responses, SSE parsing, the planning loop with every limit, transitions, and the web helpers.
 - **`integration`** (`@cloudflare/vitest-plugin`, the real Workers runtime): the main Worker with `LLM_MODE=mock`, a **fake internet** Worker as the only outbound route (DoH and HTTP for `*.example.com`), and a stub demo Worker that records every `setModes` call. It covers the agent over a real WebSocket (owner and viewer), the API, real `DiagnosisWorkflow` runs, and the full approval path (approve → restore → verify → resolve, reject, expire, viewer, dedupe).
 - **`demo`**: the real demo Worker, every mode.
+
+**LLM eval** ([`eval/`](eval/), TDD §16): breaks the demo each way (`slow`, `errors`, `redirect_loop`, `bad_cache`) plus a `healthy` control, runs a real AI diagnosis, and scores the category, a citation of a real `http-*` check, and the proposed restore. A run that falls back to the rules fails. **Latest: 5/5** (target ≥ 4/5), 642 neurons; see [`eval/results.md`](eval/results.md).
 
 ## CI/CD
 
@@ -170,7 +173,6 @@ The full design for each of these is in the TDD. Day 2 of the build is still in 
 
 | WP | Feature | Design |
 |---|---|---|
-| 20 | LLM eval suite: break the demo each way and score category, citation and proposed action (target ≥ 4/5) | TDD §16 |
 | 21 | `cert_info` (crt.sh) and `provider_status` (status pages) tools | TDD §7.3 |
 | 22 | Postmortem: streamed markdown summary of a resolved incident | TDD §8.7 |
 | 23 | Push-to-talk voice via Whisper, normalizing "dot" and "slash" | TDD §8.7 |
@@ -188,6 +190,7 @@ web/          React client: components/, hooks/, lib/
 demo-service/ the breakable demo Worker (modes, DemoState DO, DemoAdmin RPC)
 migrations/   D1 schema
 scripts/      smoke.ts
+eval/         LLM eval: cases.ts (cases + scoring), run.ts, results.md
 test/         unit/, integration/, demo/, fixtures/ (recorded LLM responses)
 prompts/      full transcripts of the Claude Code sessions that built this
 ```
