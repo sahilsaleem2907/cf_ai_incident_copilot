@@ -448,10 +448,10 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 ## Daily wrap-up
 
 ### Day 1 (2026-10-15)
-- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03, WP-04, WP-05, WP-06, WP-07, WP-08, WP-09, WP-10. Review setup: `dev` branch, Sift workflows on `main`, PR #2 (WP-01 to WP-05) merged
-- **Moved / slipped:**
-- **Hours:** 2.25 / 14.75 h
-- **Transcript exported to `prompts/`:** ⬜
+- **Done:** WP-01 (plus the package change folded into TDD and PRD) to WP-13, plus WP-13b (the live speed fixes found in WP-13). All Day 1 Musts are done. Review setup: `dev` branch, Sift workflows on `main`, PR #2 (WP-01 to WP-05) merged, PR #3 (WP-06 to WP-10) open
+- **Moved / slipped:** nothing. Added: WP-11 combined demo modes, WP-13b
+- **Hours:** 2.93 / 14.75 h on WPs
+- **Transcript exported to `prompts/`:** ✅ 7 sessions (planning + Day 1), secrets removed; see [`prompts/README.md`](prompts/README.md)
 
 ### Day 2 (2026-10-16)
 - **Done:**
