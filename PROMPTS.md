@@ -369,3 +369,5 @@ Answers to Claude's questions:
 **Answer:** the user runs a one-line command Claude provides.
 
 (Plan approved: sidebar polling every 10 s with unread dots and `markRead`, browser notifications from a button, Slack/Discord webhooks encrypted with AES-GCM, and `NotifyWorkflow` sending at most once per state change.)
+
+(WP-19 built: sidebar polling with unread markers, browser notifications, Slack/Discord webhooks sent by `NotifyWorkflow`. 585 tests pass. The fake-Discord integration test gets exactly one message per state change. Locally, a watch failure showed as "New" and raised one browser notification. Webhooks go live once the user sets `WEBHOOK_KEY` on the deployed Worker.)
