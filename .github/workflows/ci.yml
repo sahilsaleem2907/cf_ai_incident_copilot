@@ -1,0 +1,43 @@
+# Checks every PR into main (TDD §15). deploy.yml reuses it, so main is checked again before each deploy.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # A newer push to a PR replaces the older check; a deploy's check always runs to the end.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      # The pnpm version comes from package.json "packageManager".
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      # Mock LLM, fake internet and no remote bindings: no Cloudflare login, no neurons (TDD §14).
+      - run: pnpm test
+
+      # Terraform (D15) is WP-25, below the cut line. These steps turn on once infra/ has .tf files.
+      - if: hashFiles('infra/**/*.tf') != ''
+        uses: hashicorp/setup-terraform@v3
+      - if: hashFiles('infra/**/*.tf') != ''
+        working-directory: infra
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false
+          terraform validate

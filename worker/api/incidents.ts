@@ -21,9 +21,11 @@ export const incidents = new Hono<AppEnv>()
     if (target.ok && target.source === "demo" && !demoUrl) return c.json({ error: "demo_unavailable" }, 503);
     if (!target.ok) return c.json({ error: target.error }, 400);
     // WP-17: run quota (D14) before init.
+    // `?smoke=rule` skips the LLM (TDD §15): the deploy smoke test costs no neurons. It can only make a run cheaper.
+    const mode = c.req.query("smoke") === "rule" ? "rule_based" : "ai";
     const id = newId();
     const agent = await incidentAgent(c.env, id);
-    await agent.init({ workspaceId, target: target.url, origin: "chat", message });
+    await agent.init({ workspaceId, target: target.url, origin: "chat", message, mode });
     return c.json({ id });
   })
   .get("/", async (c) => {

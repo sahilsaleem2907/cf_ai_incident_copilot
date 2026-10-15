@@ -11,7 +11,8 @@
     "cf-typegen": "wrangler types --env-interface Env -c wrangler.jsonc -c demo-service/wrangler.jsonc worker-configuration.d.ts",
     "typecheck": "tsc -b",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "smoke": "node scripts/smoke.ts"
   },
   "dependencies": {
     "@cloudflare/kumo": "2.14.0",

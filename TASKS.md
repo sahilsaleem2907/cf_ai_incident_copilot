@@ -16,20 +16,22 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 - Work happens on `dev`. Review is a PR from `dev` into `main`, checked by Sift (GitHub Actions). Nothing goes to `main` directly without the user's OK.
 - At the end of each day, export the session transcript to `prompts/`.
 - Don't share the deployed URL until WP-17 is ✅ (D2).
+- When a Day 2 WP lands, move it out of the README's "Designed, not built" table (and add the live URL to the README once WP-17 is ✅).
 
 ---
 
 ## Now
 
-- **Current:** none (WP-13 ✅ 19:15). Day 1 Musts done
-- **Next:** WP-14 Tests (Day 2)
+- **Current:** none. WP-14 ✅, WP-16 ✅; WP-15 ⛔ built, waiting on the user (see blockers). All Musts are built
+- **Next:** WP-17 Limits + budget guard (Day 2)
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
   - PR #2 `dev` → `main` ("WP-01 to WP-05") was reviewed by Sift: 5 findings, all false alarms, each answered `/not-helpful` with the reason. **Merged** 2026-10-15 13:40 (`0073839`).
   - PR #1 was closed unmerged; `master` (`867d8d6`) is unused.
   - **PR #3** `dev` → `main` ("WP-06 to WP-10 …") opened 16:47: https://github.com/sahilsaleem2907/cf_ai_incident_copilot/pull/3. Waiting for Sift review.
-- **Blockers / risks:** none blocking.
+- **Blockers / risks:**
+  - **WP-15 waits on the user:** (1) ✅ secrets set 2026-10-15 22:10 (the first try saved the token as a secret *name*, so it should be rolled; not confirmed here). (1, as planned) create a Cloudflare API token ("Edit Cloudflare Workers" template + Account › D1 › Edit) and run `gh secret set CLOUDFLARE_API_TOKEN`; `CLOUDFLARE_ACCOUNT_ID` too. (2) Open a `dev` → `main` PR, so `ci.yml` runs. (3) Merge it: `deploy.yml` deploys and runs the smoke test. **Set the secrets before merging**, or the first deploy fails. PR #3 is already merged, so there's no open PR.
   - Watch gpt latency: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
   - **Live walkthrough timing (after WP-13b):** about 10 s to the first card, then about 31 s from Approve to Resolved (2 monitor ticks × 15 s). With a person clicking, steps 1–5 take about 55–60 s, right at the PRD's 60 s. A shorter monitor tick would add slack.
 
@@ -60,9 +62,9 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 | WP | Task | Est | Deps | Status | Started | Done | Commit / notes |
 |---|---|---|---|---|---|---|---|
-| 14 | Tests (Must): fill coverage gaps | 1.25 | 12 | ⬜ | | | |
-| 15 | CI/CD (Must): `ci.yml`, `deploy.yml`, smoke | 0.75 | 14 | ⬜ | | | |
-| 16 | README + PROMPTS (Must, **protected time**) | 1.0 | — | ⬜ | | | |
+| 14 | Tests (Must): fill coverage gaps | 1.25 | 12 | ✅ | 21:24 (D1) | 21:27 (D1) | `366d3ed`. 0.05 h vs 1.25 est. +19 tests (`schema`, `cookie`, web `approval`) and 6 `cron` stubs for WP-18; 521 pass, 3 runs in a row. `transitions` already complete. The approval path is covered by `approval.test.ts` (8 cases) |
+| 15 | CI/CD (Must): `ci.yml`, `deploy.yml`, smoke | 0.75 | 14 | ⛔ | 21:27 (D1) | 21:31 (D1) built | `3ae9eeb`. 0.15 h vs 0.75 est. Built and checked locally (actionlint, suite without `.dev.vars`, `pnpm smoke` against `pnpm dev`). **Waiting on the user:** Cloudflare secrets, then a `dev` → `main` PR (CI green), then the merge (deploy + smoke) |
+| 16 | README + PROMPTS (Must, **protected time**) | 1.0 | — | ✅ | 21:31 (D1) | 21:35 (D1) | `857cdb2`. README for reviewers (no live URL until WP-17, D2) + PROMPTS overview by phase; secret sweep clean. Done early, so the README's not-built list is kept current through Day 2 |
 | 17 | Limits + budget guard | 1.0 | 15 | ⬜ | | | |
 | 18 | Watch: API, panel, cron, `WatchWorkflow` | 2.0 | 17 | ⬜ | | | |
 | 19 | Notifications: polling, unread, webhooks, `NotifyWorkflow` | 1.5 | 18 | ⬜ | | | |
@@ -279,30 +281,30 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-14</b> Tests</summary>
 
-- [ ] Fill unit coverage gaps
-- [ ] Fill integration gaps (`transitions`, `cron` stubs)
-- [ ] **Done when:** `pnpm test` is green and the approval path is covered
+- [x] Fill unit coverage gaps (`schema`, `cookie`, web `approval`)
+- [x] Fill integration gaps (`transitions` already complete; `cron.test.ts` stubs for WP-18)
+- [x] **Done when:** `pnpm test` is green and the approval path is covered
 </details>
 
 <details>
 <summary><b>WP-15</b> CI/CD</summary>
 
-- [ ] `ci.yml` (typecheck, lint, test, terraform fmt/validate), alongside the existing Sift workflows; PR trigger on `main`
-- [ ] `deploy.yml` (migrations, build, deploy demo then main, smoke)
-- [ ] Smoke script (`?smoke=rule` option)
-- [ ] GitHub secrets
+- [x] `ci.yml` (typecheck, lint, test, terraform fmt/validate), alongside the existing Sift workflows; PR trigger on `main` (Terraform steps only once `infra/` has `.tf` files)
+- [x] `deploy.yml` (migrations, build, deploy demo then main, smoke)
+- [x] Smoke script (`?smoke=rule` option): `scripts/smoke.ts`, `pnpm smoke <url>`
+- [ ] GitHub secrets (**user**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`)
 - [ ] **Done when:** a PR runs green; merging deploys and passes smoke
 </details>
 
 <details>
 <summary><b>WP-16</b> README and PROMPTS</summary>
 
-- [ ] Architecture + Agents SDK explanation
-- [ ] Security section with accepted risks (D2, D7, single location, DNS rebinding)
-- [ ] Terraform / wrangler split
-- [ ] "Designed, not built" list (from cut items in this file)
-- [ ] `PROMPTS.md` + `prompts/` transcripts, secrets removed
-- [ ] **Done when:** docs complete, no secrets
+- [x] Architecture + Agents SDK explanation (mermaid diagram, request flow, loop limits)
+- [x] Security section with accepted risks (D2, D7, single location, DNS rebinding)
+- [x] Terraform / wrangler split
+- [x] "Designed, not built" list (WP-17 to WP-26 for now; items leave it as they land)
+- [x] `PROMPTS.md` (curated overview by phase on top of the running log) + `prompts/` transcripts, secrets removed (sweep clean)
+- [x] **Done when:** docs complete, no secrets
 </details>
 
 <details>
@@ -409,6 +411,7 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
+| 2026-10-15 21:31 | 15 | **CI/CD as built.** `POST /api/incidents?smoke=rule` starts a `rule_based` run (`InitParams.mode` → `runs.mode` → `getRunContext`), so the deploy smoke test uses no LLM and no neurons; the public flag can only make a run cheaper. `scripts/smoke.ts` is run by Node 22 directly (no `tsx`). `ci.yml` is reused by `deploy.yml`; the Terraform steps are gated on `infra/*.tf` (WP-25 is below the cut). The smoke URL comes from wrangler's `deployment-url` (fallback: an `APP_URL` repo variable), so no URL is committed (D2). **Folded into TDD §14, §15.** | TDD §15 offered live LLM or `?smoke=rule`; rule mode is free and deterministic. The CI and deploy checks need the user's secrets and PR |
 | 2026-10-15 19:44 | 13b | **Live speed fixes (user chose "fix now").** (1) A new incident's baseline checks (DNS for the host, HTTP for the target) run before the first AI turn (`pending-baseline`), and the rule path reuses the same helper. (2) `propose` moved before `narrate`, so the card shows while the narration streams. (3) `fillEmptyCause` puts the findings' cited cause back when the citation check empties "Likely cause:". Redeployed and re-timed live: first check card 22 s → 7.5 s; demo card 35 s → 9.6 s; both runs `done` in 1 AI turn; the cause is filled. 279 neurons for 2 runs. **Folded into TDD §8.2, §9.2.** | WP-13 live walkthrough: about 100 s against the 60 s target, with every run hitting the turn cap |
 | 2026-10-15 19:15 | 13 | **First deploy.** D1 migrated remotely; the demo Worker went first, then `DEMO_BASE_URL` was set, then the main Worker (TDD §15). On the live site, PRD §13 steps 1–5 pass: workspace → cloudflare.com healthy (`dns-1`/`http-1` pass, resolved) → 500 errors → `origin_5xx` citing `[http-1]` with the card → Approve → verified → resolved (30 s). `169.254.169.254`, `localhost` and `10.0.0.1` were refused by the SSRF guard with clear messages, and no fetch was made. CPU: no event was cut off; details in TDD §15. 907 neurons for 5 runs. **Issues found:** (1) **slow** — the card came about 35 s after asking (≈ 5 s Workflow queue, 3 AI turns of 3–10 s, 13 s narration), so the full walkthrough is about 100 s against the PRD's 60 s; (2) the live model asks for **one check per turn**, so every run ends `limit_turns` and the UI shows a turn-limit note; (3) the live narration once left **"Likely cause:" empty** after the citation check removed an uncited sentence. | Found during the WP-13 live walkthrough |
 | 2026-10-15 19:00 | 12 | **Live AI check (one 500-errors run, local, `LLM_MODE=live`).** The model proposed `restore_demo_service` **itself** (the demo hint works; the rule merge wasn't needed). Card at 23.5 s → Approve → verified → resolved at 53 s. Cost 199 neurons (estimate was about 100); the daily local total is 2,855. The run ended `limit_turns` with 3 turns and 1 check: most likely the model's `dns_lookup` of `localhost` was refused (it isn't a public hostname), which cost an extra turn. That's local only; recheck on the deployed `workers.dev` demo in WP-13. | User asked for the live check after WP-12 |
@@ -457,4 +460,4 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 - **Done:**
 - **Cut (→ README "designed, not built"):**
 - **Hours:** / 11.5 h
-- **Transcript exported to `prompts/`:** ⬜
+- **Transcript exported to `prompts/`:** ⬜ **When exporting:** this session shows a Cloudflare API token (in upper case, as a GitHub secret name in `gh secret list` output, 2026-10-15 evening). Redact it as `<TOKEN>`, matching case-insensitively, and the account ID as `<ACCOUNT_ID>`, even after the token is rolled.

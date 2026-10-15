@@ -1,5 +1,6 @@
-import { exports } from "cloudflare:workers";
+import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
+import { incidentAgent } from "../../worker/agent/stub";
 
 const BASE = "https://copilot.example.com";
 
@@ -49,6 +50,17 @@ describe("/api/incidents", () => {
 
     expect((await get(`/api/incidents/${id}`, await workspace())).status).toBe(404);
     expect((await get("/api/incidents/not-an-id", mine)).status).toBe(404);
+  });
+
+  it("?smoke=rule starts the run without the LLM; any other value stays ai", async () => {
+    const mine = await workspace();
+    const runMode = async (query: string) => {
+      const { id } = await (await post(`/api/incidents${query}`, mine, { message: "diagnose shop.example.com" })).json<{ id: string }>();
+      return (await (await incidentAgent(env, id)).getRunContext("run-1")).mode;
+    };
+    expect(await runMode("?smoke=rule")).toBe("rule_based");
+    expect(await runMode("")).toBe("ai");
+    expect(await runMode("?smoke=1")).toBe("ai");
   });
 
   it("marks an incident read", async () => {

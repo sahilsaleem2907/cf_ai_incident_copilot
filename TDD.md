@@ -763,12 +763,14 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | | `transitions.test.ts` | Every legal edge, and illegal edges throw |
 | | `webhook.test.ts` | Allowlist accept/reject, AES-GCM round trip, masking |
 | | `origin.test.ts` | Origin-pin scope rules |
+| | `schema.test.ts`, `cookie.test.ts` | `toolParameters` drops regex `pattern`s at every depth but keeps a property named `pattern`; `workspaceFromCookieHeader` (the WebSocket path) accepts only a well-formed `__Host-ws` |
+| Unit (web) | `approval.test.ts`, `markdown-incident-api.test.ts`, `stream-feed.test.ts`, `theme.test.ts` | Approval card text for every status and outcome ("verified" only after the re-check), `whyText` refs; narration markdown, other-host and limit notes, the API client, stream buffering, theme |
 | Integration (`@cloudflare/vitest-plugin`, main Worker, mocked outbound fetch, `LLM_MODE=mock`) | `agent.test.ts` | `init`, owner/viewer roles over a real WebSocket (`helpers/ws.ts` speaks the SDK's `rpc` / `cf_agent_state` frames), idempotent `addPendingChecks`/`recordCheck`, narration streaming, idempotency and template fallback, limits, index sync |
-| | `incidents.test.ts` | `need_target`, create, list per workspace, owner-only snapshot, read |
-| | `diagnosis.test.ts` | Real Workflow, mock LLM, fake internet: tools → findings → narrate; healthy → resolved; `#llm-down` → rules; `#llm-invalid` ×2 → rules; NXDOMAIN; follow-up run |
+| | `incidents.test.ts` | `need_target`, create, list per workspace, owner-only snapshot, read, `?smoke=rule` → a `rule_based` run (any other value stays `ai`) |
+| | `diagnosis.test.ts` | Real Workflow, mock LLM, fake internet: tools → findings → narrate; healthy → resolved; `#llm-down` → rules; `#llm-invalid` ×2 → rules; NXDOMAIN; follow-up run; a `rule_based` (smoke) run on the healthy demo with 0 LLM turns |
 | Unit | `plan.test.ts` | The driver with a fake `io`: happy path, invalid once/twice, origin pin, LLM down, tool cap, turn cap, budget, deadline, throwing check, unexpected failure, rule-based mode |
 | | `approval.test.ts` | Propose → approve → `setModes(["healthy"])` called → verify → `mitigated` → 2 ticks → `resolved`. Reject → `investigating`. Timeout (`forceEventTimeout("wait-for-approval")`) → expired. Approve twice, a viewer, resolving by hand, a duplicate follow-up, a retried proposal. The demo stub's default `fetch` serves `/w/<ws>/` by mode, and the fake internet routes the test demo host to it. Supersede itself is covered at the agent level: with one proposable action, it can't happen end to end yet. |
-| | `cron.test.ts` | Due-watch query with LIMIT and caps; failure starts WatchWorkflow; duplicate ID ignored |
+| | `cron.test.ts` | Due-watch query with LIMIT and caps; failure starts WatchWorkflow; duplicate ID ignored. *WP-14: `it.todo` stubs until WP-18 builds the cron.* |
 | Demo (`@cloudflare/vitest-plugin`, demo Worker) | `demo.test.ts` | Every mode's status, headers and timing, through `exports.default` and the `DemoAdmin` RPC; per-workspace state; bad input; no admin route |
 
 - **Projects** (`vitest.config.ts`): `unit` runs in node. `integration` loads `wrangler.jsonc` with `LLM_MODE=mock` and a valid test `DEMO_BASE_URL`, and with `remoteBindings: false`, so the AI binding never goes remote: tests need no login and spend no neurons. `demo` loads `demo-service/wrangler.jsonc`.
@@ -779,11 +781,12 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 
 ## 15. CI/CD and IaC
 
-- **`ci.yml`** (on PRs): `pnpm i --frozen-lockfile`, `pnpm typecheck`, `pnpm lint`, `pnpm test`, then `terraform fmt -check` and `terraform init -backend=false && terraform validate` (D15).
+- **`ci.yml`** (on PRs into `main`, and reused by `deploy.yml`): `pnpm i --frozen-lockfile`, `pnpm typecheck`, `pnpm lint`, `pnpm test`, then `terraform fmt -check` and `terraform init -backend=false && terraform validate` (D15). *As built (WP-15):* Node 22; the Terraform steps run only when `infra/` has `.tf` files (`hashFiles`), so they turn on by themselves if WP-25 is built. A newer push to a PR cancels the older check; a deploy's check is never cancelled. The tests need no `.dev.vars` (checked by running the suite without it).
 - **`deploy.yml`** (on push to `main`): runs the tests, `wrangler d1 migrations apply DB --remote` and `vite build`, deploys `demo-service`, then deploys main, then runs a smoke test.
-  - Deploys use `cloudflare/wrangler-action`.
+  - Deploys use `cloudflare/wrangler-action@v3` with `packageManager: pnpm`, so the repo's pinned wrangler runs. Concurrency group `deploy-production`, never cancelled. The job runs in the `production` environment, whose URL is the main Worker's `deployment-url`.
   - The smoke test calls `GET /api/health`, then `GET /api/session`, then `POST /api/demo/mode {modes:["healthy"]}`, then `POST /api/incidents "diagnose demo"`. It polls the snapshot until `activeRunId` is null and expects `category = healthy`. Run it with `LLM_MODE` live but only once per deploy, or skip the LLM with a `?smoke=rule` flag that forces `rule_based`.
-- **Secrets:** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` live in GitHub. `WEBHOOK_KEY` is set once with `wrangler secret put`.
+  - *As built (WP-15):* `scripts/smoke.ts` (`pnpm smoke <url>`; Node 22 runs the `.ts` file directly, so it has no imports) always uses `?smoke=rule`, so a deploy costs no neurons. Health retries 5 times, 3 s apart (WP-13 saw one transient `1042`), and the run must finish within 90 s. The URL comes from wrangler's `deployment-url`, with an `APP_URL` repository variable as the fallback, so no URL is committed (D2). `POST /api/incidents?smoke=rule` passes `mode: "rule_based"` into `init`, `startRun` stores it in `runs.mode`, and `getRunContext` returns it (WP-17's budget guard will set the same field). The flag is public, but it can only make a run cheaper. Locally, `pnpm smoke http://localhost:5173` passes against `pnpm dev`, with no LLM call.
+- **Secrets:** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` live in GitHub. `WEBHOOK_KEY` is set once with `wrangler secret put`. The token uses the "Edit Cloudflare Workers" template plus **Account › D1 › Edit** (for the migrations).
 - **First deploy (WP-13, by hand from `dev`):**
   1. `wrangler d1 migrations apply DB --remote`.
   2. `pnpm build`, which writes both Workers to `dist/`.
