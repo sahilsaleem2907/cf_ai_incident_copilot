@@ -24,7 +24,7 @@ export function AppShell({ sidebar, aside, children, budgetMode }: Props) {
   // Mounted in one place only, so the panel keeps one copy of its state.
   const wide = useMediaQuery("(min-width: 1024px)");
   return (
-    <div className="flex h-dvh flex-col">
+    <div className="flex h-dvh flex-col overflow-hidden">
       <header className="shrink-0 border-b border-(--cf-border) bg-(--cf-bg-200)">
         <div className="flex h-14 items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-cf-orange">
@@ -62,7 +62,7 @@ export function AppShell({ sidebar, aside, children, budgetMode }: Props) {
           <Sidebar.Content>{sidebar}</Sidebar.Content>
         </Sidebar>
 
-        <main className="bg-dot-grid flex min-w-0 flex-1 flex-col overflow-y-auto bg-(--cf-bg-100)">
+        <main className="bg-dot-grid flex min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-(--cf-bg-100)">
           <div className="border-b border-(--cf-border) px-2 py-1 md:hidden">
             <Sidebar.Trigger aria-label="Show incidents" />
           </div>

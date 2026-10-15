@@ -53,3 +53,17 @@ export function buildFeed(state: Pick<IncidentState, "messages" | "checks" | "ac
   for (const a of approvals) cardsFor(a.runId);
   return items;
 }
+
+/**
+ * What the chat says it's doing while a run is active (TDD §12.2): checks first, then the diagnosis. Nothing once
+ * the narration's text is streaming (the text is the progress) or when no run is active.
+ */
+export function workingLabel(feed: readonly FeedItem[], active: boolean): string | null {
+  if (!active) return null;
+  const last = feed.at(-1);
+  if (last?.kind === "stream" && last.text) return null;
+  // buildFeed shows the active run's waiting checks as running; a finished run's leftover "pending" doesn't count.
+  const checking = feed.some((i) => i.kind === "check" && i.status === "running");
+  if (checking || (last?.kind === "message" && last.message.role === "user")) return "Running checks…";
+  return "Writing the diagnosis…";
+}

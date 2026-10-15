@@ -2,9 +2,10 @@ import { cn } from "@cloudflare/kumo";
 import { useEffect, useRef } from "react";
 import type { MessageView } from "../../worker/agent/state";
 import type { Evidence } from "../hooks/useIncident";
-import type { FeedItem } from "../lib/feed";
+import { workingLabel, type FeedItem } from "../lib/feed";
 import { ApprovalCard } from "./ApprovalCard";
 import { CheckCard } from "./CheckCard";
+import { DashedLoader } from "./DashedLoader";
 import { Markdown } from "./Markdown";
 
 type Props = {
@@ -13,19 +14,45 @@ type Props = {
   getEvidence: (id: string) => Promise<Evidence | null>;
   /** Owner only; viewers get cards without buttons. */
   onDecide?: (id: string, decision: "approve" | "reject") => Promise<unknown>;
+  /** A run is active: show what it's doing at the end of the feed. */
+  working?: boolean;
 };
 
+/** Within this many px of the bottom counts as "at the bottom", so new text keeps following. */
+const PIN_SLACK = 80;
+
 /** The incident conversation: messages, check cards in run order, and the live narration (TDD §12.2). */
-export function ChatPane({ feed, knownIds, getEvidence, onDecide }: Props) {
-  const end = useRef<HTMLDivElement>(null);
+export function ChatPane({ feed, knownIds, getEvidence, onDecide, working = false }: Props) {
+  const root = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true);
   const last = feed.at(-1);
-  const lastKey = last ? `${last.key}:${last.kind === "stream" ? last.text.length : ""}` : "";
+  const label = workingLabel(feed, working);
+  const lastKey = last ? `${last.key}:${last.kind === "stream" ? last.text.length : ""}:${label ?? ""}` : "";
+
+  // Follow new content only while the reader is at the bottom; scrolling up to read stops it.
   useEffect(() => {
-    end.current?.scrollIntoView({ block: "end" });
+    const scroller = root.current?.closest("main");
+    if (!scroller) return;
+    const onScroll = () => {
+      pinned.current = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < PIN_SLACK;
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => scroller.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Scrolls <main> only. scrollIntoView would also scroll every ancestor (the shell, the page) and move the footer.
+  useEffect(() => {
+    const scroller = root.current?.closest("main");
+    const justSent = last?.kind === "message" && last.message.role === "user";
+    if (scroller && (pinned.current || justSent)) {
+      scroller.scrollTop = scroller.scrollHeight;
+      pinned.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lastKey captures every change worth following
   }, [lastKey]);
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 py-6">
+    <div ref={root} className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-3 px-4 py-6">
       {feed.map((item) => {
         switch (item.kind) {
           case "message":
@@ -37,12 +64,17 @@ export function ChatPane({ feed, knownIds, getEvidence, onDecide }: Props) {
           case "stream":
             return (
               <div key={item.key} aria-live="polite" aria-busy="true" className="rounded-lg bg-(--cf-bg-200) p-4">
-                <Markdown text={item.text || "…"} knownIds={knownIds} />
+                {item.text ? <Markdown text={item.text} knownIds={knownIds} /> : <DashedLoader label="Writing" />}
               </div>
             );
         }
       })}
-      <div ref={end} />
+      {label && (
+        <p data-working className="flex items-center gap-2 px-1 text-sm text-(--cf-fg-muted)" aria-live="polite">
+          <DashedLoader label={null} />
+          {label}
+        </p>
+      )}
     </div>
   );
 }

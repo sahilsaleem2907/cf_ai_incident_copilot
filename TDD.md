@@ -708,6 +708,8 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 ### 12.2 Components
 
 - **`ChatPane`:** messages, check cards inline in run order, approval cards, and a composer that's disabled while `activeRunId` is set. The empty state shows chips for "Use demo service" and "diagnose cloudflare.com". The composer includes `VoiceButton`.
+  - *As built (WP-27c):* while a run is active the end of the feed shows the `DashedLoader` and what it's doing, from `workingLabel` (`web/lib/feed.ts`): "Running checks…" (the user just sent, or a check is running), then "Writing the diagnosis…", then nothing once narration text streams. An empty narration bubble shows the loader.
+  - Auto-scroll moves `<main>` only (never `scrollIntoView`, which also scrolls every ancestor, the shell and the page). It follows new content while the reader is within 80 px of the bottom; scrolling up stops it; sending a message jumps back down.
 - **`CheckCard`:** tool icon, label, and a `StatusBadge` with icon **and** text (`Pending`, `Running` with a `Loader`, `✓ Pass`, `✕ Fail`, `Unavailable`). It shows a summary and expands with `Collapsible` to show evidence in `Code`, which is fetched lazily with `getEvidence`. Clicking an `[http-1]` chip scrolls to the card and flashes an orange ring.
 - **`ApprovalCard`:** the action title, why it's proposed (cause plus refs), and **Approve** (orange primary) and **Reject** buttons. It shows the resolved state: approved, rejected, expired or superseded. For viewers, the buttons are hidden and `ReadOnlyBanner` is shown.
   - *As built (WP-12):* the card sits right after its run's narration in the feed. Its status badge reads, in words:
@@ -763,7 +765,7 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 - **Role:** the agent's `whoami()` callable gives the client its role, because the SDK doesn't tell a client its connection is readonly. Viewers get no composer, a "View only" badge in the sticky header and the `ReadOnlyBanner`.
 - **Shared types:** `tsconfig.web.json` includes the few pure worker files the browser reuses (agent state types, categories, tool types, `safety/target.ts`, `lib/ids.ts`).
 - **Kumo theming:** Kumo's brand token is pointed at `--color-cf-orange` (it's blue by default), so primary buttons and focus rings are orange. Below 768 px the Kumo `Sidebar` becomes an off-canvas sheet with a trigger.
-- **Evidence:** the check card's evidence is a plain disclosure `<button aria-expanded>` that lazy-loads `getEvidence` into `CodeBlock`.
+- **Evidence:** the check card's evidence is a plain disclosure `<button aria-expanded>` that lazy-loads `getEvidence` into `CodeBlock`. *(WP-27c:)* the JSON wraps long lines and is capped at 320 px with its own scroll, so it stays inside the card at any width.
 - **Vite:** `optimizeDeps.include` lists `agents/react` and `wouter`. Otherwise Vite discovered them on the first load and reloaded mid-render ("Invalid hook call").
 
 ### 12.4 Design system (D17)
@@ -797,6 +799,8 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 - Headings use `font-display` at weight 500. Hostnames, evidence IDs and raw evidence use `font-mono`.
 - Orange means: main actions (`CtaButton`), highlight rings, the notifications switch when on, unread markers, and "in progress" statuses (the `StatusPill` table in §12.2). Other statuses use their own colour from that table; everything else uses Kumo's neutral variants. *(WP-27, user decision: was "orange only for primary CTAs and highlight rings".)*
 - Kumo's `Switch` hard-codes blue for "on"; `styles.css` overrides it to Cloudflare orange.
+- **One loader: `DashedLoader`** (a ring of 8 dashes, turning; still with reduced motion). Don't use Kumo's `Loader` or `Button`'s `loading` prop (both draw Kumo's spinner): `CtaButton` takes `loading` and swaps in the dashed loader; plain Kumo buttons spread `loadingProps(busy, Icon)` from `CtaButton.tsx`. Pass `label={null}` when visible words already say what's loading.
+- **The page never scrolls:** `html, body` are `overflow: hidden` and the shell is exactly one screen tall; `<main>` (with `overscroll-behavior: contain`), the sidebar and the right column scroll on their own.
 - Background: a faint dot grid behind the main area only, and a warm glow on the New incident page, after cloudflare.com's hero. Dividers in the right column are dashed in the same rhythm.
 - **Kumo components used:** `Sidebar`, `Button`, `Badge`, `Switch`, `CloudflareLogo`, `LayerCard`, `Surface`, `Collapsible`, `Code`, `Loader`, `Banner`, `Toast`, `Dialog`, `ClipboardText`, `Input`, `SensitiveInput`, `Select`/`Radio`, `Table`, `Tooltip`, `Empty`. Before building, run `npx @cloudflare/kumo ls` and read `node_modules/@cloudflare/kumo/ai/USAGE.md` for exact props.
 - **Accessibility:** every control works from the keyboard, the composer submits with Enter (Shift+Enter for a new line), Approve and Reject are real `<button>`s, the stream region has `aria-live="polite"`, and status is never shown by color alone.

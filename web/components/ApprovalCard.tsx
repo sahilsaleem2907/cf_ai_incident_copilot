@@ -1,16 +1,17 @@
-import { Button, Loader, Surface } from "@cloudflare/kumo";
+import { Button, Surface } from "@cloudflare/kumo";
 import { CheckCircleIcon, HourglassIcon, MinusCircleIcon, ShieldCheckIcon, XCircleIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import type { ApprovalView } from "../../worker/agent/state";
 import { cardState, whyText, type CardState } from "../lib/approval";
 import { APPROVAL_TONE } from "../lib/status";
-import { CtaButton } from "./CtaButton";
+import { CtaButton, loadingProps } from "./CtaButton";
+import { DashedLoader } from "./DashedLoader";
 import { Markdown } from "./Markdown";
 import { StatusPill } from "./StatusBadge";
 
 const ICON: Record<CardState["tone"], React.ReactNode> = {
   waiting: <HourglassIcon aria-hidden size={14} />,
-  working: <Loader size={12} />,
+  working: <DashedLoader size={12} label={null} />,
   good: <CheckCircleIcon aria-hidden size={14} weight="fill" />,
   bad: <XCircleIcon aria-hidden size={14} weight="fill" />,
   closed: <MinusCircleIcon aria-hidden size={14} />,
@@ -72,7 +73,7 @@ export function ApprovalCard({ approval, knownIds, onDecide }: Props) {
           <CtaButton icon={CheckCircleIcon} loading={busy === "approve"} disabled={!!busy} onClick={() => void decide("approve")}>
             Approve
           </CtaButton>
-          <Button variant="secondary" icon={XCircleIcon} loading={busy === "reject"} disabled={!!busy} onClick={() => void decide("reject")}>
+          <Button variant="secondary" {...loadingProps(busy === "reject", XCircleIcon, !!busy)} onClick={() => void decide("reject")}>
             Reject
           </Button>
         </div>

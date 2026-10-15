@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ApprovalView, CheckView, IncidentState, MessageView } from "../../../worker/agent/state";
 import { cardState, whyText } from "../../../web/lib/approval";
-import { buildFeed } from "../../../web/lib/feed";
+import { buildFeed, workingLabel } from "../../../web/lib/feed";
 import { applyFrame, parseFrame, type Streams } from "../../../web/lib/stream";
 
 describe("stream frames", () => {
@@ -104,5 +104,34 @@ describe("approval cards", () => {
   it("cite the evidence in the why", () => {
     expect(whyText({ cause: "The origin returns 500.", evidence: ["http-1", "dns-1"] })).toBe("The origin returns 500 [http-1] [dns-1].");
     expect(whyText({ cause: "Cited already [http-1].", evidence: ["http-1"] })).toBe("Cited already [http-1].");
+  });
+});
+
+describe("workingLabel (chat loading row)", () => {
+  const sent = buildFeed(state({ messages: [msg("u1", "run-1", "user", 1)], activeRunId: "run-1" }), {});
+  const checking = buildFeed(state({ messages: [msg("u1", "run-1", "user", 1)], checks: [check("http-1", "run-1", "pending")], activeRunId: "run-1" }), {});
+  const checked = buildFeed(state({ messages: [msg("u1", "run-1", "user", 1)], checks: [check("http-1", "run-1")], activeRunId: "run-1" }), {});
+  const empty = buildFeed(state({ messages: [msg("u1", "run-1", "user", 1)], checks: [check("http-1", "run-1")], activeRunId: "run-1" }), {
+    "narr-run-1": { messageId: "narr-run-1", text: "", done: false },
+  });
+  const writing = buildFeed(state({ messages: [msg("u1", "run-1", "user", 1)], checks: [check("http-1", "run-1")], activeRunId: "run-1" }), {
+    "narr-run-1": { messageId: "narr-run-1", text: "**Likely", done: false },
+  });
+
+  it("says nothing when no run is active", () => {
+    expect(workingLabel(checking, false)).toBeNull();
+  });
+
+  it("runs checks first, then writes the diagnosis, then lets the text speak", () => {
+    expect(workingLabel(sent, true)).toBe("Running checks…");
+    expect(workingLabel(checking, true)).toBe("Running checks…");
+    expect(workingLabel(checked, true)).toBe("Writing the diagnosis…");
+    expect(workingLabel(empty, true)).toBe("Writing the diagnosis…");
+    expect(workingLabel(writing, true)).toBeNull();
+  });
+
+  it("ignores a finished run's leftover pending check", () => {
+    const feed = buildFeed(state({ messages: [msg("u1", "run-1", "user", 1), msg("narr-run-1", "run-1", "assistant", 2)], checks: [check("http-1", "run-9", "pending")], activeRunId: "run-2" }), {});
+    expect(workingLabel(feed, true)).toBe("Writing the diagnosis…");
   });
 });

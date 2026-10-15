@@ -1,7 +1,8 @@
-import { LinkProvider, Loader, Toasty, type LinkComponentProps } from "@cloudflare/kumo";
+import { LinkProvider, Toasty, type LinkComponentProps } from "@cloudflare/kumo";
 import { forwardRef, useEffect, useState } from "react";
 import { Link } from "wouter";
 import { AppShell } from "./components/AppShell";
+import { DashedLoader } from "./components/DashedLoader";
 import { DemoPanel } from "./components/DemoPanel";
 import { IncidentSidebar } from "./components/IncidentSidebar";
 import { WatchlistPanel } from "./components/WatchlistPanel";
@@ -60,7 +61,7 @@ export function App() {
             <AppRoutes />
           ) : (
             <div className="m-auto flex items-center gap-2 p-8 text-(--cf-fg-muted)">
-              <Loader size={16} /> Starting…
+              <DashedLoader label={null} /> Starting…
             </div>
           )}
         </AppShell>

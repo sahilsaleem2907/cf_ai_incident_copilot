@@ -1,4 +1,3 @@
-import { Loader } from "@cloudflare/kumo";
 import {
   CheckCircleIcon,
   HandPalmIcon,
@@ -14,6 +13,7 @@ import type { ReactNode } from "react";
 import type { CheckView, IncidentStatus } from "../../worker/agent/state";
 import { CATEGORY_TEXT, STATUS_TEXT } from "../lib/incident";
 import { categoryTone, CHECK_TONE, INCIDENT_TONE, type Tone } from "../lib/status";
+import { DashedLoader } from "./DashedLoader";
 
 type PillProps = { tone: Tone; icon?: ReactNode; size?: "sm" | "base"; className?: string; children: ReactNode };
 
@@ -31,7 +31,7 @@ export function StatusPill({ tone, icon, size = "base", className = "", children
 /** Check status with an icon **and** text, never colour alone (TDD §12.4). */
 const CHECK: Record<CheckView["status"], { text: string; icon: ReactNode }> = {
   pending: { text: "Pending", icon: <HourglassIcon aria-hidden size={14} /> },
-  running: { text: "Running", icon: <Loader size={12} /> },
+  running: { text: "Running", icon: <DashedLoader size={12} label={null} /> },
   pass: { text: "Pass", icon: <CheckCircleIcon aria-hidden size={14} weight="fill" /> },
   fail: { text: "Fail", icon: <XCircleIcon aria-hidden size={14} weight="fill" /> },
   error: { text: "Error", icon: <WarningCircleIcon aria-hidden size={14} weight="fill" /> },

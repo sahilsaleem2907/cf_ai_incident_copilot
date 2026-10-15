@@ -460,3 +460,21 @@ Answers to Claude's questions:
 > Use this as the website icon. (a blue pixel-dot cloud image)
 
 (Favicon added: the image's centre cropped square, `public/favicon.png` 64 px and `public/apple-touch-icon.png` 180 px, linked in `index.html`. Part of WP-27b.)
+
+### 03:21 · WP-27c bugs + loader plan
+
+> 2 bugs I've found: when we scroll it goes after the footer also once the chat starts loading text; the evidence json goes outside the cards, it should be within. Use a simple dashed loader when chats are loading and all loading states.
+
+**Claude asked:** what should the dashed loader look like?
+**Answer:** a dashed ring, spinning.
+
+**Claude asked:** what should the chat show while it's working?
+**Answer:** the ring plus what it's doing ("Running checks…", then "Writing the diagnosis…").
+
+**Claude asked:** how should long evidence fit in its card?
+**Answer:** wrap lines and cap the height, scrolling inside.
+
+**Claude asked:** should auto-scroll keep pulling down while you're reading higher up?
+**Answer:** only follow when at the bottom.
+
+(WP-27c built: the chat scrolls only its own column and only while you're at the bottom, and the page itself can no longer scroll; evidence wraps and stays inside its card; one dashed ring replaces every spinner, including inside buttons; the chat says "Running checks…" then "Writing the diagnosis…" while it works. 604 tests pass. The scroll bug didn't reproduce in a headless browser, so the fix removes the cause rather than a confirmed symptom.)
