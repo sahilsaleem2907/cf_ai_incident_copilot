@@ -215,3 +215,9 @@ Answers to Claude's questions:
 > lets verify the flaky test again and lets run the real AI checkl, I have updated the env from mock to live.
 
 (Flaky test: caught in 1 of 5 full runs (`approval.test.ts:51`). It was a race in the test: the card is proposed one step before the run finishes. Polling every 1 ms reproduced it in 4 of 5 runs; the fix (wait for card + finished run) passed 8 of 8 there, then the full suite. Fixed in `7787ac5`. Live AI check: the real model proposed the restore itself; card at 23.5 s, resolved at 53 s after Approve; 199 neurons. The run used 3 turns because of a refused DNS lookup of localhost (local only).)
+
+### 19:06 · WP-13 Deploy 1
+
+> Done, lets continue to WP-13 now.
+
+(Plan approved: apply the D1 migration remotely, deploy the demo Worker first (the main Worker's binding needs it), set the real demo URL, deploy the main Worker, then run the PRD §13 walkthrough steps 1–5 on the live URL, the three SSRF refusals and a CPU check from `wrangler tail`. About 1,000 neurons. The URL isn't shared until WP-17 (D2).)
