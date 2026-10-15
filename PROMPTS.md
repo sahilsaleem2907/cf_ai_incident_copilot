@@ -293,3 +293,9 @@ Answers to Claude's questions:
 > Lets continue and implement WP-14, 15 and 16 in one plan since its tests and readme.
 
 (Plan approved: WP-14 adds tests for the untested helpers (`toolParameters`, the approval card text, the cookie header parser) and `it.todo` stubs for the cron tests (WP-18). WP-15 adds a `?smoke=rule` flag (a run with no AI, so the smoke test costs nothing), `scripts/smoke.ts`, `ci.yml` and `deploy.yml`. WP-16 writes the README and the curated overview in this file. One commit per WP on `dev`; the user sets the Cloudflare API token secret and merges.)
+
+### 22:03 · WP-15 secrets
+
+> Give me the exact steps for the api token generation and account id.
+
+(Steps for creating the Cloudflare API token and finding the account ID, then setting both as GitHub secrets with `gh secret set`. The values aren't shared in the chat.)
