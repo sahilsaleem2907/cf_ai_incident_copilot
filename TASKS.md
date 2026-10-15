@@ -22,7 +22,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-17 Limits + budget guard (started 22:29, D1). **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
+- **Current:** none. WP-17 is done (not deployed yet). **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
 - **Next:** WP-18 Watch
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
@@ -66,7 +66,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 14 | Tests (Must): fill coverage gaps | 1.25 | 12 | ✅ | 21:24 (D1) | 21:27 (D1) | `366d3ed`. 0.05 h vs 1.25 est. +19 tests (`schema`, `cookie`, web `approval`) and 6 `cron` stubs for WP-18; 521 pass, 3 runs in a row. `transitions` already complete. The approval path is covered by `approval.test.ts` (8 cases) |
 | 15 | CI/CD (Must): `ci.yml`, `deploy.yml`, smoke | 0.75 | 14 | ✅ | 21:27 (D1) | 22:21 (D1) | `3ae9eeb`. 0.15 h vs 0.75 est (plus the user's secrets). PR #4: CI green (about 1 min, Terraform steps skipped). Merge `1be62ee` → `deploy.yml` run 38772159673 passed: migrations (none new), demo, main (version `f6e0c734`), smoke healthy / rule_based / resolved in about 12 s, against the new version, 0 neurons |
 | 16 | README + PROMPTS (Must, **protected time**) | 1.0 | — | ✅ | 21:31 (D1) | 21:35 (D1) | `857cdb2`. README for reviewers (no live URL until WP-17, D2) + PROMPTS overview by phase; secret sweep clean. Done early, so the README's not-built list is kept current through Day 2 |
-| 17 | Limits + budget guard | 1.0 | 15 | 🔄 | 22:29 (D1) | | |
+| 17 | Limits + budget guard | 1.0 | 15 | ✅ | 22:29 (D1) | 22:44 (D1) | `f636c10`. 0.25 h vs 1.0 est. 536 tests pass, 3 runs in a row. Local: 4th run → 429 `retryAfter: 60`; forced 9,000 neurons → banner + rule-based run. Live after the next `dev` → `main` merge. Found 2 older issues (first-visit cookie race, cookie-less quota bypass), see the log |
 | 18 | Watch: API, panel, cron, `WatchWorkflow` | 2.0 | 17 | ⬜ | | | |
 | 19 | Notifications: polling, unread, webhooks, `NotifyWorkflow` | 1.5 | 18 | ⬜ | | | |
 | 20 | Eval: `eval/run.ts` + `results.md` | 0.75 | 15 | ⬜ | | | |

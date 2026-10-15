@@ -330,3 +330,5 @@ Answers to Claude's questions:
 **Answer:** skip the probe limit for our own demo (the limit protects other people's sites; the run quota still caps demo use).
 
 (Plan approved: rate-limit bindings, `quota.ts` (3 runs a minute + 10 an hour per workspace, 429 with the time until reset), the 9,000-neuron budget guard switching runs to rule-based, a header `BudgetBanner`, and a toast on 429.)
+
+(WP-17 built: 536 tests pass. Locally, the 4th run in a minute gets 429 with the time until reset, and a forced 9,000-neuron total shows the banner and runs with rules only. Two older issues found and not fixed: a first visit creates several workspaces at once (the last cookie wins), and the run quota can be skipped by not sending the cookie.)
