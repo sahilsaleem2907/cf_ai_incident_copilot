@@ -2,6 +2,7 @@ import { LinkButton, Sidebar } from "@cloudflare/kumo";
 import { CaretRightIcon, GithubLogoIcon, PlusIcon } from "@phosphor-icons/react";
 import { useState, type ReactNode } from "react";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { BudgetBanner } from "./BudgetBanner";
 
 const REPO_URL = "https://github.com/sahilsaleem2907/cf_ai_incident_copilot";
 
@@ -11,24 +12,29 @@ type Props = {
   /** Right column (DemoPanel). Below `lg` it collapses into a disclosure at the top of <main>. */
   aside?: ReactNode;
   children?: ReactNode;
+  /** From `/api/session`: "rule_based" shows the BudgetBanner under the title bar. */
+  budgetMode?: "ai" | "rule_based";
 };
 
-export function AppShell({ sidebar, aside, children }: Props) {
+export function AppShell({ sidebar, aside, children, budgetMode }: Props) {
   // Mounted in one place only, so the panel keeps one copy of its state.
   const wide = useMediaQuery("(min-width: 1024px)");
   return (
     <div className="flex h-dvh flex-col">
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-(--cf-border) bg-(--cf-bg-200) px-4">
-        <span className="font-display text-lg font-medium">Incident Copilot</span>
-        <a
-          href={REPO_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-(--cf-fg-muted) hover:text-(--cf-fg) focus-visible:outline-2 focus-visible:outline-cf-orange"
-        >
-          <GithubLogoIcon aria-hidden size={18} />
-          GitHub
-        </a>
+      <header className="shrink-0 border-b border-(--cf-border) bg-(--cf-bg-200)">
+        <div className="flex h-14 items-center justify-between px-4">
+          <span className="font-display text-lg font-medium">Incident Copilot</span>
+          <a
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-(--cf-fg-muted) hover:text-(--cf-fg) focus-visible:outline-2 focus-visible:outline-cf-orange"
+          >
+            <GithubLogoIcon aria-hidden size={18} />
+            GitHub
+          </a>
+        </div>
+        {budgetMode === "rule_based" && <BudgetBanner />}
       </header>
 
       {/* Below 768px the sidebar becomes a sheet, opened from the trigger at the top of <main>. */}

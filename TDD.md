@@ -262,7 +262,7 @@ Incident, workspace and approval IDs are 128-bit random hex values (`crypto.getR
 |---|---|---|---|
 | `GET /api/session` | | `{demoUrl, budgetMode, limits}` | Sets `__Host-ws` (HttpOnly, Secure, SameSite=Lax, 1 year) if it's missing |
 | `GET /api/incidents` | | `[{id,target,status,origin,unread,updatedAt}]` | Sidebar polling (D16) |
-| `POST /api/incidents` | `{message}` | `{id}` / 400 `{error:"need_target"}` / 429 `{retryAfter}` / 503 `{error:"demo_unavailable"}` | Target parse (D9), then quota (D14), then `IncidentAgent.init`. 503 while `DEMO_BASE_URL` still holds the `<sub>` placeholder |
+| `POST /api/incidents` | `{message}` | `{id}` / 400 `{error:"need_target"}` / 429 `{error:"rate_limited", retryAfter}` + `Retry-After` / 503 `{error:"demo_unavailable"}` | Target parse (D9), then quota (D14), then `IncidentAgent.init`. 503 while `DEMO_BASE_URL` still holds the `<sub>` placeholder |
 | `GET /api/incidents/:id` | | Snapshot (`IncidentState` + findings) | Owner only. Used by eval and smoke tests. |
 | `POST /api/incidents/:id/read` | | 204 | Clears `unread` |
 | `GET /api/demo` · `POST /api/demo/mode` | `{modes}` | `{modes, url}` / 400 `{error:"invalid_modes"}` / 503 `{error:"demo_unavailable"}` | Calls `env.DEMO.getModes` / `setModes(ws, modes)`. `modes` is `["healthy"]` or one problem plus an optional `"slow"` (§7.5). 503 while `DEMO_BASE_URL` holds `<sub>` |
@@ -425,7 +425,7 @@ The Workflow drops any action that isn't proposable. At most one action per run.
 
 ### 8.1 New incident (chat)
 
-1. `POST /api/incidents {message}`. The Worker parses the target (D9), checks the run quota (D14, from WP-18), creates the ID, and calls `agent.init(...)`.
+1. `POST /api/incidents {message}`. The Worker parses the target (D9), checks the run quota (D14, WP-17), creates the ID, and calls `agent.init(...)`.
 2. `init` writes the incident, message and timeline `opened` rows, upserts the index, and calls `startRun(message, "initial")`.
 3. `startRun` makes sure `activeRunId` is null (otherwise 409), then calls `this.runWorkflow("DIAGNOSIS_WORKFLOW", {incidentId, runId, kind}, {id: "diag-<id>-<seq>"})` and sets `activeRunId`.
 4. The client navigates to `/i/:id` and runs `useAgent({ agent: "incident-agent", name: id })`. State arrives right away.
@@ -657,6 +657,14 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 - **Probe rate:** `PROBE_LIMIT.limit({key: hostname})` runs before every probe sample. If it's exceeded, the probe returns `unavailable: rate_limited`.
 - **Quotas (D14):** `RUN_LIMIT.limit({key: ws})` plus the D1 fixed-window `usage_counters(kind='run')`, which uses an atomic `INSERT … ON CONFLICT DO UPDATE SET count = count + 1 RETURNING count`.
 - **Budget guard:** before every run, `llm_usage(today).neurons_est ≥ 9000` → `mode = rule_based`. `GET /api/session` returns `budgetMode`, which drives the `BudgetBanner`.
+- *As built (WP-17):*
+  - **Where:** `safety/quota.ts` has `takeRun` (binding, then the D1 window), the generic `takeWindow` (for voice and postmortems later) and `probeLimiter`; `llm/usage.ts` has `budgetMode`.
+  - **Run quota:** checked in `POST /api/incidents` after target parsing (a message without a target isn't charged) and in `sendMessage` after the `run_active` check (a refused follow-up isn't charged). The agent throws `rate_limited:<seconds>`.
+  - **Time until reset:** the binding doesn't report when its window resets, so a burst refusal says 60 s. The D1 window gives the exact seconds to the end of the hour. The UI shows a Kumo warning toast and the same text inline (`role="alert"`).
+  - **Budget guard:** applied in `startRun` to runs that would use AI, before the synchronous check-and-insert. A forced `rule_based` (smoke) run stays rule-based. The app refetches `/api/session` whenever incidents change, so the banner appears without a reload.
+  - **Probe limit:** only `http_probe` samples go through it (`ToolContext.rateLimit`). `quickCheck` (verify and monitor) isn't limited: it only runs on the demo after an approved action. The app's own demo host and the dev allow-origin are exempt (user decision): every workspace's demo shares one hostname, and the limit exists to protect other people's sites.
+  - **Fail open:** a binding, D1 write or `llm_usage` read error is logged and the run or probe goes ahead. The LLM path still falls back to rules when Workers AI reports the allocation is used up.
+  - **Tests:** the integration project lists all three rate limits in its miniflare options, with `PROBE_LIMIT` raised to 10,000, because the existing diagnosis tests probe the same `*.example.com` hosts many times a minute. Locally, miniflare's windows are aligned to the wall-clock minute, so a burst that crosses a minute boundary can let a 4th run through.
 - **Webhooks:**
   - Only https URLs on `hooks.slack.com`, or `discord.com`/`discordapp.com` with a path starting `/api/webhooks/`.
   - Encrypted with AES-GCM-256 using the `WEBHOOK_KEY` secret, a 12-byte random IV, and AAD = workspaceId.
@@ -763,10 +771,12 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | | `transitions.test.ts` | Every legal edge, and illegal edges throw |
 | | `webhook.test.ts` | Allowlist accept/reject, AES-GCM round trip, masking |
 | | `origin.test.ts` | Origin-pin scope rules |
+| | `probe-limit.test.ts` | Limited per hostname; the demo and dev allow-origin are exempt and uncounted; fails open |
 | | `schema.test.ts`, `cookie.test.ts` | `toolParameters` drops regex `pattern`s at every depth but keeps a property named `pattern`; `workspaceFromCookieHeader` (the WebSocket path) accepts only a well-formed `__Host-ws` |
 | Unit (web) | `approval.test.ts`, `markdown-incident-api.test.ts`, `stream-feed.test.ts`, `theme.test.ts` | Approval card text for every status and outcome ("verified" only after the re-check), `whyText` refs; narration markdown, other-host and limit notes, the API client, stream buffering, theme |
 | Integration (`@cloudflare/vitest-plugin`, main Worker, mocked outbound fetch, `LLM_MODE=mock`) | `agent.test.ts` | `init`, owner/viewer roles over a real WebSocket (`helpers/ws.ts` speaks the SDK's `rpc` / `cf_agent_state` frames), idempotent `addPendingChecks`/`recordCheck`, narration streaming, idempotency and template fallback, limits, index sync |
 | | `incidents.test.ts` | `need_target`, create, list per workspace, owner-only snapshot, read, `?smoke=rule` → a `rule_based` run (any other value stays `ai`) |
+| | `quota.test.ts`, `budget-guard.test.ts` | 4th incident in a minute → 429 with `retryAfter` and `Retry-After`; other workspaces and target-less messages aren't charged; 10 an hour then a countdown (injected clock); per kind; fail open; follow-ups counted, but not while a run is active. 8,999 neurons → `ai`; 9,000 → session and new runs `rule_based` |
 | | `diagnosis.test.ts` | Real Workflow, mock LLM, fake internet: tools → findings → narrate; healthy → resolved; `#llm-down` → rules; `#llm-invalid` ×2 → rules; NXDOMAIN; follow-up run; a `rule_based` (smoke) run on the healthy demo with 0 LLM turns |
 | Unit | `plan.test.ts` | The driver with a fake `io`: happy path, invalid once/twice, origin pin, LLM down, tool cap, turn cap, budget, deadline, throwing check, unexpected failure, rule-based mode |
 | | `approval.test.ts` | Propose → approve → `setModes(["healthy"])` called → verify → `mitigated` → 2 ticks → `resolved`. Reject → `investigating`. Timeout (`forceEventTimeout("wait-for-approval")`) → expired. Approve twice, a viewer, resolving by hand, a duplicate follow-up, a retried proposal. The demo stub's default `fetch` serves `/w/<ws>/` by mode, and the fake internet routes the test demo host to it. Supersede itself is covered at the agent level: with one proposable action, it can't happen end to end yet. |

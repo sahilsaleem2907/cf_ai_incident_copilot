@@ -3,8 +3,9 @@ import { CheckCircleIcon, EyeIcon, InfoIcon, PulseIcon, RobotIcon } from "@phosp
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useIncident } from "../hooks/useIncident";
+import { useRateLimitToast } from "../hooks/useRateLimitToast";
 import { MONITOR_PASSES } from "../../worker/agent/monitor";
-import { createIncident, DEMO_CHANGED, ERROR_TEXT, notifyIncidentsChanged } from "../lib/api";
+import { createIncident, DEMO_CHANGED, ERROR_TEXT, notifyIncidentsChanged, parseRateLimited } from "../lib/api";
 import { CATEGORY_TEXT, otherHost, runNote } from "../lib/incident";
 import { ChatPane } from "./ChatPane";
 import { Composer } from "./Composer";
@@ -22,6 +23,7 @@ export function IncidentView({ id }: { id: string }) {
   const status = state?.status;
 
   const [resolving, setResolving] = useState(false);
+  const rateLimited = useRateLimitToast();
 
   // Keep the sidebar's badge in step with the open incident.
   useEffect(() => {
@@ -54,13 +56,16 @@ export function IncidentView({ id }: { id: string }) {
       await send(message);
       setText("");
     } catch (e) {
-      setError((e as Error).message.includes("run_active") ? "Still working on the last question. Try again when it finishes." : "Couldn't send that. Try again.");
+      const message = (e as Error).message;
+      const retryAfter = parseRateLimited(message);
+      if (retryAfter !== null) setError(rateLimited(retryAfter));
+      else setError(message.includes("run_active") ? "Still working on the last question. Try again when it finishes." : "Couldn't send that. Try again.");
     }
   };
 
   const newIncidentFor = async () => {
     const r = await createIncident(text);
-    if (!r.ok) return setError(ERROR_TEXT[r.error]);
+    if (!r.ok) return setError(r.error === "rate_limited" ? rateLimited(r.retryAfter) : ERROR_TEXT[r.error]);
     setText("");
     notifyIncidentsChanged();
     navigate(`/i/${r.id}`);

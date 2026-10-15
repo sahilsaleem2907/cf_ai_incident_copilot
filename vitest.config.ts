@@ -71,6 +71,13 @@ export default defineConfig({
                 // Runs start only when a test calls launchRun, so agent tests can drive runs by hand.
                 DIAGNOSIS_AUTOSTART: "off",
               },
+              // The whole record replaces wrangler's, so all three are listed. Tests probe the same *.example.com
+              // hosts many times a minute, so PROBE_LIMIT is raised; quota tests need the real RUN_LIMIT.
+              ratelimits: {
+                PROBE_LIMIT: { namespace_id: "1001", simple: { limit: 10_000, period: 60 } },
+                RUN_LIMIT: { namespace_id: "1002", simple: { limit: 3, period: 60 } },
+                VOICE_LIMIT: { namespace_id: "1003", simple: { limit: 5, period: 60 } },
+              },
               outboundService: "fake-internet",
               workers: [
                 { name: "incident-copilot-demo", modules: true, script: demoStub, compatibilityDate: "2026-10-01" },

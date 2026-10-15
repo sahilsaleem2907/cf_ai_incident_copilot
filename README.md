@@ -4,7 +4,7 @@ An AI on-call assistant that runs entirely on Cloudflare. You describe a symptom
 
 It comes with a **demo service** you can break on purpose (500 errors, slowness, a redirect loop, bad caching), so the whole loop of break → diagnose → approve → verified → resolved can be tried in about a minute.
 
-> **Live URL:** not published yet. Rate limits and the neuron budget guard (WP-17) ship first; until then the URL isn't shared (decision D2, see [Security](#security)).
+> **Live URL:** not published yet. The rate limits and the neuron budget guard (WP-17) are built and go live with the next deploy; the URL is shared after that (decision D2, see [Security](#security)).
 
 - **Docs:** [`PRD.md`](PRD.md) (what and why), [`TDD.md`](TDD.md) (how, and every decision), [`TASKS.md`](TASKS.md) (the build board), [`PROMPTS.md`](PROMPTS.md) (how AI was used).
 
@@ -92,10 +92,11 @@ The app fetches URLs that users type in, so it's built so that it can't be used 
 - **Read-only probing:** GET/HEAD only, no user-supplied headers, bodies or cookies, and reads capped at 16 KB.
 - **Prompt injection:** fetched content goes to the model inside `<untrusted>` tags and is truncated. The model's tool calls are checked with zod and against the origin pin. Actions come only from a fixed catalog, and every action needs a human's approval.
 - **Incident links are view-only** for anyone but the workspace that owns them.
+- **Rate limits and the budget guard (WP-17):** a workspace can start 3 diagnoses a minute (Rate Limiting binding) and 10 an hour (a D1 counter); new incidents and follow-ups both count, and a refusal is a 429 that says when to try again. Probes are limited to 10 a minute per hostname, so the app can't be used to hammer a site; the app's own demo service is exempt, since every workspace's demo shares one hostname. Once today's estimated Workers AI use reaches 9,000 neurons (of the 10,000 free), new runs use the rule engine instead of the LLM and the header says so. These checks fail open: if the binding or D1 errors, the run goes ahead, and the LLM path still falls back to rules when Workers AI reports the daily allocation is used up.
 - **The smoke flag:** `POST /api/incidents?smoke=rule` runs a diagnosis without the LLM, for the deploy check. It's public, but it can only make a run cheaper.
 
 **Accepted risks:**
-- **D2: no rate limits yet.** Rate limits, quotas and the neuron budget guard are WP-17, so the `workers.dev` URL isn't shared until they ship. If it's ever abused, `LLM_MODE` can be set to `mock` on the deployed Worker.
+- **D2: the URL wasn't protected on Day 1.** Rate limits, quotas and the budget guard came in WP-17, so the `workers.dev` URL wasn't shared until they shipped. If it's ever abused, `LLM_MODE` can be set to `mock` on the deployed Worker. The Rate Limiting binding counts per Cloudflare location and is approximate; the D1 hourly quota is exact.
 - **D7: the workspace ID is visible.** The demo lives at `/w/<workspaceId>/`, and that ID is also the session credential. It shows up in a public URL, in prompts and in logs. Someone who learns it can act as that anonymous workspace, which only holds that person's own incidents and demo.
 - **One location.** Probes run from whichever Cloudflare location runs the Workflow, so the app doesn't claim anything about regional reachability.
 - **DNS rebinding.** The guard checks DNS, then fetches, and the name could resolve differently in between. `global_fetch_strictly_public` narrows this, but it can't be closed completely from inside a Worker.
@@ -160,7 +161,6 @@ The full design for each of these is in the TDD. Day 2 of the build is still in 
 
 | WP | Feature | Design |
 |---|---|---|
-| 17 | Rate limits (probes, runs, voice) via Rate Limiting bindings, a D1 hourly quota, and a neuron budget guard that switches to rule-based mode at 9,000/day, with a banner | TDD §11 |
 | 18 | Watchlist: a cron every minute checks due watches; on failure, `WatchWorkflow` confirms 2 of 3 and opens an incident on its own | TDD §8.5 |
 | 19 | Notifications: unread badges, browser notifications, and Slack/Discord webhooks (AES-GCM encrypted, sent once per state change by `NotifyWorkflow`) | TDD §8.5, §11 |
 | 20 | LLM eval suite: break the demo each way and score category, citation and proposed action (target ≥ 4/5) | TDD §16 |

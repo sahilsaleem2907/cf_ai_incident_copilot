@@ -8,17 +8,34 @@ export const ERROR_TEXT: Record<ApiError, string> = {
   need_target: "Which site is broken? Include a URL or a hostname, like cloudflare.com, or say “demo”.",
   empty_message: "Type a message first.",
   demo_unavailable: "The demo service isn't set up yet. Try a real hostname, like cloudflare.com.",
-  rate_limited: "Too many requests. Wait a minute and try again.",
+  rate_limited: "Run limit reached. Wait a minute and try again.",
   network: "Couldn't reach the server. Check your connection and try again.",
   server: "Something went wrong on our side. Try again.",
 };
+
+/** "about a minute" up to 90 s, then whole minutes rounded up. */
+export function retryText(seconds: number): string {
+  if (seconds <= 90) return "about a minute";
+  return `${Math.ceil(seconds / 60)} minutes`;
+}
+
+/** Shown in the toast and inline for a 429 (TDD §11: 3 runs a minute, 10 an hour per workspace). */
+export const rateLimitedText = (retryAfter: number) => `Run limit reached (3 a minute, 10 an hour). Try again in ${retryText(retryAfter)}.`;
+
+/** The agent's `sendMessage` refuses with `rate_limited:<seconds>`; returns the seconds, or null for other errors. */
+export function parseRateLimited(message: string): number | null {
+  const m = /rate_limited:(\d+)/.exec(message);
+  return m ? Number(m[1]) : null;
+}
 
 export type IncidentRow = { id: string; target: string; status: IncidentStatus; origin: Origin; unread: boolean; updatedAt: number };
 export type Session = { demoUrl: string; budgetMode: "ai" | "rule_based" };
 
 type Fetch = typeof fetch;
 
-export async function createIncident(message: string, f: Fetch = fetch): Promise<{ ok: true; id: string } | { ok: false; error: ApiError }> {
+export type CreateResult = { ok: true; id: string } | { ok: false; error: "rate_limited"; retryAfter: number } | { ok: false; error: Exclude<ApiError, "rate_limited"> };
+
+export async function createIncident(message: string, f: Fetch = fetch): Promise<CreateResult> {
   let res: Response;
   try {
     res = await f("/api/incidents", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message }) });
@@ -26,10 +43,14 @@ export async function createIncident(message: string, f: Fetch = fetch): Promise
     return { ok: false, error: "network" };
   }
   if (res.ok) return { ok: true, id: ((await res.json()) as { id: string }).id };
-  if (res.status === 429) return { ok: false, error: "rate_limited" };
-  const body = (await res.json().catch(() => ({}))) as { error?: string };
-  const known: ApiError[] = ["need_target", "empty_message", "demo_unavailable"];
-  return { ok: false, error: known.includes(body.error as ApiError) ? (body.error as ApiError) : "server" };
+  const body = (await res.json().catch(() => ({}))) as { error?: string; retryAfter?: unknown };
+  if (res.status === 429) {
+    const seconds = typeof body.retryAfter === "number" ? body.retryAfter : Number(res.headers.get("Retry-After"));
+    return { ok: false, error: "rate_limited", retryAfter: Number.isFinite(seconds) && seconds > 0 ? seconds : 60 };
+  }
+  const known = ["need_target", "empty_message", "demo_unavailable"] as const;
+  const error = known.find((k) => k === body.error);
+  return { ok: false, error: error ?? "server" };
 }
 
 export async function listIncidents(f: Fetch = fetch): Promise<IncidentRow[]> {

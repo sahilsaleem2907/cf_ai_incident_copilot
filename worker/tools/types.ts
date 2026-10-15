@@ -26,7 +26,7 @@ export type ToolContext = {
   evidenceId: string;
   /** Dev-only SSRF exception (TDD §11). */
   allowOrigin?: string;
-  /** Called before every probe sample; WP-17 backs it with PROBE_LIMIT. Returns false when limited. */
+  /** Called before every probe sample; backed by PROBE_LIMIT (`safety/quota.ts`). Returns false when limited. */
   rateLimit?: (host: string) => Promise<boolean>;
   now?: () => number;
 };

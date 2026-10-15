@@ -321,3 +321,12 @@ Answers to Claude's questions:
 > Merged.
 
 (The first automatic deploy passed: CI, D1 migrations (none new), the demo Worker, then the main Worker, then the smoke test. The smoke test ran on the new version, was rule-based, came back healthy and resolved in about 12 s, and used no neurons. WP-15 is done, so all Musts (WP-01 to WP-16) are done.)
+
+### 22:29 · WP-17 plan
+
+> Lets build WP-17 of the @TASKS.md
+
+**Claude asked:** every user's demo service shares one hostname, so a "10 probes a minute per hostname" limit would make users block each other. How should the demo be handled?
+**Answer:** skip the probe limit for our own demo (the limit protects other people's sites; the run quota still caps demo use).
+
+(Plan approved: rate-limit bindings, `quota.ts` (3 runs a minute + 10 an hour per workspace, 429 with the time until reset), the 9,000-neuron budget guard switching runs to rule-based, a header `BudgetBanner`, and a toast on 429.)

@@ -9,8 +9,10 @@ import { llmDeps } from "../llm/client";
 import { LlmUnavailable } from "../llm/models";
 import { narrationSystem, narrationUser, type EvidenceLine } from "../llm/prompts";
 import { streamLlm } from "../llm/stream";
+import { budgetMode, d1Usage } from "../llm/usage";
 import { salvageFindings } from "../loop/findings";
 import { finalizeNarration, NARRATION_MAX_TOKENS, type NarrationOutcome } from "../loop/narrate";
+import { takeRun } from "../safety/quota";
 import { devAllowOrigin } from "../safety/ssrf";
 import type { DnsRaw } from "../tools/dns";
 import { quickCheck, type QuickCheckResult } from "../tools/quickcheck";
@@ -163,7 +165,9 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
   }
 
   /** One planning run at a time (D13). The check and insert run without an await in between. */
-  async startRun(question: string, kind: RunKind, role: "user" | "system" = "user", mode: RunMode = "ai"): Promise<string> {
+  async startRun(question: string, kind: RunKind, role: "user" | "system" = "user", requested: RunMode = "ai"): Promise<string> {
+    // Budget guard (TDD §11): read before the check-and-insert below, which must not await.
+    const mode = requested === "ai" ? await budgetMode(d1Usage(this.env.DB)) : requested;
     if (!this.incident()) throw new Error("not_initialized");
     if (this.activeRunId()) throw new Error("run_active");
     const seq = (this.sql<{ seq: number | null }>`SELECT MAX(seq) AS seq FROM runs`[0]?.seq ?? 0) + 1;
@@ -213,7 +217,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       target: incident.target,
       question: run.question,
       kind: run.kind,
-      // Set when the run starts: rule_based for the smoke test, and (WP-17) when the neuron budget guard trips.
+      // Set when the run starts: rule_based for the smoke test, and when the neuron budget guard trips.
       mode: run.mode,
       evidence: rows.map(toLine),
       scope: { host: new URL(incident.target).hostname, cnameTargets: [...new Set(cnameTargets)] },
@@ -462,7 +466,10 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
   async sendMessage(text: unknown): Promise<{ runId: string }> {
     this.requireOwner();
     if (typeof text !== "string" || !text.trim()) throw new Error("empty_message");
-    // WP-17 adds the run quota (D14); WP-10 the "new incident for another host" check (§8.6).
+    // Checked before the quota so a send that can't start isn't counted; startRun checks again.
+    if (this.activeRunId()) throw new Error("run_active");
+    const quota = await takeRun(this.env, this.mustIncident().workspace_id);
+    if (!quota.ok) throw new Error(`rate_limited:${quota.retryAfter}`);
     return { runId: await this.startRun(text.trim().slice(0, MAX_MESSAGE), "followup") };
   }
 

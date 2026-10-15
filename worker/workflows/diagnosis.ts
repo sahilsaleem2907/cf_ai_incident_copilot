@@ -3,6 +3,7 @@ import { AgentWorkflow, WorkflowRejectedError, type AgentWorkflowEvent, type Age
 import { APPROVAL_TIMEOUT, type IncidentAgent } from "../agent/IncidentAgent";
 import { callLlm, llmDeps } from "../llm/client";
 import { diagnose, type RunIO, type RunSummary } from "../loop/plan";
+import { probeLimiter } from "../safety/quota";
 import { devAllowOrigin } from "../safety/ssrf";
 import { runTool } from "../tools/registry";
 
@@ -20,6 +21,7 @@ export class DiagnosisWorkflow extends AgentWorkflow<Agent, DiagnosisParams> {
     const env = this.env;
     const deps = llmDeps(env);
     const allowOrigin = devAllowOrigin(env);
+    const rateLimit = probeLimiter(env);
 
     const io: RunIO = {
       step: <T>(name: string, fn: () => Promise<T>, opts?: { retries?: number }) =>
@@ -40,7 +42,7 @@ export class DiagnosisWorkflow extends AgentWorkflow<Agent, DiagnosisParams> {
       },
       llm: (req) => callLlm(deps, req),
       tool: async (name, args, evidenceId, scope) => {
-        const out = await runTool(name, args, { fetch: (input, init) => fetch(input, init), evidenceId, ...(allowOrigin ? { allowOrigin } : {}) }, scope);
+        const out = await runTool(name, args, { fetch: (input, init) => fetch(input, init), evidenceId, rateLimit, ...(allowOrigin ? { allowOrigin } : {}) }, scope);
         if (!out.ok) throw new Error(out.invalid);
         return { result: out.result, subrequests: out.subrequests };
       },
