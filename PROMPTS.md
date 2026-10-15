@@ -140,3 +140,9 @@ Answers to Claude's questions:
 > One thing to be careful about is even if the model runs into a limit, it should return whatever findings it has acheived till then and not drop the context.
 
 (Added to the LLM layer: a `truncated` flag for answers cut off at `max_tokens`; a broken narration stream now keeps its text in `LlmUnavailable.partial`; `salvageFindings` keeps the model's valid fields from an invalid or cut-off `submit_findings` and fills the rest from the rules. Wrote the rule into TDD §8.2 ("Limits keep progress") and the WP-08/09 checklists: evidence stored per step, last turn finish-only, a diagnosis on every limit, `runs.status` names the limit, a test per limit.)
+
+### 14:40 · WP-08 IncidentAgent
+
+> Lets continue to WP-08
+
+(Plan approved: `worker/agent/` (schema, state, transitions, `IncidentAgent`) plus `/api/incidents`. Callables are registered without decorator syntax, so the build needs no Babel step. Workflow launch, approvals, watch and postmortem methods stay in their own WPs (09, 12, 18, 22). Narration keeps a well-formed partial stream (limits keep progress).)
