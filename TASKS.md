@@ -21,8 +21,8 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** none (WP-08 ✅ 14:50)
-- **Next:** WP-09 DiagnosisWorkflow
+- **Current:** WP-09 DiagnosisWorkflow (started 15:15)
+- **Next:** WP-10 Chat UI
 - **Hours today:** 1.9 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
@@ -45,7 +45,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 06 | Rules: `classify.ts`, `template.ts` | 0.5 | 05 | ✅ | 13:44 | 13:49 | `6dad2cf`. 0.1 h vs 0.5 est. TLS spike: workerd hides cert errors (TDD §9.3) |
 | 07 | LLM layer: adapter, fallback, usage, prompts, mock, citations, streaming | 1.5 | 02 | ✅ | 14:06 | 14:18 | `4e82395`. 0.2 h vs 1.5 est. Live check ≈ 370 neurons; found the glm grammar bug and `【id】` citations |
 | 08 | IncidentAgent: schema, state, roles, RPC, transitions, narrate | 1.5 | 03, 07 | ✅ | 14:40 | 14:50 | `7b2bc3c`. 0.25 h vs 1.5 est. Also `/api/incidents` (nobody owned it; WP-10 needs it) |
-| 09 | DiagnosisWorkflow: planning loop, bounds, rule path | 1.5 | 05, 06, 08 | ⬜ | | | |
+| 09 | DiagnosisWorkflow: planning loop, bounds, rule path | 1.5 | 05, 06, 08 | 🔄 | 15:15 | | |
 | 10 | Chat UI | 1.75 | 08 | ⬜ | | | |
 | 11 | Demo service + `DemoPanel` | 1.0 | 03 | ⬜ | | | |
 | 12 | Act: actions, approval, verify, monitor, `ApprovalCard` | 1.5 | 09, 11 | ⬜ | | | |

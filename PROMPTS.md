@@ -148,3 +148,9 @@ Answers to Claude's questions:
 (Plan approved: `worker/agent/` (schema, state, transitions, `IncidentAgent`) plus `/api/incidents`. Callables are registered without decorator syntax, so the build needs no Babel step. Workflow launch, approvals, watch and postmortem methods stay in their own WPs (09, 12, 18, 22). Narration keeps a well-formed partial stream (limits keep progress).)
 
 (WP-08 done in `7b2bc3c`; 405 tests green. Smoke test on `pnpm dev`: created an incident, read its snapshot, the owner's callables worked over a WebSocket, a visitor was refused as view-only. "diagnose demo" returns 503 `demo_unavailable` until WP-11 sets a local demo URL.)
+
+### 15:15 · WP-09 DiagnosisWorkflow
+
+> Lets move to the next one, sounds good.
+
+(Plan approved: a pure driver `loop/plan.ts` `diagnose(io, …)` behind a thin `DiagnosisWorkflow`, so every limit (turns, tools, budget, deadline, LLM down, invalid ×2) is unit-tested and always ends in a diagnosis. Integration tests run a real Workflow offline, against an inline "fake internet" Worker and the mock LLM.)
