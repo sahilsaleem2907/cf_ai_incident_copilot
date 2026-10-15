@@ -10,6 +10,7 @@ export function cardState(a: Pick<ApprovalView, "status" | "outcome">): CardStat
     case "approved":
       if (!a.outcome) return { text: "Approved, working on it…", tone: "working" };
       if (!a.outcome.ok) return a.outcome.verified === false ? { text: "Approved, but still failing", tone: "bad" } : { text: "Approved, but the action failed", tone: "bad" };
+      if (a.outcome.done) return { text: "Approved and done", tone: "good" };
       // The action ran; the card only says "verified" once the re-check after it has passed.
       return a.outcome.verified ? { text: "Approved and verified", tone: "good" } : { text: "Approved, checking it…", tone: "working" };
     case "rejected":

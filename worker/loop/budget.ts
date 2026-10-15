@@ -15,6 +15,9 @@ export const LLM_TIMEOUT_MS = 25_000;
 /** Workers AI free allocation per day, and where the budget guard switches to rule-based mode (WP-17). */
 export const NEURON_DAILY = 10_000;
 export const BUDGET_GUARD_AT = 9_000;
+/** Watch cron (D12): due watches per tick, and the tick's subrequest budget (the platform stops at 50). */
+export const CRON_BATCH = 6;
+export const CRON_SUBREQUESTS = 45;
 
 export class BudgetExceededError extends Error {
   override name = "BudgetExceededError";

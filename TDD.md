@@ -129,14 +129,15 @@ test/         unit/*.test.ts integration/*.test.ts demo/*.test.ts fixtures/
   "ratelimits": [
     { "name": "PROBE_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
     { "name": "RUN_LIMIT",   "namespace_id": "1002", "simple": { "limit": 3,  "period": 60 } },
-    { "name": "VOICE_LIMIT", "namespace_id": "1003", "simple": { "limit": 5,  "period": 60 } }
+    { "name": "VOICE_LIMIT", "namespace_id": "1003", "simple": { "limit": 5,  "period": 60 } },
+    { "name": "RUN_IP_LIMIT", "namespace_id": "1004", "simple": { "limit": 6,  "period": 60 } }   // WP-17b
   ],
   "triggers": { "crons": ["* * * * *"] },
   "vars": { "AI_GATEWAY_ID": "incident-copilot", "DEMO_BASE_URL": "https://incident-copilot-demo.<sub>.workers.dev", "LLM_MODE": "live" }
 }
 ```
 
-- **Secrets:** `WEBHOOK_KEY` (base64, 32 bytes), set with `wrangler secret put`.
+- **Secrets:** `WEBHOOK_KEY` (base64, 32 bytes), set with `wrangler secret put`. *WP-19:* it isn't declared in `wrangler.jsonc`, so a deploy without it still works and webhooks are simply off (`GET /api/webhook` says `available: false`). Set it once: `openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`.
 - **Local:** `.dev.vars` sets `LLM_MODE=mock`, plus `DEMO_BASE_URL` and `SSRF_DEV_ALLOW_ORIGIN` = `http://localhost:5173` for the local demo (§7.5).
 - **Demo wrangler:** `name: incident-copilot-demo`, a `DemoState` DO with a `new_sqlite_classes` migration, and `WorkerEntrypoint` `DemoAdmin` exported alongside the default fetch handler.
 
@@ -161,11 +162,11 @@ test/         unit/*.test.ts integration/*.test.ts demo/*.test.ts fixtures/
 | `LLM_TIMEOUT_MS` | 25 000 per LLM call. A timeout counts as a failure, so the fast fallback answers (*WP-07*) |
 | `MONITOR_TICK_S` | 15 (on-demand), max 10 ticks |
 | `BURST_TICK_S` | 60 × 15 |
-| `WATCH_MIN_INTERVAL_S` | 300 |
+| `WATCH_MIN_INTERVAL_S` | 300 (at most 3600). *WP-18:* the workspace's own demo is checked every 60 s (user decision) |
 | `WATCH_TTL` | 24 h |
 | `WATCHES_PER_WS` | 3 |
 | `WATCHES_GLOBAL` | 30 |
-| `CRON_BATCH` | 6 |
+| `CRON_BATCH` | 6, within a 45-subrequest budget per tick (`CRON_SUBREQUESTS`); a watch needs 12 left |
 | `RUNS_PER_HOUR` | 10 |
 | `VOICE_PER_HOUR` | 20 |
 | `VOICE_MAX_BYTES` | 160 KB (30 s at 24 kbps Opus) |
@@ -188,9 +189,10 @@ CREATE TABLE watches (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, url TEXT 
 CREATE INDEX idx_watches_due ON watches(next_run);
 CREATE TABLE webhooks (workspace_id TEXT PRIMARY KEY, kind TEXT NOT NULL, url_ciphertext BLOB NOT NULL,
   iv BLOB NOT NULL, url_hint TEXT NOT NULL, created_at INTEGER NOT NULL);   -- url_hint = masked display
+-- 0002 (WP-19): ALTER TABLE webhooks ADD COLUMN app_origin TEXT  -- the origin the webhook was saved on, for incident links
 CREATE TABLE llm_usage (day TEXT PRIMARY KEY, neurons_est INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE usage_counters (workspace_id TEXT NOT NULL, kind TEXT NOT NULL, window_start INTEGER NOT NULL,
-  count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (workspace_id, kind, window_start));  -- kind: run | voice
+  count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (workspace_id, kind, window_start));  -- kind: run | voice | webhook_test
 ```
 
 Consistency: the DO is the source of truth. `incidents_index` is upserted after every committed transition and on `onStart` (reconcile).
@@ -262,12 +264,13 @@ Incident, workspace and approval IDs are 128-bit random hex values (`crypto.getR
 |---|---|---|---|
 | `GET /api/session` | | `{demoUrl, budgetMode, limits}` | Sets `__Host-ws` (HttpOnly, Secure, SameSite=Lax, 1 year) if it's missing |
 | `GET /api/incidents` | | `[{id,target,status,origin,unread,updatedAt}]` | Sidebar polling (D16) |
-| `POST /api/incidents` | `{message}` | `{id}` / 400 `{error:"need_target"}` / 429 `{retryAfter}` / 503 `{error:"demo_unavailable"}` | Target parse (D9), then quota (D14), then `IncidentAgent.init`. 503 while `DEMO_BASE_URL` still holds the `<sub>` placeholder |
+| `POST /api/incidents` | `{message}` | `{id}` / 400 `{error:"need_target"}` / 429 `{error:"rate_limited", retryAfter}` + `Retry-After` / 503 `{error:"demo_unavailable"}` | Target parse (D9), then quota (D14), then `IncidentAgent.init`. 503 while `DEMO_BASE_URL` still holds the `<sub>` placeholder |
 | `GET /api/incidents/:id` | | Snapshot (`IncidentState` + findings) | Owner only. Used by eval and smoke tests. |
 | `POST /api/incidents/:id/read` | | 204 | Clears `unread` |
 | `GET /api/demo` · `POST /api/demo/mode` | `{modes}` | `{modes, url}` / 400 `{error:"invalid_modes"}` / 503 `{error:"demo_unavailable"}` | Calls `env.DEMO.getModes` / `setModes(ws, modes)`. `modes` is `["healthy"]` or one problem plus an optional `"slow"` (§7.5). 503 while `DEMO_BASE_URL` holds `<sub>` |
-| `GET/POST /api/watches` · `DELETE /api/watches/:id` | `{url, intervalSec}` | Watch list | Per-workspace and global caps |
-| `GET/PUT/DELETE /api/webhook` | `{url}` | `{kind, hint}` | Allowlist, then encryption |
+| `GET/POST /api/watches` · `DELETE /api/watches/:id` | `{url, intervalSec}` | Watch list · 201 watch · 400 `{error:"invalid_url", message}` · 409 `already_watched` / `watch_limit` / `watch_capacity` · 204 / 404 | Per-workspace and global caps. *WP-18:* the URL goes through `parseTarget` ("demo" works) and `checkUrlShape`; the caps are part of the INSERT |
+| `GET/PUT/DELETE /api/webhook` | `{url}` | GET `{available, webhook: {kind, hint} \| null}` · PUT `{kind, hint}` / 400 `{error:"invalid_webhook", message}` / 503 `webhooks_unavailable` · DELETE 204 | Allowlist, then encryption. *WP-19:* PUT records the request's origin (`app_origin`) for incident links |
+| `POST /api/webhook/test` | | `{sent: true}` / 404 / 429 / 502 `send_failed` | *WP-19:* sends one test message right away, 5 an hour per workspace (`usage_counters` kind `webhook_test`) |
 | `POST /api/voice` | `audio/webm` body | `{text}` | Size cap, then limit, then whisper, then normalization |
 | `GET /api/health` | | `{ok, version}` | Smoke test |
 
@@ -286,7 +289,7 @@ recordApprovalOutcome(approvalId, "rejected"|"expired"|"failed", detail?): Promi
 executeAction(approvalId): Promise<{ ok, text }>                   // WP-12: idempotent
 afterAction(runId, approvalId): Promise<{ pass, text }>            // WP-12: runs quickCheck itself → mitigated + monitor
 monitorTick(): Promise<void>                                       // WP-12: agent schedule callback (also RPC for tests)
-reportWatchCheck(pass: boolean, digest): Promise<void>             // from cron
+reportWatchCheck(pass, consecutivePasses, summary): Promise<void> // from cron (WP-18)
 // @callable (WebSocket). Every method except getEvidence requires role=owner (D8)
 sendMessage(text) · approve(approvalId) · reject(approvalId) · resolve() · generatePostmortem()
 markRead() · getEvidence(evidenceId)
@@ -405,6 +408,8 @@ The canonical order is `DEMO_MODES` order, for example `["slow", "errors"]`. The
 |---|---|---|---|---|
 | `restore_demo_service` | `{}` | Target host = demo host, path starts with `/w/<incident.workspaceId>/`, category ≠ `healthy` | `env.DEMO.setModes(ws, ["healthy"])` (clears every mode) | `quickCheck` pass, then `afterAction` |
 | `add_to_watchlist` | `{intervalSec: 300}` | Not already watched and under caps | Insert into `watches` | None; outcome goes on the timeline |
+
+*As built (WP-18), user decision:* `add_to_watchlist` is also a **rule action** for a broken real (non-demo) site, so the card appears even when the model leaves it out. `pickAction` always prefers `restore_demo_service` when it fits (a fix beats watching), then the model's actions, then the rule actions. `proposable` needs `watchable`: the incident has no watch yet, and `canWatch` says the workspace can add this URL. Approving creates a watch **linked to the incident** (`open_incident_id`, `incident.watch_id`), so cron's passing checks resolve it. There's nothing to re-check, so `afterAction` skips the verify check, stores `outcome.done`, and the incident goes back to `investigating`; the card says "Approved and done".
 | `recheck_burst` | `{}` | No monitor active | Agent `monitor(kind:"burst")` | Ticks |
 | `generate_postmortem` | `{}` | status = `resolved` | `generatePostmortem()` | None |
 
@@ -425,7 +430,7 @@ The Workflow drops any action that isn't proposable. At most one action per run.
 
 ### 8.1 New incident (chat)
 
-1. `POST /api/incidents {message}`. The Worker parses the target (D9), checks the run quota (D14, from WP-18), creates the ID, and calls `agent.init(...)`.
+1. `POST /api/incidents {message}`. The Worker parses the target (D9), checks the run quota (D14, WP-17), creates the ID, and calls `agent.init(...)`.
 2. `init` writes the incident, message and timeline `opened` rows, upserts the index, and calls `startRun(message, "initial")`.
 3. `startRun` makes sure `activeRunId` is null (otherwise 409), then calls `this.runWorkflow("DIAGNOSIS_WORKFLOW", {incidentId, runId, kind}, {id: "diag-<id>-<seq>"})` and sets `activeRunId`.
 4. The client navigates to `/i/:id` and runs `useAgent({ agent: "incident-agent", name: id })`. State arrives right away.
@@ -524,6 +529,7 @@ Tool steps retry with `{limit: 2}` because each retry spends subrequest budget. 
 3. When the ticks run out, the incident stays `mitigated`.
 4. Bursts work the same way at 60 s × 15.
 5. For watch incidents, `reportWatchCheck` from cron feeds the same counter. In that case a pass while `investigating` moves to `mitigated` (recovered without action).
+   - *As built (WP-18):* cron passes the watch's `consecutive_passes`, and the agent reuses `tick()`. While the post-action monitor runs, it decides (it checks every 15 s), and the watch check is only recorded (`watch_check` event). A pending card is left alone. Any move to `resolved` releases the watch (`open_incident_id = NULL`), so its next failure can open a new incident.
 
 *As built (WP-12):*
 - **The pure reducer.** `monitor.ts` `tick(state, status, pass)` holds the logic, with `MONITOR_TICK_S` 15, `MONITOR_MAX_TICKS` 10 and `MONITOR_PASSES` 3.
@@ -546,6 +552,15 @@ Tool steps retry with `{limit: 2}` because each retry spends subrequest budget. 
 4. `step.do("notify")` creates `NOTIFY_WORKFLOW` with `notify-<id>-opened`.
 
 The Agent creates a NotifyWorkflow for watch incidents when they transition to mitigated or resolved (D18). When an incident resolves, the watch's `open_incident_id` is cleared.
+
+*As built (WP-18):*
+- **Files:** `watch/store.ts` (D1), `watch/cron.ts` (`runWatchTick`), `workflows/watch.ts`, `api/watches.ts`, `WatchlistPanel`.
+- **Cron:** one 45-subrequest budget per tick; a watch is checked only if 12 are left (a worst-case quick check plus the RPC or create), and the rest wait for the next tick. Each watch has its own try/catch. A duplicate Workflow ID (`instance.already_exists`) is ignored.
+- **WatchWorkflow confirms early:** the first failed re-check confirms (cron's failure + 1 = 2 of 3), saving 30 s. Two passing re-checks end it.
+- **One incident per failure:** the incident ID is its own step, and `open` claims the watch (`UPDATE … WHERE open_incident_id IS NULL`) **before** `init`. A second Workflow from an overlapping failure loses the claim; a retry of our own step recognises its ID.
+- **Watch incidents start with the system message** "Scheduled check failed for <url>". They aren't charged to the run quota, but the budget guard still applies. A watch incident whose first diagnosis says healthy stays open until passes resolve it (the healthy-first-check rule is chat-only).
+- **UI:** the WatchlistPanel polls every 15 s while visible and fires `INCIDENTS_CHANGED` when a watch's open incident changes, so an auto-opened incident shows in the sidebar without WP-19's polling. Watch incidents show an eye icon and "Watch".
+- **Local check (WP-18):** cron triggered through the Vite plugin's `POST /cdn-cgi/local/explorer/api/local/scheduled?worker=incident-copilot`. A watch on a 500 site → the Workflow confirmed on the first re-check → an incident opened 34 s later with `origin_5xx`. With the watch pointed at a healthy site: mitigated after 1 pass, resolved after 3, and the watch was released.
 
 ### 8.6 Follow-up
 
@@ -657,12 +672,27 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 - **Probe rate:** `PROBE_LIMIT.limit({key: hostname})` runs before every probe sample. If it's exceeded, the probe returns `unavailable: rate_limited`.
 - **Quotas (D14):** `RUN_LIMIT.limit({key: ws})` plus the D1 fixed-window `usage_counters(kind='run')`, which uses an atomic `INSERT … ON CONFLICT DO UPDATE SET count = count + 1 RETURNING count`.
 - **Budget guard:** before every run, `llm_usage(today).neurons_est ≥ 9000` → `mode = rule_based`. `GET /api/session` returns `budgetMode`, which drives the `BudgetBanner`.
+- *As built (WP-17):*
+  - **Where:** `safety/quota.ts` has `takeRun` (binding, then the D1 window), the generic `takeWindow` (for voice and postmortems later) and `probeLimiter`; `llm/usage.ts` has `budgetMode`.
+  - **Run quota:** checked in `POST /api/incidents` after target parsing (a message without a target isn't charged) and in `sendMessage` after the `run_active` check (a refused follow-up isn't charged). The agent throws `rate_limited:<seconds>`.
+  - **Time until reset:** the binding doesn't report when its window resets, so a burst refusal says 60 s. The D1 window gives the exact seconds to the end of the hour. The UI shows a Kumo warning toast and the same text inline (`role="alert"`).
+  - **Budget guard:** applied in `startRun` to runs that would use AI, before the synchronous check-and-insert. A forced `rule_based` (smoke) run stays rule-based. The app refetches `/api/session` whenever incidents change, so the banner appears without a reload.
+  - **Probe limit:** only `http_probe` samples go through it (`ToolContext.rateLimit`). `quickCheck` (verify and monitor) isn't limited: it only runs on the demo after an approved action. The app's own demo host and the dev allow-origin are exempt (user decision): every workspace's demo shares one hostname, and the limit exists to protect other people's sites.
+  - **Per visitor IP (WP-17b):** a client that drops the cookie gets a new workspace each time, so `takeRun` also limits the visitor's IP: 6 a minute (`RUN_IP_LIMIT`) and 20 an hour (D1), looser than the workspace limits so people on a shared network don't block each other. The key is `ipKey`: `ip:` plus the first 16 bytes of SHA-256 of `CF-Connecting-IP`, so raw addresses aren't stored. The agent reads the header in `onConnect` and keeps the key in the connection state for `sendMessage`. Without the header (local tools, tests), only the workspace limits apply.
+  - **One workspace per first visit (WP-17b):** each cookie-less request creates its own workspace, and the app used to send `/api/session`, `/api/incidents` and `/api/demo` together (twice under StrictMode), so the last `Set-Cookie` won and the DemoPanel could show another workspace's URL. `App` now makes one `firstSession()` call (once per page load) and renders the sidebar, demo panel and routes only after it returns, or after it fails.
+  - **Fail open:** a binding, D1 write or `llm_usage` read error is logged and the run or probe goes ahead. The LLM path still falls back to rules when Workers AI reports the allocation is used up.
+  - **Tests:** the integration project lists all three rate limits in its miniflare options, with `PROBE_LIMIT` raised to 10,000, because the existing diagnosis tests probe the same `*.example.com` hosts many times a minute. Locally, miniflare's windows are aligned to the wall-clock minute, so a burst that crosses a minute boundary can let a 4th run through.
 - **Webhooks:**
   - Only https URLs on `hooks.slack.com`, or `discord.com`/`discordapp.com` with a path starting `/api/webhooks/`.
   - Encrypted with AES-GCM-256 using the `WEBHOOK_KEY` secret, a 12-byte random IV, and AAD = workspaceId.
   - `url_hint` is stored masked (`hooks.slack.com/…/••••abcd`).
   - The URL is never sent to the LLM or written to logs.
   - Payload: `{text}` for Slack, `{content}` for Discord. It contains the summary, status and incident link.
+  - *As built (WP-19):*
+    - **Files:** `notify/crypto.ts`, `notify/webhook.ts`, `workflows/notify.ts`, `api/webhook.ts`.
+    - **When:** the "opened" message waits for the first diagnosis (user decision): NotifyWorkflow polls the incident up to 9 × 10 s until `activeRunId` is null, so the message carries the likely cause (evidence refs removed). Mitigated/resolved go out for **any incident with a watch attached** (user decision, widening D18 to chat incidents with an approved "Add to watchlist").
+    - **At most once:** `notify-<incidentId>-<event>`, so a repeat state (a flap back to mitigated) doesn't send again. The send step retries 3 times on 429, 5xx or a network error; a 4xx (a deleted webhook) is final. Redirects aren't followed.
+    - **Links:** the incident link uses `app_origin`, recorded when the webhook was saved, so no deployed URL is committed (D2).
 - **Prompt injection:** `<untrusted>` wrapping, snippet truncation, zod plus origin-pin validation, the fixed action catalog, and human approval for every action.
 - **Accepted risks:** D2 (unprotected for about a day), D7 (workspace ID in the demo URL), probes from a single location (R5).
 
@@ -697,6 +727,13 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 ### 12.3 State
 
 `useIncident(id)` wraps `useAgent<IncidentState>`. It merges `delta` broadcasts into a streaming buffer keyed by `messageId` and exposes the callables. `useIncidents()` polls the list and fires `useNotifications()` when a new unread row appears (Notification API, only after permission is granted from a button click).
+
+*As built (WP-19):*
+- **Polling:** `useIncidents` polls every 10 s while the tab is visible, reloads at once when the tab comes back, on `INCIDENTS_CHANGED`, and on navigation. `newlyUnread` diffs against the previous load and announces nothing on the first one.
+- **Unread:** a dot, bold text and the word "New" on the row, plus a "n new" badge on the group label. Narration and automatic status changes (monitor ticks, watch checks) set unread; the user's own changes don't.
+- **Read:** `IncidentView` (owner) calls the `markRead` callable when it opens, and on new replies or status while the tab is visible.
+- **Browser notifications:** one per newly unread row (`tag` = incident ID), except the incident open in a visible tab. Clicking one focuses the tab and opens the incident.
+- **`NotificationSettings`** (the TDD's `WebhookSettings`, in the sidebar): browser on / turn on / blocked; webhook save (`SensitiveInput`), masked hint, send test, remove; "not set up on this deployment" when there's no key.
 
 *As built (WP-10):*
 - **Pure helpers** in `web/lib/` (unit-tested in `test/unit/web/`):
@@ -761,16 +798,20 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | | `citations.test.ts` | Unknown IDs and uncited factual sentences are removed; `【id】`; well-formed check |
 | | `llm-client.test.ts`, `stream.test.ts`, `findings.test.ts`, `mock.test.ts`, `prompts.test.ts` | Mapper on every recorded fixture, fallback rules with a fake `ai`, SSE parsing of both recorded streams, the `submit_findings` schema (rejects the spike's sentence evidence), mock turns, prompt content |
 | | `transitions.test.ts` | Every legal edge, and illegal edges throw |
-| | `webhook.test.ts` | Allowlist accept/reject, AES-GCM round trip, masking |
+| | `webhook.test.ts` | Allowlist accept/reject, AES-GCM round trip (wrong workspace fails), masking, message text, send retry decisions |
 | | `origin.test.ts` | Origin-pin scope rules |
+| | `probe-limit.test.ts` | Limited per hostname; the demo and dev allow-origin are exempt and uncounted; fails open |
 | | `schema.test.ts`, `cookie.test.ts` | `toolParameters` drops regex `pattern`s at every depth but keeps a property named `pattern`; `workspaceFromCookieHeader` (the WebSocket path) accepts only a well-formed `__Host-ws` |
-| Unit (web) | `approval.test.ts`, `markdown-incident-api.test.ts`, `stream-feed.test.ts`, `theme.test.ts` | Approval card text for every status and outcome ("verified" only after the re-check), `whyText` refs; narration markdown, other-host and limit notes, the API client, stream buffering, theme |
+| Unit (web) | `approval.test.ts`, `markdown-incident-api.test.ts`, `stream-feed.test.ts`, `theme.test.ts` | Approval card text for every status and outcome ("verified" only after the re-check), `whyText` refs; narration markdown, other-host and limit notes, the API client (429 parsing, a single first-visit session call), stream buffering, theme |
 | Integration (`@cloudflare/vitest-plugin`, main Worker, mocked outbound fetch, `LLM_MODE=mock`) | `agent.test.ts` | `init`, owner/viewer roles over a real WebSocket (`helpers/ws.ts` speaks the SDK's `rpc` / `cf_agent_state` frames), idempotent `addPendingChecks`/`recordCheck`, narration streaming, idempotency and template fallback, limits, index sync |
 | | `incidents.test.ts` | `need_target`, create, list per workspace, owner-only snapshot, read, `?smoke=rule` → a `rule_based` run (any other value stays `ai`) |
+| | `notify.test.ts` | Webhook API (encrypted at rest, masked, origin stored, refused hosts), test sends limited to 5 an hour; NotifyWorkflow: 3 events → 3 messages, repeats ignored, no webhook → none, a chat incident without a watch → none, 5xx retried, 4xx final; unread set by automatic changes and cleared by `markRead` |
+| | `quota.test.ts`, `budget-guard.test.ts` | 4th incident in a minute → 429 with `retryAfter` and `Retry-After`; other workspaces and target-less messages aren't charged; 10 an hour then a countdown (injected clock); per kind; fail open; follow-ups counted, but not while a run is active; per IP across workspaces (6 a minute over HTTP, 20 an hour with an injected clock), a follow-up counted against the IP from its WebSocket, only a hash stored. 8,999 neurons → `ai`; 9,000 → session and new runs `rule_based` |
 | | `diagnosis.test.ts` | Real Workflow, mock LLM, fake internet: tools → findings → narrate; healthy → resolved; `#llm-down` → rules; `#llm-invalid` ×2 → rules; NXDOMAIN; follow-up run; a `rule_based` (smoke) run on the healthy demo with 0 LLM turns |
 | Unit | `plan.test.ts` | The driver with a fake `io`: happy path, invalid once/twice, origin pin, LLM down, tool cap, turn cap, budget, deadline, throwing check, unexpected failure, rule-based mode |
 | | `approval.test.ts` | Propose → approve → `setModes(["healthy"])` called → verify → `mitigated` → 2 ticks → `resolved`. Reject → `investigating`. Timeout (`forceEventTimeout("wait-for-approval")`) → expired. Approve twice, a viewer, resolving by hand, a duplicate follow-up, a retried proposal. The demo stub's default `fetch` serves `/w/<ws>/` by mode, and the fake internet routes the test demo host to it. Supersede itself is covered at the agent level: with one proposable action, it can't happen end to end yet. |
-| | `cron.test.ts` | Due-watch query with LIMIT and caps; failure starts WatchWorkflow; duplicate ID ignored. *WP-14: `it.todo` stubs until WP-18 builds the cron.* |
+| | `cron.test.ts` | Due-watch query (oldest first, LIMIT 6, unexpired); the tick's subrequest budget defers the rest; failure starts WatchWorkflow `watch-<id>-<minute>`; duplicate ID ignored; an open incident gets `reportWatchCheck`; expired watches deleted |
+| | `watch-workflow.test.ts`, `watches-api.test.ts`, `watch-agent.test.ts` | Confirm → open a linked watch incident; a blip opens nothing; no second incident; a deleted watch. The API: validation (IP literal, localhost, port), demo every 60 s, 5–60 min otherwise, 3 per workspace, 30 global, one per URL, own deletes only. The agent: watch passes → mitigated → resolved and release; a failure reopens; a pending card is untouched; the `add_to_watchlist` card end to end (approve → linked watch → passes resolve); no card at the cap |
 | Demo (`@cloudflare/vitest-plugin`, demo Worker) | `demo.test.ts` | Every mode's status, headers and timing, through `exports.default` and the `DemoAdmin` RPC; per-workspace state; bad input; no admin route |
 
 - **Projects** (`vitest.config.ts`): `unit` runs in node. `integration` loads `wrangler.jsonc` with `LLM_MODE=mock` and a valid test `DEMO_BASE_URL`, and with `remoteBindings: false`, so the AI binding never goes remote: tests need no login and spend no neurons. `demo` loads `demo-service/wrangler.jsonc`.

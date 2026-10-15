@@ -5,3 +5,8 @@ DEMO_BASE_URL=http://localhost:5173
 # One exact origin (scheme://host:port) the SSRF guard lets through locally: the demo above.
 # Never set this in wrangler.jsonc vars (TDD §11).
 SSRF_DEV_ALLOW_ORIGIN=http://localhost:5173
+# Encrypts saved Slack/Discord webhook URLs (AES-GCM-256, TDD §11): 32 random bytes, base64. Empty = webhooks off.
+# Make your own local key, and never commit one: in your .dev.vars, put the output of `openssl rand -base64 32`.
+# Production uses a different key: `openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`.
+# Changing the key makes saved webhooks unreadable; save them again afterwards.
+WEBHOOK_KEY=

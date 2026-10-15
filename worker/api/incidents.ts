@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { incidentAgent } from "../agent/stub";
 import type { AppEnv } from "../env";
 import { isId, newId } from "../lib/ids";
+import { ipKey, takeRun } from "../safety/quota";
 import { parseTarget } from "../safety/target";
 import { demoTarget } from "./session";
 
@@ -20,7 +21,8 @@ export const incidents = new Hono<AppEnv>()
     const target = parseTarget(message, demoUrl ?? "https://demo.invalid/");
     if (target.ok && target.source === "demo" && !demoUrl) return c.json({ error: "demo_unavailable" }, 503);
     if (!target.ok) return c.json({ error: target.error }, 400);
-    // WP-17: run quota (D14) before init.
+    const quota = await takeRun(c.env, { workspaceId, ip: await ipKey(c.req.header("CF-Connecting-IP")) });
+    if (!quota.ok) return c.json({ error: "rate_limited", retryAfter: quota.retryAfter }, 429, { "Retry-After": String(quota.retryAfter) });
     // `?smoke=rule` skips the LLM (TDD §15): the deploy smoke test costs no neurons. It can only make a run cheaper.
     const mode = c.req.query("smoke") === "rule" ? "rule_based" : "ai";
     const id = newId();

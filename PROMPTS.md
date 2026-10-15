@@ -315,3 +315,59 @@ Answers to Claude's questions:
 ### 22:16 · WP-15 PR #4
 
 > https://github.com/sahilsaleem2907/cf_ai_incident_copilot/pull/4
+
+### 22:19 · WP-15 PR #4 merged
+
+> Merged.
+
+(The first automatic deploy passed: CI, D1 migrations (none new), the demo Worker, then the main Worker, then the smoke test. The smoke test ran on the new version, was rule-based, came back healthy and resolved in about 12 s, and used no neurons. WP-15 is done, so all Musts (WP-01 to WP-16) are done.)
+
+### 22:29 · WP-17 plan
+
+> Lets build WP-17 of the @TASKS.md
+
+**Claude asked:** every user's demo service shares one hostname, so a "10 probes a minute per hostname" limit would make users block each other. How should the demo be handled?
+**Answer:** skip the probe limit for our own demo (the limit protects other people's sites; the run quota still caps demo use).
+
+(Plan approved: rate-limit bindings, `quota.ts` (3 runs a minute + 10 an hour per workspace, 429 with the time until reset), the 9,000-neuron budget guard switching runs to rule-based, a header `BudgetBanner`, and a toast on 429.)
+
+(WP-17 built: 536 tests pass. Locally, the 4th run in a minute gets 429 with the time until reset, and a forced 9,000-neuron total shows the banner and runs with rules only. Two older issues found and not fixed: a first visit creates several workspaces at once (the last cookie wins), and the run quota can be skipped by not sending the cookie.)
+
+### 22:47 · WP-17b
+
+> Lets fix the older probelms as well.
+
+(Plan: the app makes one session call and waits for it before anything else, so a first visit creates one workspace; and a second run limit per visitor IP (hashed), 6 a minute and 20 an hour, so dropping the cookie doesn't skip the limit.)
+
+(WP-17b done: a first visit now creates one workspace (the app waits for one session call before anything else), and runs are also limited per visitor IP, 6 a minute and 20 an hour, stored only as a hash. 540 tests pass; checked in the browser.)
+
+### 22:57 · WP-18 plan
+
+> Great Lets build WP-18 now
+
+**Claude asked:** watches are checked at most every 5 minutes, but the done-when wants a broken watched demo to open an incident in about 2 minutes. Should the demo get a faster check?
+**Answer:** yes, the own demo every 1 minute; real sites stay at 5 minutes or more.
+
+**Claude asked:** when should the "Add to watchlist" approval card appear?
+**Answer:** for broken real (non-demo) sites; approving it links the watch to the incident so it resolves itself once the site passes 3 checks in a row.
+
+(Plan approved: watch API with caps, `WatchlistPanel`, a cron every minute, `WatchWorkflow` confirming 2 of 3 failures and opening an incident, `reportWatchCheck` resolving it.)
+
+(WP-18 built: the watch API, a cron every minute, `WatchWorkflow` and the watchlist panel. 565 tests pass. Locally, a watched site returning 500 opened an incident by itself 34 s after the cron check, and 3 passing checks resolved it. The demo version runs on the live site after the next deploy.)
+
+### 23:45 · WP-19 plan
+
+> Ive tested the demo walkthrough its worked. Lets build WP-19.
+
+**Claude asked:** when should the "opened" Slack/Discord message go out, given the diagnosis is still running?
+**Answer:** after the first diagnosis (at most about 90 s), so it carries the likely cause.
+
+**Claude asked:** should chat incidents that became watched (approved "Add to watchlist") also send webhooks when they recover?
+**Answer:** yes, any incident with a watch attached.
+
+**Claude asked:** who sets the production `WEBHOOK_KEY` secret?
+**Answer:** the user runs a one-line command Claude provides.
+
+(Plan approved: sidebar polling every 10 s with unread dots and `markRead`, browser notifications from a button, Slack/Discord webhooks encrypted with AES-GCM, and `NotifyWorkflow` sending at most once per state change.)
+
+(WP-19 built: sidebar polling with unread markers, browser notifications, Slack/Discord webhooks sent by `NotifyWorkflow`. 585 tests pass. The fake-Discord integration test gets exactly one message per state change. Locally, a watch failure showed as "New" and raised one browser notification. Webhooks go live once the user sets `WEBHOOK_KEY` on the deployed Worker.)

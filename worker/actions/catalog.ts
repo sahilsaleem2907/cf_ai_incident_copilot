@@ -1,5 +1,7 @@
 import type { IncidentStatus } from "../agent/state";
 import { ACTION_IDS, type ActionId, type Category, type Findings } from "../diagnosis/categories";
+import { LIMITS } from "../lib/limits";
+import { createWatch, listWatches } from "../watch/store";
 
 /**
  * Action catalog (TDD §7.6). The model and the rules only *name* actions; this decides which one is shown as
@@ -18,6 +20,8 @@ export type ProposeContext = {
   demoBaseUrl: string;
   category: Category;
   status: IncidentStatus;
+  /** The incident isn't watched yet, its URL isn't on the workspace's watchlist, and the caps allow one more. */
+  watchable: boolean;
 };
 
 /** True when the target is this workspace's own demo page: someone else's demo, or any other site, is off limits. */
@@ -33,8 +37,10 @@ export function proposable(action: ActionId, ctx: ProposeContext): boolean {
   switch (action) {
     case "restore_demo_service":
       return ctx.category !== "healthy" && isOwnDemo(ctx.target, ctx.workspaceId, ctx.demoBaseUrl);
-    // Switched on by their WPs: add_to_watchlist (WP-18), generate_postmortem (WP-22), recheck_burst (WP-24).
     case "add_to_watchlist":
+      // A real site that's broken: watching it tells the user when it recovers. The demo gets a restore instead.
+      return ctx.category !== "healthy" && ctx.watchable && !isOwnDemo(ctx.target, ctx.workspaceId, ctx.demoBaseUrl);
+    // Switched on by their WPs: generate_postmortem (WP-22), recheck_burst (WP-24).
     case "recheck_burst":
     case "generate_postmortem":
       return false;
@@ -42,23 +48,39 @@ export function proposable(action: ActionId, ctx: ProposeContext): boolean {
 }
 
 /**
- * The model's actions first, then the rule actions, so a broken demo always gets "Restore demo service"
- * even when the model leaves it out (user decision, WP-12). The first proposable one wins (one per run).
+ * One action per run (D13). A restore that fits always wins, since a fix beats watching (WP-18). Otherwise the
+ * model's actions come first, then the rule actions, so a broken demo always gets "Restore demo service" and a
+ * broken real site "Add to watchlist" even when the model leaves them out (user decisions, WP-12 and WP-18).
  */
 export function pickAction(findings: Pick<Findings, "category" | "actions">, ctx: ProposeContext): ActionId | null {
-  const rules: ActionId[] = findings.category === "healthy" ? [] : ["restore_demo_service"];
+  if (proposable("restore_demo_service", ctx)) return "restore_demo_service";
+  const rules: ActionId[] = findings.category === "healthy" ? [] : ["add_to_watchlist"];
   const candidates = [...new Set([...findings.actions, ...rules])].filter((a): a is ActionId => (ACTION_IDS as readonly string[]).includes(a));
   return candidates.find((a) => proposable(a, ctx)) ?? null;
 }
 
-export type ActionOutcome = { ok: boolean; text: string };
+/** `watchId`: the watch an `add_to_watchlist` created or found, for the incident to link to. */
+export type ActionOutcome = { ok: boolean; text: string; watchId?: string };
+
+export type ExecuteContext = { env: Pick<Env, "DEMO" | "DB">; workspaceId: string; incidentId: string; target: string };
+
+export const WATCH_ADDED_TEXT = `Added to the watchlist: checked every ${LIMITS.watchMinIntervalSec / 60} minutes for ${LIMITS.watchTtlHours} hours. This incident resolves itself after 3 passing checks in a row.`;
 
 /** Runs an approved action. Idempotent: a retried Workflow step may call it again. */
-export async function execute(action: ActionId, env: Pick<Env, "DEMO">, workspaceId: string): Promise<ActionOutcome> {
+export async function execute(action: ActionId, ctx: ExecuteContext): Promise<ActionOutcome> {
   switch (action) {
     case "restore_demo_service":
-      await env.DEMO.setModes(workspaceId, ["healthy"]);
+      await ctx.env.DEMO.setModes(ctx.workspaceId, ["healthy"]);
       return { ok: true, text: "The demo service is back in healthy mode." };
+    case "add_to_watchlist": {
+      const r = await createWatch(ctx.env.DB, { workspaceId: ctx.workspaceId, url: ctx.target, intervalSec: LIMITS.watchMinIntervalSec, openIncidentId: ctx.incidentId });
+      if (r.ok) return { ok: true, text: WATCH_ADDED_TEXT, watchId: r.watch.id };
+      // A retried step finds its own watch.
+      const mine = (await listWatches(ctx.env.DB, ctx.workspaceId)).find((w) => w.url === ctx.target && w.open_incident_id === ctx.incidentId);
+      if (mine) return { ok: true, text: WATCH_ADDED_TEXT, watchId: mine.id };
+      const why = { already_watched: "this URL is already on the watchlist", watch_limit: "the watchlist is full (3 per workspace)", watch_capacity: "the app is at its limit of 30 watches" }[r.error];
+      return { ok: false, text: `Couldn't add the watch: ${why}.` };
+    }
     default:
       return { ok: false, text: `${ACTION_TITLES[action]} isn't available yet.` };
   }

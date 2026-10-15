@@ -9,12 +9,16 @@ import { llmDeps } from "../llm/client";
 import { LlmUnavailable } from "../llm/models";
 import { narrationSystem, narrationUser, type EvidenceLine } from "../llm/prompts";
 import { streamLlm } from "../llm/stream";
+import { budgetMode, d1Usage } from "../llm/usage";
 import { salvageFindings } from "../loop/findings";
 import { finalizeNarration, NARRATION_MAX_TOKENS, type NarrationOutcome } from "../loop/narrate";
+import { ipKey, takeRun } from "../safety/quota";
 import { devAllowOrigin } from "../safety/ssrf";
 import type { DnsRaw } from "../tools/dns";
 import { quickCheck, type QuickCheckResult } from "../tools/quickcheck";
 import { evidenceId, toolLabel } from "../tools/registry";
+import { canWatch, releaseIncident } from "../watch/store";
+import { startNotify } from "../workflows/notify";
 import type { ToolName, ToolResult } from "../tools/types";
 import { MONITOR_MAX_TICKS, MONITOR_TICK_S, tick } from "./monitor";
 import { SCHEMA } from "./schema.sql";
@@ -133,7 +137,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       connection.close(4404, "Unknown incident");
       return;
     }
-    connection.setState({ role: this.roleFor(ctx) } satisfies ConnectionInfo);
+    connection.setState({ role: this.roleFor(ctx), ip: await ipKey(ctx.request.headers.get("CF-Connecting-IP")) } satisfies ConnectionInfo);
   }
 
   /** Only the server writes state; clients use callables. */
@@ -163,7 +167,9 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
   }
 
   /** One planning run at a time (D13). The check and insert run without an await in between. */
-  async startRun(question: string, kind: RunKind, role: "user" | "system" = "user", mode: RunMode = "ai"): Promise<string> {
+  async startRun(question: string, kind: RunKind, role: "user" | "system" = "user", requested: RunMode = "ai"): Promise<string> {
+    // Budget guard (TDD §11): read before the check-and-insert below, which must not await.
+    const mode = requested === "ai" ? await budgetMode(d1Usage(this.env.DB)) : requested;
     if (!this.incident()) throw new Error("not_initialized");
     if (this.activeRunId()) throw new Error("run_active");
     const seq = (this.sql<{ seq: number | null }>`SELECT MAX(seq) AS seq FROM runs`[0]?.seq ?? 0) + 1;
@@ -213,7 +219,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       target: incident.target,
       question: run.question,
       kind: run.kind,
-      // Set when the run starts: rule_based for the smoke test, and (WP-17) when the neuron budget guard trips.
+      // Set when the run starts: rule_based for the smoke test, and when the neuron budget guard trips.
       mode: run.mode,
       evidence: rows.map(toLine),
       scope: { host: new URL(incident.target).hostname, cnameTargets: [...new Set(cnameTargets)] },
@@ -335,6 +341,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       demoBaseUrl: this.env.DEMO_BASE_URL,
       category: findings.category,
       status: incident.status,
+      watchable: await this.watchable(incident),
     });
     if (!actionId) return { approvalId: null, actionId: null };
 
@@ -383,8 +390,11 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
   async executeAction(approvalId: string): Promise<ActionOutcome> {
     const a = this.mustApproval(approvalId);
     if (a.status !== "approved") throw new Error(`approval ${approvalId} is ${a.status}`);
-    const out = await execute(a.action_id, this.env, this.mustIncident().workspace_id);
-    this.setOutcome(a.id, out);
+    const incident = this.mustIncident();
+    const out = await execute(a.action_id, { env: this.env, workspaceId: incident.workspace_id, incidentId: incident.id, target: incident.target });
+    // The watch now reports to this incident (cron → reportWatchCheck), and resolving it frees the watch.
+    if (out.watchId) this.sql`UPDATE incident SET watch_id = ${out.watchId} WHERE id = ${incident.id}`;
+    this.setOutcome(a.id, { ok: out.ok, text: out.text });
     this.event("action_executed", { approvalId, actionId: a.action_id, ok: out.ok });
     this.touch();
     this.syncState();
@@ -398,8 +408,17 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
   async afterAction(runId: string, approvalId: string): Promise<VerifyResult> {
     this.mustRun(runId);
     const a = this.mustApproval(approvalId);
-    const prior = a.outcome_json ? (JSON.parse(a.outcome_json) as ActionOutcome & { verified?: boolean }) : null;
+    const prior = a.outcome_json ? (JSON.parse(a.outcome_json) as ActionOutcome & { verified?: boolean; done?: boolean }) : null;
     if (prior?.verified !== undefined) return { pass: prior.verified, text: prior.text };
+    if (prior?.done) return { pass: true, text: prior.text };
+    // Watching fixes nothing, so there's nothing to re-check: the incident goes back to investigating, and the
+    // watch's passing checks resolve it later (reportWatchCheck).
+    if (a.action_id === "add_to_watchlist") {
+      const text = prior?.text ?? "Added to the watchlist.";
+      this.sql`UPDATE approvals SET outcome_json = ${JSON.stringify({ ok: true, text, done: true })} WHERE id = ${a.id}`;
+      await this.leaveAwaitingApproval("added to the watchlist");
+      return { pass: true, text };
+    }
 
     const v = await this.quickCheck();
     const text = `${prior?.text ? `${prior.text} ` : ""}${verifyText(v)}`;
@@ -430,7 +449,32 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       this.sql`DELETE FROM monitor WHERE id = 1`;
       if (r.to !== "resolved") this.event("monitor_ended", { reason: "out of ticks" });
     }
-    if (r.to) await this.transition(r.to, r.to === "resolved" ? "3 passing checks in a row" : v.pass ? "recovered" : "failing again");
+    if (r.to) {
+      // Automatic changes are new activity for the sidebar's unread dot (FR-50); the user's own aren't.
+      this.sql`UPDATE incident SET unread = 1 WHERE id = ${this.name}`;
+      await this.transition(r.to, r.to === "resolved" ? "3 passing checks in a row" : v.pass ? "recovered" : "failing again");
+    }
+    else {
+      this.touch();
+      this.syncState();
+    }
+  }
+
+  /**
+   * A cron check of this incident's watch (TDD §8.4–§8.5). Passes feed the same rules as the monitor: a pass while
+   * investigating → mitigated (recovered without an action), 3 in a row → resolved, a failure reopens a mitigated
+   * incident. While the post-action monitor runs it decides, since it checks every 15 s; a pending card is left alone.
+   */
+  async reportWatchCheck(pass: boolean, consecutivePasses: number, summary: string): Promise<void> {
+    const incident = this.incident();
+    if (!incident || incident.status === "resolved") return;
+    this.event("watch_check", { pass, passes: consecutivePasses, summary });
+    const monitorRunning = this.sql`SELECT 1 FROM monitor WHERE id = 1`.length > 0;
+    const r = monitorRunning ? { to: null } : tick({ ticksLeft: 2, passes: Math.max(0, consecutivePasses - 1) }, incident.status, pass);
+    if (r.to) {
+      this.sql`UPDATE incident SET unread = 1 WHERE id = ${this.name}`;
+      await this.transition(r.to, r.to === "resolved" ? "3 passing watch checks in a row" : pass ? "watch check passed" : "watch check failing again");
+    }
     else {
       this.touch();
       this.syncState();
@@ -462,7 +506,11 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
   async sendMessage(text: unknown): Promise<{ runId: string }> {
     this.requireOwner();
     if (typeof text !== "string" || !text.trim()) throw new Error("empty_message");
-    // WP-17 adds the run quota (D14); WP-10 the "new incident for another host" check (§8.6).
+    // Checked before the quota so a send that can't start isn't counted; startRun checks again.
+    if (this.activeRunId()) throw new Error("run_active");
+    const ip = (getCurrentAgent().connection?.state as ConnectionInfo | null)?.ip ?? null;
+    const quota = await takeRun(this.env, { workspaceId: this.mustIncident().workspace_id, ip });
+    if (!quota.ok) throw new Error(`rate_limited:${quota.retryAfter}`);
     return { runId: await this.startRun(text.trim().slice(0, MAX_MESSAGE), "followup") };
   }
 
@@ -535,7 +583,31 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     this.touch();
     this.syncState();
     await this.upsertIndex();
-    // WP-19: NotifyWorkflow for watch incidents on mitigated/resolved (D18).
+    if (to === "resolved") await this.releaseWatch();
+    // Webhooks for any watched incident on mitigated/resolved (D18, widened by user decision in WP-19).
+    if ((to === "mitigated" || to === "resolved") && this.mustIncident().watch_id) await startNotify(this.env, this.name, to);
+  }
+
+  /** Frees the incident's watch so its next failure can open a new incident. Logged, never thrown. */
+  private async releaseWatch() {
+    const { watch_id: watchId } = this.mustIncident();
+    if (!watchId) return;
+    try {
+      await releaseIncident(this.env.DB, watchId, this.name);
+    } catch (e) {
+      console.error("could not release the watch", watchId, (e as Error).message);
+    }
+  }
+
+  /** For the add_to_watchlist card: not watched yet, and the workspace can add this URL. False on a D1 error. */
+  private async watchable(incident: IncidentRow): Promise<boolean> {
+    if (incident.watch_id) return false;
+    try {
+      return await canWatch(this.env.DB, incident.workspace_id, incident.target);
+    } catch (e) {
+      console.error("watchlist check failed", (e as Error).message);
+      return false;
+    }
   }
 
   private mustApproval(id: unknown): ApprovalRow {
@@ -675,7 +747,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       messages: messages.map((m) => ({ id: m.id, runId: m.run_id, role: m.role, content: m.content, createdAt: m.created_at })),
       approvals: approvals.map((a) => {
         const why = a.findings_json ? (JSON.parse(a.findings_json) as Findings) : null;
-        const outcome = a.outcome_json ? (JSON.parse(a.outcome_json) as ActionOutcome & { verified?: boolean }) : null;
+        const outcome = a.outcome_json ? (JSON.parse(a.outcome_json) as ActionOutcome & { verified?: boolean; done?: boolean }) : null;
         return {
           id: a.id,
           runId: a.run_id,
@@ -684,7 +756,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
           status: a.status,
           cause: why?.cause ?? "",
           evidence: why?.evidence ?? [],
-          ...(outcome ? { outcome: { ok: outcome.ok, text: outcome.text, ...(outcome.verified !== undefined ? { verified: outcome.verified } : {}) } } : {}),
+          ...(outcome ? { outcome: { ok: outcome.ok, text: outcome.text, ...(outcome.verified !== undefined ? { verified: outcome.verified } : {}), ...(outcome.done ? { done: true } : {}) } } : {}),
           createdAt: a.created_at,
           ...(a.decided_at ? { decidedAt: a.decided_at } : {}),
         };

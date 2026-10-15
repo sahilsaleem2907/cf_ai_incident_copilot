@@ -27,11 +27,15 @@ export default {
 `;
 
 // The integration project's only "internet" (outboundService): DoH answers for *.example.com and the test
-// demo host, so Workflow runs are offline and deterministic. nxdomain.example.com doesn't exist,
+// demo host, so Workflow runs are offline and deterministic. Slack and Discord webhooks are recorded: a POST
+// is stored and answered by its path (/gone → 404, /flaky → 500 then 204), and GET https://discord.com/__calls
+// returns everything recorded so far. nxdomain.example.com doesn't exist,
 // broken.example.com returns 500, every other *.example.com host serves a small HTML page, and the test demo
 // host is served by the demo stub (through its DEMO binding here).
 const DEMO_HOST = "incident-copilot-demo.test.workers.dev";
 const fakeInternet = `
+const hookCalls = [];
+let flaky = 0;
 const dns = (body) => new Response(JSON.stringify(body), { headers: { "content-type": "application/dns-json" } });
 export default {
   async fetch(request, env) {
@@ -44,6 +48,13 @@ export default {
       return dns({ Status: 0, Answer: a ? [{ name, type: 1, TTL: 300, data: "93.184.215.14" }] : [] });
     }
     if (url.hostname === "${DEMO_HOST}") return env.DEMO.fetch(request);
+    if (url.hostname === "discord.com" || url.hostname === "hooks.slack.com") {
+      if (url.pathname === "/__calls") return Response.json(hookCalls);
+      hookCalls.push({ host: url.hostname, path: url.pathname, body: await request.json() });
+      if (url.pathname.endsWith("/gone")) return new Response("Unknown Webhook", { status: 404 });
+      if (url.pathname.endsWith("/flaky") && flaky++ === 0) return new Response("oops", { status: 500 });
+      return new Response(null, { status: 204 });
+    }
     if (url.hostname === "broken.example.com") return new Response("upstream exploded", { status: 500 });
     if (url.hostname.endsWith("example.com")) return new Response("<html><body>ok</body></html>", { headers: { "content-type": "text/html" } });
     return new Response("fake internet: unknown host " + url.hostname, { status: 502 });
@@ -70,6 +81,16 @@ export default defineConfig({
                 DEMO_BASE_URL: `https://${DEMO_HOST}`,
                 // Runs start only when a test calls launchRun, so agent tests can drive runs by hand.
                 DIAGNOSIS_AUTOSTART: "off",
+                // 32 zero bytes, base64: a fixed test key for webhook encryption (TDD §11).
+                WEBHOOK_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+              },
+              // The whole record replaces wrangler's, so all three are listed. Tests probe the same *.example.com
+              // hosts many times a minute, so PROBE_LIMIT is raised; quota tests need the real RUN_LIMIT.
+              ratelimits: {
+                PROBE_LIMIT: { namespace_id: "1001", simple: { limit: 10_000, period: 60 } },
+                RUN_LIMIT: { namespace_id: "1002", simple: { limit: 3, period: 60 } },
+                VOICE_LIMIT: { namespace_id: "1003", simple: { limit: 5, period: 60 } },
+                RUN_IP_LIMIT: { namespace_id: "1004", simple: { limit: 6, period: 60 } },
               },
               outboundService: "fake-internet",
               workers: [

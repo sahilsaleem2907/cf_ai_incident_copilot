@@ -37,7 +37,8 @@ export type ApprovalView = {
   cause: string;
   evidence: string[];
   /** What happened after the decision. `verified` is set once the re-check after the action has run. */
-  outcome?: { ok: boolean; text: string; verified?: boolean };
+  /** `verified`: the re-check after a fix. `done`: an action with nothing to re-check (add_to_watchlist). */
+  outcome?: { ok: boolean; text: string; verified?: boolean; done?: boolean };
   createdAt: number;
   decidedAt?: number;
 };
@@ -68,7 +69,8 @@ export type IncidentState = {
 export type StreamFrame = { type: "stream_start"; messageId: string } | { type: "delta"; messageId: string; text: string } | { type: "stream_end"; messageId: string };
 
 export type ConnectionRole = "owner" | "viewer";
-export type ConnectionInfo = { role: ConnectionRole };
+/** `ip` is the visitor's hashed `ipKey` (safety/quota.ts) for the per-IP run quota; null without an address. */
+export type ConnectionInfo = { role: ConnectionRole; ip: string | null };
 
 export const STATE_CAPS = { checks: 40, messages: 50, approvals: 5, timeline: 100 } as const;
 

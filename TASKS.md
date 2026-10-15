@@ -15,15 +15,15 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 - Commit after each WP and record the short hash below.
 - Work happens on `dev`. Review is a PR from `dev` into `main`, checked by Sift (GitHub Actions). Nothing goes to `main` directly without the user's OK.
 - At the end of each day, export the session transcript to `prompts/`.
-- Don't share the deployed URL until WP-17 is ✅ (D2).
+- Don't share the deployed URL until WP-17 is ✅ **and deployed** (D2).
 - When a Day 2 WP lands, move it out of the README's "Designed, not built" table (and add the live URL to the README once WP-17 is ✅).
 
 ---
 
 ## Now
 
-- **Current:** none. WP-14 ✅, WP-16 ✅; WP-15 ⛔ built, waiting on the user (see blockers). All Musts are built
-- **Next:** WP-17 Limits + budget guard (Day 2)
+- **Current:** none. WP-17 to WP-19 are done (not deployed yet); the user tested the demo watch walkthrough and it worked. **Before webhooks work live:** the user sets `WEBHOOK_KEY` (`openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`) **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
+- **Next:** WP-20 Eval
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
@@ -31,7 +31,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
   - PR #1 was closed unmerged; `master` (`867d8d6`) is unused.
   - **PR #3** `dev` → `main` ("WP-06 to WP-10 …") opened 16:47: https://github.com/sahilsaleem2907/cf_ai_incident_copilot/pull/3. Waiting for Sift review.
 - **Blockers / risks:**
-  - **WP-15 waits on the user:** (1) ✅ secrets set 2026-10-15 22:10 (the first try saved the token as a secret *name*, so it should be rolled; not confirmed here). (1, as planned) create a Cloudflare API token ("Edit Cloudflare Workers" template + Account › D1 › Edit) and run `gh secret set CLOUDFLARE_API_TOKEN`; `CLOUDFLARE_ACCOUNT_ID` too. (2) Open a `dev` → `main` PR, so `ci.yml` runs. (3) Merge it: `deploy.yml` deploys and runs the smoke test. **Set the secrets before merging**, or the first deploy fails. PR #3 is already merged, so there's no open PR.
+  - none blocking. WP-15's first automatic deploy passed (merge of PR #4, 2026-10-15).
   - Watch gpt latency: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
   - **Live walkthrough timing (after WP-13b):** about 10 s to the first card, then about 31 s from Approve to Resolved (2 monitor ticks × 15 s). With a person clicking, steps 1–5 take about 55–60 s, right at the PRD's 60 s. A shorter monitor tick would add slack.
 
@@ -63,11 +63,12 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | WP | Task | Est | Deps | Status | Started | Done | Commit / notes |
 |---|---|---|---|---|---|---|---|
 | 14 | Tests (Must): fill coverage gaps | 1.25 | 12 | ✅ | 21:24 (D1) | 21:27 (D1) | `366d3ed`. 0.05 h vs 1.25 est. +19 tests (`schema`, `cookie`, web `approval`) and 6 `cron` stubs for WP-18; 521 pass, 3 runs in a row. `transitions` already complete. The approval path is covered by `approval.test.ts` (8 cases) |
-| 15 | CI/CD (Must): `ci.yml`, `deploy.yml`, smoke | 0.75 | 14 | ⛔ | 21:27 (D1) | 21:31 (D1) built | `3ae9eeb`. 0.15 h vs 0.75 est. Built and checked locally (actionlint, suite without `.dev.vars`, `pnpm smoke` against `pnpm dev`). **Waiting on the user:** Cloudflare secrets, then a `dev` → `main` PR (CI green), then the merge (deploy + smoke) |
+| 15 | CI/CD (Must): `ci.yml`, `deploy.yml`, smoke | 0.75 | 14 | ✅ | 21:27 (D1) | 22:21 (D1) | `3ae9eeb`. 0.15 h vs 0.75 est (plus the user's secrets). PR #4: CI green (about 1 min, Terraform steps skipped). Merge `1be62ee` → `deploy.yml` run 38772159673 passed: migrations (none new), demo, main (version `f6e0c734`), smoke healthy / rule_based / resolved in about 12 s, against the new version, 0 neurons |
 | 16 | README + PROMPTS (Must, **protected time**) | 1.0 | — | ✅ | 21:31 (D1) | 21:35 (D1) | `857cdb2`. README for reviewers (no live URL until WP-17, D2) + PROMPTS overview by phase; secret sweep clean. Done early, so the README's not-built list is kept current through Day 2 |
-| 17 | Limits + budget guard | 1.0 | 15 | ⬜ | | | |
-| 18 | Watch: API, panel, cron, `WatchWorkflow` | 2.0 | 17 | ⬜ | | | |
-| 19 | Notifications: polling, unread, webhooks, `NotifyWorkflow` | 1.5 | 18 | ⬜ | | | |
+| 17 | Limits + budget guard | 1.0 | 15 | ✅ | 22:29 (D1) | 22:44 (D1) | `f636c10`. 0.25 h vs 1.0 est. 536 tests pass, 3 runs in a row. Local: 4th run → 429 `retryAfter: 60`; forced 9,000 neurons → banner + rule-based run. Live after the next `dev` → `main` merge. Found 2 older issues (first-visit cookie race, cookie-less quota bypass), see the log |
+| 17b | First-visit workspace race + per-IP run limit (found in WP-17) | — | 17 | ✅ | 22:47 (D1) | 22:49 (D1) | `feb4707`. 540 tests pass. Browser: a first visit sets 1 cookie (was 6), the demo URL matches it, and the eager 3+1 check gets 429; a 3rd browser on the same IP was refused from its first run |
+| 18 | Watch: API, panel, cron, `WatchWorkflow` | 2.0 | 17 | ✅ | 22:57 (D1) | 23:13 (D1) | `ca576d7`. 565 tests pass, 3 runs in a row. Local, real 500 site: incident 34 s after the cron check; resolved after 3 passes. Demo walkthrough on the live site after the next deploy |
+| 19 | Notifications: polling, unread, webhooks, `NotifyWorkflow` | 1.5 | 18 | ✅ | 23:45 (D1) | 23:56 (D1) | `8988fd9`. 585 tests pass, 3 runs in a row. Integration: 3 events → exactly 3 Discord messages, repeats ignored. Local browser: unread + one notification 40 s after a watch failure. Real Discord check after the deploy + `WEBHOOK_KEY` (user) |
 | 20 | Eval: `eval/run.ts` + `results.md` | 0.75 | 15 | ⬜ | | | |
 | — | **✂️ CUT LINE**: anything below that isn't built goes into the README "designed, not built" list | | | | | | |
 | 21 | `cert_info` + `provider_status` | 1.0 | 09 | ⬜ | | | |
@@ -292,8 +293,8 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 - [x] `ci.yml` (typecheck, lint, test, terraform fmt/validate), alongside the existing Sift workflows; PR trigger on `main` (Terraform steps only once `infra/` has `.tf` files)
 - [x] `deploy.yml` (migrations, build, deploy demo then main, smoke)
 - [x] Smoke script (`?smoke=rule` option): `scripts/smoke.ts`, `pnpm smoke <url>`
-- [ ] GitHub secrets (**user**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`)
-- [ ] **Done when:** a PR runs green; merging deploys and passes smoke
+- [x] GitHub secrets (**user**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`)
+- [x] **Done when:** a PR runs green; merging deploys and passes smoke (PR #4, deploy run 38772159673)
 </details>
 
 <details>
@@ -310,38 +311,38 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-17</b> Limits and budget guard</summary>
 
-- [ ] `PROBE_LIMIT`, `RUN_LIMIT`, `VOICE_LIMIT` bindings
-- [ ] `quota.ts` (D1 fixed window)
-- [ ] `usage.ts` wired to the guard (≥ 9000 → rule_based)
-- [ ] `BudgetBanner` in the header, driven by `budgetMode` from `/api/session`
-- [ ] 429 UX: `Toast` showing the time until reset
-- [ ] **Done when:** 4 runs in a minute → 429; forced neuron total → rule-based banner
+- [x] `PROBE_LIMIT`, `RUN_LIMIT`, `VOICE_LIMIT` bindings (`VOICE_LIMIT` unused until WP-23)
+- [x] `quota.ts` (D1 fixed window): `takeRun`, `takeWindow`, `probeLimiter` (own demo exempt)
+- [x] `usage.ts` wired to the guard (≥ 9000 → rule_based), applied in `startRun`
+- [x] `BudgetBanner` in the header, driven by `budgetMode` from `/api/session` (refetched when incidents change)
+- [x] 429 UX: `Toast` showing the time until reset (plus the same text inline for screen readers)
+- [x] **Done when:** 4 runs in a minute → 429; forced neuron total → rule-based banner (tests + local check; live after the next deploy)
 </details>
 
 <details>
 <summary><b>WP-18</b> Watch</summary>
 
-- [ ] Watch API + caps (3 per workspace, 30 global)
-- [ ] `WatchlistPanel` (sidebar): add URL, list with last status, delete, cap errors shown
-- [ ] `add_to_watchlist` action
-- [ ] `scheduled()` (LIMIT 6, subrequest counter)
-- [ ] `WatchWorkflow` (2 of 3 confirm)
-- [ ] `reportWatchCheck`
-- [ ] `cron.test.ts`
-- [ ] **Done when:** breaking a watched demo opens an incident in about 2 min; restoring resolves it
+- [x] Watch API + caps (3 per workspace, 30 global; one per URL; demo every 60 s, others 5–60 min)
+- [x] `WatchlistPanel` (sidebar): add URL, "Watch my demo", list with last status, delete, cap errors shown; polls every 15 s
+- [x] `add_to_watchlist` action (rule card for broken real sites, linked to the incident)
+- [x] `scheduled()` (LIMIT 6, subrequest counter)
+- [x] `WatchWorkflow` (2 of 3 confirm, claim before init)
+- [x] `reportWatchCheck`
+- [x] `cron.test.ts` (+ `watch-workflow`, `watches-api`, `watch-agent` tests)
+- [x] **Done when:** breaking a watched demo opens an incident in about 2 min; restoring resolves it (tests + a local run on a real 500 site: incident 34 s after the cron check, resolved after 3 passes; the demo itself on the live site after the next deploy)
 </details>
 
 <details>
 <summary><b>WP-19</b> Notifications</summary>
 
-- [ ] `useIncidents`: polls `GET /api/incidents` every 10 s while the tab is visible
-- [ ] Unread dot and badge in `IncidentSidebar`; `markRead` when an incident is opened
-- [ ] `useNotifications`: browser notification on a new unread row (permission requested from a button click)
-- [ ] Webhook API
-- [ ] `WebhookSettings` (sidebar): `SensitiveInput`, masked hint, remove
-- [ ] `crypto.ts` (AES-GCM) + `webhook.test.ts`
-- [ ] `NotifyWorkflow`
-- [ ] **Done when:** a test Discord webhook fires exactly once per state change
+- [x] `useIncidents`: polls `GET /api/incidents` every 10 s while the tab is visible (and on return to the tab)
+- [x] Unread dot, "New" and a count badge in `IncidentSidebar`; `markRead` when an incident is opened and on new activity while visible
+- [x] `useNotifications`: browser notification on a new unread row (permission requested from a button click)
+- [x] Webhook API (+ `POST /api/webhook/test`, 5 an hour)
+- [x] `NotificationSettings` (the TDD's `WebhookSettings`, sidebar): `SensitiveInput`, masked hint, send test, remove
+- [x] `crypto.ts` (AES-GCM) + `webhook.test.ts`
+- [x] `NotifyWorkflow` (opened waits for the diagnosis; mitigated/resolved for any watched incident)
+- [x] **Done when:** a test Discord webhook fires exactly once per state change (integration test with a recorded fake Discord: 3 events → 3 messages, repeats ignored; a real Discord check needs the production `WEBHOOK_KEY`, which the user sets)
 </details>
 
 <details>
@@ -411,6 +412,10 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
+| 2026-10-15 23:56 | 19 | **Notifications as built.** (1) The "opened" webhook waits for the first diagnosis (up to 9 × 10 s) so it names the likely cause (user decision). (2) Mitigated/resolved webhooks for **any incident with a watch attached**, including chat incidents with an approved "Add to watchlist" (user decision, widens D18). (3) Migration `0002` adds `webhooks.app_origin`, recorded on save, for incident links without committing the URL (D2). (4) `POST /api/webhook/test` (5 an hour) so a user can check the URL. (5) `WEBHOOK_KEY` isn't declared in wrangler: without it webhooks are off and the UI says so; the **user sets it in production** (user decision). (6) Automatic status changes set unread; `IncidentView` marks read on open and on new activity while visible. (7) `GET /api/webhook` returns `{available, webhook}`. **Local check (5181; the old 5173 server is still broken):** an auto-opened watch incident showed "New" + "1 new" 40 s after the cron check, raised exactly one browser notification (stubbed Notification API), and cleared on open; light, dark and 390 px screenshots. The local `.dev.vars` key wasn't added (the safety check gave no verdict on writing a secret), so the save/test UI wasn't run locally; the integration tests cover it. **Folded into TDD §5.1, §6.1, §7.1, §11, §12.3, §14 and the README.** | The PRD wants the diagnosis ready when the user is notified. A user who asked to watch an incident wants to hear when it recovers |
+| 2026-10-15 23:13 | 18 | **Watch as built.** (1) **Own demo checked every 60 s** (user decision), real sites 5–60 min. (2) **`add_to_watchlist` is a rule card for broken real sites** (user decision): approving links the new watch to the incident, so passes resolve it; no verify check, the card says "Approved and done"; `restore_demo_service` always wins when it fits. (3) WatchWorkflow confirms on the first failed re-check (saves 30 s) and claims the watch before `init`, so one failure opens one incident. (4) While the post-action monitor runs, it decides; watch checks are only recorded. (5) `WatchlistPanel` polls every 15 s and refreshes the incident list when a watch opens an incident (stands in until WP-19's polling). (6) `WatchView` lives in `worker/watch/types.ts` so the web build can import it. (7) Diagnosis tests expire approval cards at once, since a broken real site now gets a card. **Local check:** the 5173 dev server was broken ("fetch failed" on every request; started 21:28, before this session) and wasn't touched, so the demo walkthrough wasn't run locally. On 5181 with a real 500 site: the incident opened 34 s after the cron check, then mitigated → resolved after 3 passes, and the watch was released; in the browser, the panel and the incident list showed it within 45 s with no reload. **Folded into TDD §5.2, §7.1, §7.2, §7.6, §8.4, §8.5, §14 and the README.** | The done-when needs the demo in about 2 min, and the PRD's 5-minute minimum would take up to 6. Rule card: the model rarely proposes watching on its own |
+| 2026-10-15 22:49 | 17b | **Fixed both WP-17 findings (user: "fix the older problems").** (1) The app makes one `firstSession()` call per page load and renders the sidebar, demo panel and routes after it, so a first visit creates one workspace (was up to 6 in dev). (2) Per-IP run limit next to the workspace one: 6 a minute (new binding `RUN_IP_LIMIT`, namespace 1004) and 20 an hour (D1, key `ip:<SHA-256 prefix>`); the agent keeps the key from `onConnect` for follow-ups. The 429 text no longer names numbers, since either limit can trip. **Folded into TDD §5.1, §11, §14 and the README.** | Per-IP limits are looser than per workspace so a shared network (an office, a reviewer team) isn't blocked. An unsalted hash of an IPv4 address can be brute-forced, but it stays in our own D1 and isn't shown anywhere |
+| 2026-10-15 22:39 | 17 | **Limits as built.** (1) **Own demo exempt from `PROBE_LIMIT`** (user decision); the dev allow-origin too. (2) Run quota in `POST /api/incidents` after target parsing, and in `sendMessage` after the `run_active` check, so neither a target-less message nor a send during a run is charged; the agent throws `rate_limited:<s>`. (3) A burst refusal says 60 s (the binding doesn't report its reset); the D1 hour gives exact seconds. (4) Guard in `startRun`, before the synchronous check-and-insert. (5) Everything fails open (logged). (6) `quickCheck` isn't probe-limited (demo only, after an approved action). (7) Integration tests raise `PROBE_LIMIT` to 10,000 in the miniflare options. Locally verified: 4th run in a minute → 429 `retryAfter: 60` (5 of 5 with curl, 8 of 8 in the browser); forced 9,000 → banner and a 0-LLM run; screenshots in light, dark and at 390 px. **Folded into TDD §7.1, §8.1, §11, §14.** | Every workspace's demo shares one hostname, so a per-host limit would make users block each other. **Found while checking (older than WP-17; fixed in WP-17b):** (a) a first visit mints a workspace per parallel API call (`/api/session`, `/api/incidents`, `/api/demo`; ×2 under StrictMode in dev) and the last `Set-Cookie` wins, so early browser checks that sent before the page settled spread runs over several workspaces and never hit 429; the DemoPanel can also show a demo URL for a workspace that isn't the final cookie. (b) The run quota is per workspace, so a client that drops the cookie gets a new workspace each time; the global caps are the neuron guard (cost) and the per-host probe limit |
 | 2026-10-15 21:31 | 15 | **CI/CD as built.** `POST /api/incidents?smoke=rule` starts a `rule_based` run (`InitParams.mode` → `runs.mode` → `getRunContext`), so the deploy smoke test uses no LLM and no neurons; the public flag can only make a run cheaper. `scripts/smoke.ts` is run by Node 22 directly (no `tsx`). `ci.yml` is reused by `deploy.yml`; the Terraform steps are gated on `infra/*.tf` (WP-25 is below the cut). The smoke URL comes from wrangler's `deployment-url` (fallback: an `APP_URL` repo variable), so no URL is committed (D2). **Folded into TDD §14, §15.** | TDD §15 offered live LLM or `?smoke=rule`; rule mode is free and deterministic. The CI and deploy checks need the user's secrets and PR |
 | 2026-10-15 19:44 | 13b | **Live speed fixes (user chose "fix now").** (1) A new incident's baseline checks (DNS for the host, HTTP for the target) run before the first AI turn (`pending-baseline`), and the rule path reuses the same helper. (2) `propose` moved before `narrate`, so the card shows while the narration streams. (3) `fillEmptyCause` puts the findings' cited cause back when the citation check empties "Likely cause:". Redeployed and re-timed live: first check card 22 s → 7.5 s; demo card 35 s → 9.6 s; both runs `done` in 1 AI turn; the cause is filled. 279 neurons for 2 runs. **Folded into TDD §8.2, §9.2.** | WP-13 live walkthrough: about 100 s against the 60 s target, with every run hitting the turn cap |
 | 2026-10-15 19:15 | 13 | **First deploy.** D1 migrated remotely; the demo Worker went first, then `DEMO_BASE_URL` was set, then the main Worker (TDD §15). On the live site, PRD §13 steps 1–5 pass: workspace → cloudflare.com healthy (`dns-1`/`http-1` pass, resolved) → 500 errors → `origin_5xx` citing `[http-1]` with the card → Approve → verified → resolved (30 s). `169.254.169.254`, `localhost` and `10.0.0.1` were refused by the SSRF guard with clear messages, and no fetch was made. CPU: no event was cut off; details in TDD §15. 907 neurons for 5 runs. **Issues found:** (1) **slow** — the card came about 35 s after asking (≈ 5 s Workflow queue, 3 AI turns of 3–10 s, 13 s narration), so the full walkthrough is about 100 s against the PRD's 60 s; (2) the live model asks for **one check per turn**, so every run ends `limit_turns` and the UI shows a turn-limit note; (3) the live narration once left **"Likely cause:" empty** after the citation check removed an uncited sentence. | Found during the WP-13 live walkthrough |

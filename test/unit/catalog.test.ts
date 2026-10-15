@@ -10,6 +10,7 @@ const ctx = (over: Partial<ProposeContext> = {}): ProposeContext => ({
   demoBaseUrl: DEMO,
   category: "origin_5xx",
   status: "investigating",
+  watchable: true,
   ...over,
 });
 
@@ -34,8 +35,17 @@ describe("proposable", () => {
     expect(proposable("restore_demo_service", ctx({ status: "resolved" }))).toBe(false);
   });
 
+  it("add_to_watchlist: a broken real site that can still be watched, never the demo", () => {
+    const site = { target: "https://shop.example.com/" };
+    expect(proposable("add_to_watchlist", ctx(site))).toBe(true);
+    expect(proposable("add_to_watchlist", ctx({ ...site, watchable: false }))).toBe(false);
+    expect(proposable("add_to_watchlist", ctx({ ...site, category: "healthy" }))).toBe(false);
+    expect(proposable("add_to_watchlist", ctx({ ...site, status: "mitigated" }))).toBe(false);
+    expect(proposable("add_to_watchlist", ctx())).toBe(false);
+  });
+
   it("keeps the actions of later WPs switched off", () => {
-    for (const a of ["add_to_watchlist", "recheck_burst", "generate_postmortem"] as const) expect(proposable(a, ctx())).toBe(false);
+    for (const a of ["recheck_burst", "generate_postmortem"] as const) expect(proposable(a, ctx())).toBe(false);
   });
 });
 
@@ -45,9 +55,16 @@ describe("pickAction", () => {
     expect(pickAction({ category: "redirect_loop", actions: ["add_to_watchlist"] }, ctx())).toBe("restore_demo_service");
   });
 
-  it("proposes nothing for a healthy demo or a site that isn't the demo", () => {
+  it("a restore beats a model-picked watch on the demo; a broken real site gets the watch card (WP-18)", () => {
+    expect(pickAction({ category: "origin_5xx", actions: ["add_to_watchlist"] }, ctx())).toBe("restore_demo_service");
+    expect(pickAction({ category: "origin_5xx", actions: [] }, ctx({ target: "https://shop.example.com/" }))).toBe("add_to_watchlist");
+    expect(pickAction({ category: "origin_5xx", actions: ["restore_demo_service"] }, ctx({ target: "https://shop.example.com/" }))).toBe("add_to_watchlist");
+  });
+
+  it("proposes nothing for a healthy result, or a real site that can't be watched", () => {
     expect(pickAction({ category: "healthy", actions: ["restore_demo_service"] }, ctx({ category: "healthy" }))).toBeNull();
-    expect(pickAction({ category: "origin_5xx", actions: ["restore_demo_service"] }, ctx({ target: "https://shop.example.com/" }))).toBeNull();
+    expect(pickAction({ category: "healthy", actions: [] }, ctx({ category: "healthy", target: "https://shop.example.com/" }))).toBeNull();
+    expect(pickAction({ category: "origin_5xx", actions: [] }, ctx({ target: "https://shop.example.com/", watchable: false }))).toBeNull();
   });
 
   it("has a title for every action", () => {

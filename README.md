@@ -4,7 +4,7 @@ An AI on-call assistant that runs entirely on Cloudflare. You describe a symptom
 
 It comes with a **demo service** you can break on purpose (500 errors, slowness, a redirect loop, bad caching), so the whole loop of break → diagnose → approve → verified → resolved can be tried in about a minute.
 
-> **Live URL:** not published yet. Rate limits and the neuron budget guard (WP-17) ship first; until then the URL isn't shared (decision D2, see [Security](#security)).
+> **Live URL:** not published yet. The rate limits and the neuron budget guard (WP-17) are built and go live with the next deploy; the URL is shared after that (decision D2, see [Security](#security)).
 
 - **Docs:** [`PRD.md`](PRD.md) (what and why), [`TDD.md`](TDD.md) (how, and every decision), [`TASKS.md`](TASKS.md) (the build board), [`PROMPTS.md`](PROMPTS.md) (how AI was used).
 
@@ -25,11 +25,11 @@ A link to an incident opened by someone else is **view-only**: you can watch it 
 | Requirement | Implementation |
 |---|---|
 | **LLM** | Workers AI `@cf/openai/gpt-oss-120b`, falling back to `@cf/zai-org/glm-4.7-flash`, both routed through **AI Gateway** (`incident-copilot`) for logs and fallback. A deterministic rule engine takes over when both are unavailable. |
-| **Workflow / coordination** | **Workflows**: `DiagnosisWorkflow` (extends the Agents SDK's `AgentWorkflow`) runs each LLM turn and each check as its own durable, retryable step, then waits for human approval with `waitForApproval`. |
+| **Workflow / coordination** | **Workflows**: `DiagnosisWorkflow` (extends the Agents SDK's `AgentWorkflow`) runs each LLM turn and each check as its own durable, retryable step, then waits for human approval with `waitForApproval`. `WatchWorkflow` confirms a watched endpoint's failure (2 of 3 checks) before opening an incident on its own. |
 | **User input** | A React chat UI (Cloudflare's Kumo design system) served by **Workers Static Assets**, with live updates over a WebSocket straight to the incident's Durable Object. |
-| **Memory / state** | **Durable Objects** via the Agents SDK: one `IncidentAgent` per incident with its own SQLite (checks, evidence, messages, approvals, timeline). **D1** holds the workspaces, the incident index per workspace (for the sidebar) and the daily neuron count. |
+| **Memory / state** | **Durable Objects** via the Agents SDK: one `IncidentAgent` per incident with its own SQLite (checks, evidence, messages, approvals, timeline). **D1** holds the workspaces, the incident index per workspace (for the sidebar), the watchlist and the daily neuron count. |
 
-Also used: Service Bindings with RPC (main Worker → demo Worker), Workers Logs, and the `global_fetch_strictly_public` flag.
+Also used: Cron Triggers (the watchlist), Rate Limiting bindings, Service Bindings with RPC (main Worker → demo Worker), Workers Logs, and the `global_fetch_strictly_public` flag.
 
 ## Architecture
 
@@ -38,7 +38,10 @@ flowchart LR
   B["Browser<br/>React + Kumo"] -- "HTTPS /api/*" --> W["Main Worker<br/>Hono router"]
   B -- "WebSocket /agents/incident-agent/:id" --> A["IncidentAgent<br/>Durable Object + SQLite"]
   W -- "init / snapshot" --> A
-  W --> D1[("D1<br/>incident index")]
+  W --> D1[("D1<br/>incident index · watches")]
+  C["Cron Trigger<br/>every minute"] -- "due watches: quick check" --> W
+  W -- "failure" --> WW["WatchWorkflow<br/>confirm 2 of 3"]
+  WW -- "init (origin: watch)" --> A
   A -- "runWorkflow · approve / reject" --> F["DiagnosisWorkflow<br/>AgentWorkflow"]
   F -- "RPC: record checks, findings, narrate" --> A
   F --> AI["Workers AI<br/>via AI Gateway"]
@@ -56,6 +59,10 @@ flowchart LR
 3. The Workflow runs the baseline checks (DNS + HTTP) right away, so the first card shows in about a second. It then gives the model the evidence digests and lets it either call more tools or call `submit_findings` (category, confidence, evidence IDs, actions), which is validated with zod.
 4. The agent streams a narration of those fixed findings over the WebSocket. A citation check removes any sentence that cites an unknown ID, or makes a factual claim without a citation.
 5. If an action is proposable, an approval card appears and the Workflow waits for it. On approve, the agent runs the action and re-checks it. It then checks again every 15 s, and resolves the incident once 3 checks in a row have passed (the re-check plus two more).
+
+**Watching (WP-18):** a workspace can watch up to 3 URLs for 24 hours (30 across the app). A Cron Trigger runs every minute and quick-checks the watches that are due (every 5 minutes, or every minute for your own demo), with no LLM. When a check fails, a `WatchWorkflow` re-checks 30 s later. If it fails again (2 of 3), the Workflow opens an incident on its own, and the diagnosis is waiting when the user looks. Later passing checks move it to mitigated and then resolve it after 3 in a row. A broken real site also gets an "Add to watchlist" card, which links the new watch to that incident.
+
+**Notifications (WP-19):** the sidebar polls the incident list every 10 s while the tab is visible. New activity (a diagnosis, or a status change the user didn't make) shows as an unread dot with the word "New", and raises a browser notification if the user turned them on. Opening the incident marks it read. A workspace can also save one Slack or Discord webhook. A `NotifyWorkflow` posts to it when a watched incident opens (after the diagnosis, so the message names the likely cause), starts recovering, and is resolved. Its instance ID `notify-<incident>-<event>` means each event posts at most once.
 
 ## How the Agents SDK is used
 
@@ -92,10 +99,12 @@ The app fetches URLs that users type in, so it's built so that it can't be used 
 - **Read-only probing:** GET/HEAD only, no user-supplied headers, bodies or cookies, and reads capped at 16 KB.
 - **Prompt injection:** fetched content goes to the model inside `<untrusted>` tags and is truncated. The model's tool calls are checked with zod and against the origin pin. Actions come only from a fixed catalog, and every action needs a human's approval.
 - **Incident links are view-only** for anyone but the workspace that owns them.
+- **Rate limits and the budget guard (WP-17):** a workspace can start 3 diagnoses a minute (Rate Limiting binding) and 10 an hour (a D1 counter); new incidents and follow-ups both count, and a refusal is a 429 that says when to try again. Because dropping the cookie gives a new workspace, each visitor IP is also limited, to 6 a minute and 20 an hour (only a hash of the IP is stored). Probes are limited to 10 a minute per hostname, so the app can't be used to hammer a site; the app's own demo service is exempt, since every workspace's demo shares one hostname. Once today's estimated Workers AI use reaches 9,000 neurons (of the 10,000 free), new runs use the rule engine instead of the LLM and the header says so. These checks fail open: if the binding or D1 errors, the run goes ahead, and the LLM path still falls back to rules when Workers AI reports the daily allocation is used up.
+- **Webhooks (WP-19):** only `https://hooks.slack.com/…` and `https://discord.com/api/webhooks/…` (or `discordapp.com`) are accepted. The URL is encrypted with AES-GCM using the `WEBHOOK_KEY` Worker secret, with the workspace ID as additional data, and is only ever shown masked. It's never logged and never sent to the LLM. Without the secret, webhooks are switched off.
 - **The smoke flag:** `POST /api/incidents?smoke=rule` runs a diagnosis without the LLM, for the deploy check. It's public, but it can only make a run cheaper.
 
 **Accepted risks:**
-- **D2: no rate limits yet.** Rate limits, quotas and the neuron budget guard are WP-17, so the `workers.dev` URL isn't shared until they ship. If it's ever abused, `LLM_MODE` can be set to `mock` on the deployed Worker.
+- **D2: the URL wasn't protected on Day 1.** Rate limits, quotas and the budget guard came in WP-17, so the `workers.dev` URL wasn't shared until they shipped. If it's ever abused, `LLM_MODE` can be set to `mock` on the deployed Worker. The Rate Limiting binding counts per Cloudflare location and is approximate; the D1 hourly quota is exact.
 - **D7: the workspace ID is visible.** The demo lives at `/w/<workspaceId>/`, and that ID is also the session credential. It shows up in a public URL, in prompts and in logs. Someone who learns it can act as that anonymous workspace, which only holds that person's own incidents and demo.
 - **One location.** Probes run from whichever Cloudflare location runs the Workflow, so the app doesn't claim anything about regional reachability.
 - **DNS rebinding.** The guard checks DNS, then fetches, and the name could resolve differently in between. `global_fetch_strictly_public` narrows this, but it can't be closed completely from inside a Worker.
@@ -144,6 +153,7 @@ pnpm dev                         # http://localhost:5173
 4. `pnpm build`, then `wrangler deploy -c dist/incident_copilot_demo/wrangler.json`.
 5. Set `DEMO_BASE_URL` in `wrangler.jsonc` to the demo's URL.
 6. `pnpm build`, then `wrangler deploy`.
+7. For Slack/Discord webhooks, set the encryption key once: `openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`. Without it, webhooks stay off.
 
 ## Terraform and wrangler: who owns what
 
@@ -160,9 +170,6 @@ The full design for each of these is in the TDD. Day 2 of the build is still in 
 
 | WP | Feature | Design |
 |---|---|---|
-| 17 | Rate limits (probes, runs, voice) via Rate Limiting bindings, a D1 hourly quota, and a neuron budget guard that switches to rule-based mode at 9,000/day, with a banner | TDD §11 |
-| 18 | Watchlist: a cron every minute checks due watches; on failure, `WatchWorkflow` confirms 2 of 3 and opens an incident on its own | TDD §8.5 |
-| 19 | Notifications: unread badges, browser notifications, and Slack/Discord webhooks (AES-GCM encrypted, sent once per state change by `NotifyWorkflow`) | TDD §8.5, §11 |
 | 20 | LLM eval suite: break the demo each way and score category, citation and proposed action (target ≥ 4/5) | TDD §16 |
 | 21 | `cert_info` (crt.sh) and `provider_status` (status pages) tools | TDD §7.3 |
 | 22 | Postmortem: streamed markdown summary of a resolved incident | TDD §8.7 |

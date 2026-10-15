@@ -2,6 +2,7 @@ import { Button, Empty } from "@cloudflare/kumo";
 import { FirstAidKitIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useRateLimitToast } from "../hooks/useRateLimitToast";
 import { createIncident, ERROR_TEXT, notifyIncidentsChanged } from "../lib/api";
 import { Composer } from "./Composer";
 
@@ -15,12 +16,13 @@ export function NewIncident() {
   const [, navigate] = useLocation();
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const rateLimited = useRateLimitToast();
 
   const send = async (message: string) => {
     setError(null);
     const r = await createIncident(message);
     if (!r.ok) {
-      setError(ERROR_TEXT[r.error]);
+      setError(r.error === "rate_limited" ? rateLimited(r.retryAfter) : ERROR_TEXT[r.error]);
       return;
     }
     setText("");

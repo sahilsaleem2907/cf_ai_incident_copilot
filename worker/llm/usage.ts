@@ -1,6 +1,7 @@
-import { NEURON_DAILY } from "../loop/budget";
+import type { RunMode } from "../agent/state";
+import { BUDGET_GUARD_AT, NEURON_DAILY } from "../loop/budget";
 
-/** Daily neuron accounting (TDD §7.4). WP-17's budget guard reads `today()`. */
+/** Daily neuron accounting (TDD §7.4). The budget guard (`budgetMode`) reads `today()`. */
 export type UsageSink = {
   add(neurons: number): Promise<void>;
   /** Workers AI said the daily allocation is used up: treat the day as spent. */
@@ -37,4 +38,17 @@ export function d1Usage(db: D1Database, now: () => number = Date.now): UsageSink
       return row?.neurons_est ?? 0;
     },
   };
+}
+
+/**
+ * Budget guard (TDD §11): from 9,000 estimated neurons today (UTC), new runs skip the LLM. A failed read
+ * means "ai": the LLM path still falls back to rules when Workers AI says the allocation is used up.
+ */
+export async function budgetMode(usage: UsageSink): Promise<RunMode> {
+  try {
+    return (await usage.today()) >= BUDGET_GUARD_AT ? "rule_based" : "ai";
+  } catch (e) {
+    console.error("llm_usage read failed; budget guard off", (e as Error).message);
+    return "ai";
+  }
 }
