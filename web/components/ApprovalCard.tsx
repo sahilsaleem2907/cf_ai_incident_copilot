@@ -1,16 +1,19 @@
-import { Badge, Button, Loader, Surface } from "@cloudflare/kumo";
+import { Button, Loader, Surface } from "@cloudflare/kumo";
 import { CheckCircleIcon, HourglassIcon, MinusCircleIcon, ShieldCheckIcon, XCircleIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import type { ApprovalView } from "../../worker/agent/state";
 import { cardState, whyText, type CardState } from "../lib/approval";
+import { APPROVAL_TONE } from "../lib/status";
+import { CtaButton } from "./CtaButton";
 import { Markdown } from "./Markdown";
+import { StatusPill } from "./StatusBadge";
 
-const BADGE: Record<CardState["tone"], { variant: "warning" | "info" | "success" | "error" | "neutral"; icon: React.ReactNode }> = {
-  waiting: { variant: "warning", icon: <HourglassIcon aria-hidden size={14} /> },
-  working: { variant: "info", icon: <Loader size={12} /> },
-  good: { variant: "success", icon: <CheckCircleIcon aria-hidden size={14} weight="fill" /> },
-  bad: { variant: "error", icon: <XCircleIcon aria-hidden size={14} weight="fill" /> },
-  closed: { variant: "neutral", icon: <MinusCircleIcon aria-hidden size={14} /> },
+const ICON: Record<CardState["tone"], React.ReactNode> = {
+  waiting: <HourglassIcon aria-hidden size={14} />,
+  working: <Loader size={12} />,
+  good: <CheckCircleIcon aria-hidden size={14} weight="fill" />,
+  bad: <XCircleIcon aria-hidden size={14} weight="fill" />,
+  closed: <MinusCircleIcon aria-hidden size={14} />,
 };
 
 type Props = {
@@ -25,7 +28,6 @@ export function ApprovalCard({ approval, knownIds, onDecide }: Props) {
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const state = cardState(approval);
-  const badge = BADGE[state.tone];
   const titleId = `approval-${approval.id}`;
 
   const decide = async (decision: "approve" | "reject") => {
@@ -45,14 +47,14 @@ export function ApprovalCard({ approval, knownIds, onDecide }: Props) {
     <Surface
       role="group"
       aria-labelledby={titleId}
-      className={`rounded-lg border p-4 ${approval.status === "pending" ? "border-cf-orange" : "border-(--cf-border)"}`}
+      className={`rounded-lg border p-4 ${approval.status === "pending" ? "border-(--status-purple-fg)" : "border-(--cf-border)"}`}
     >
       <div className="flex flex-wrap items-center gap-2">
         <ShieldCheckIcon aria-hidden size={18} className="text-(--cf-fg-muted)" />
         <span className="text-xs tracking-wide text-(--cf-fg-muted) uppercase">Proposed action</span>
-        <Badge variant={badge.variant} icon={badge.icon}>
+        <StatusPill tone={APPROVAL_TONE[state.tone]} icon={ICON[state.tone]}>
           {state.text}
-        </Badge>
+        </StatusPill>
       </div>
       <h3 id={titleId} className="mt-2 font-medium">
         {approval.title}
@@ -67,9 +69,9 @@ export function ApprovalCard({ approval, knownIds, onDecide }: Props) {
 
       {approval.status === "pending" && onDecide && (
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button variant="primary" icon={CheckCircleIcon} loading={busy === "approve"} disabled={!!busy} onClick={() => void decide("approve")}>
+          <CtaButton icon={CheckCircleIcon} loading={busy === "approve"} disabled={!!busy} onClick={() => void decide("approve")}>
             Approve
-          </Button>
+          </CtaButton>
           <Button variant="secondary" icon={XCircleIcon} loading={busy === "reject"} disabled={!!busy} onClick={() => void decide("reject")}>
             Reject
           </Button>

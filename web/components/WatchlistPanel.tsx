@@ -1,14 +1,17 @@
-import { Button, Input, Sidebar } from "@cloudflare/kumo";
+import { Button, Input, Tooltip } from "@cloudflare/kumo";
 import { CheckCircleIcon, ClockIcon, EyeIcon, TrashIcon, WarningIcon, XCircleIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "wouter";
 import { addWatch, deleteWatch, listWatches, notifyIncidentsChanged, WATCH_ERROR_TEXT, type Watch } from "../lib/api";
+import { WATCH_TONE, type WatchState } from "../lib/status";
+import { CtaButton } from "./CtaButton";
+import { StatusPill } from "./StatusBadge";
 
 /** How often the panel reloads while the tab is visible: it shows each check's result and spots auto-opened incidents. */
 const POLL_MS = 15_000;
 
 /**
- * The watchlist (FR-40, TDD §12.1): add a URL, see each watch's last check, remove it. Cron checks them; when a
+ * The watchlist (FR-40, TDD §12.1), in the right column under the demo panel: add a URL, see each watch's last check, remove it. Cron checks them; when a
  * failure is confirmed an incident opens by itself, and this panel tells the incident list to reload.
  */
 export function WatchlistPanel({ demoUrl }: { demoUrl?: string }) {
@@ -64,10 +67,11 @@ export function WatchlistPanel({ demoUrl }: { demoUrl?: string }) {
   const demoWatched = !!demoUrl && !!watches?.some((w) => w.url === demoUrl);
 
   return (
-    <Sidebar.Group>
-      <Sidebar.GroupLabel>Watchlist</Sidebar.GroupLabel>
-      {/* The sidebar keeps text on one line; errors and hints here need to wrap. */}
-      <div className="flex flex-col gap-2 px-2 pb-2 break-words whitespace-normal">
+    <section aria-labelledby="watchlist-title" className="flex flex-col gap-3">
+      <h2 id="watchlist-title" className="section-label">
+        Watchlist
+      </h2>
+      <div className="flex flex-col gap-2 break-words">
         <form onSubmit={onSubmit} className="flex items-end gap-1.5">
           <Input
             label="Watch a URL"
@@ -77,14 +81,18 @@ export function WatchlistPanel({ demoUrl }: { demoUrl?: string }) {
             placeholder="api.example.com"
             className="min-w-0 font-mono"
           />
-          <Button type="submit" size="sm" icon={EyeIcon} loading={busy} disabled={!url.trim()}>
+          <CtaButton type="submit" size="sm" icon={EyeIcon} loading={busy} disabled={!url.trim()}>
             Watch
-          </Button>
+          </CtaButton>
         </form>
         {demoUrl && !demoWatched && (
-          <Button size="xs" variant="ghost" className="w-fit" disabled={busy} onClick={() => void add(demoUrl)}>
+          // -ml-1.5 cancels the ghost button's padding, so its text lines up with the column.
+          <Tooltip
+            content="Add your demo site to the watchlist."
+            render={<Button size="xs" variant="ghost" className="-ml-1.5 w-fit" disabled={busy} onClick={() => void add(demoUrl)} />}
+          >
             Watch my demo
-          </Button>
+          </Tooltip>
         )}
         {error && (
           <p role="alert" className="text-xs text-(--cf-fg)">
@@ -92,7 +100,11 @@ export function WatchlistPanel({ demoUrl }: { demoUrl?: string }) {
           </p>
         )}
 
-        {watches && watches.length === 0 && <p className="text-xs text-(--cf-fg-muted)">Nothing watched yet. Checks run every few minutes for 24 hours.</p>}
+        {watches && watches.length === 0 && (
+          <p className="rounded-lg border border-dashed border-(--grid-dash) px-3 py-4 text-center text-xs text-(--cf-fg-muted)">
+            Nothing watched yet. Checks run every few minutes for 24 hours.
+          </p>
+        )}
         {watches && watches.length > 0 && (
           <ul className="flex flex-col gap-1.5" aria-label="Watched URLs">
             {watches.map((w) => (
@@ -120,36 +132,43 @@ export function WatchlistPanel({ demoUrl }: { demoUrl?: string }) {
           </ul>
         )}
       </div>
-    </Sidebar.Group>
+    </section>
   );
 }
 
-/** Icon and words, never colour alone (TDD §12.4). */
+const WATCH_ICON: Record<WatchState, ReactNode> = {
+  incident_open: <WarningIcon aria-hidden size={12} weight="fill" />,
+  fail: <XCircleIcon aria-hidden size={12} weight="fill" />,
+  pass: <CheckCircleIcon aria-hidden size={12} weight="fill" />,
+  unchecked: <ClockIcon aria-hidden size={12} />,
+};
+
+const WATCH_TEXT: Record<Exclude<WatchState, "incident_open">, string> = {
+  fail: "Last check failed",
+  pass: "Passing",
+  unchecked: "Not checked yet",
+};
+
+export function watchState(w: Pick<Watch, "openIncidentId" | "lastStatus">): WatchState {
+  if (w.openIncidentId) return "incident_open";
+  return w.lastStatus ?? "unchecked";
+}
+
+/** Icon and words, never colour alone (TDD §12.4). An open incident links to it. */
 function WatchStatus({ watch: w }: { watch: Watch }) {
-  let icon: ReactNode;
-  let text: ReactNode;
-  if (w.openIncidentId) {
-    icon = <WarningIcon aria-hidden size={14} />;
-    text = (
-      <Link href={`/i/${w.openIncidentId}`} className="underline underline-offset-2 hover:text-(--cf-fg) focus-visible:outline-2 focus-visible:outline-cf-orange">
+  const state = watchState(w);
+  const text: ReactNode =
+    state === "incident_open" ? (
+      <Link href={`/i/${w.openIncidentId}`} className="underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-cf-orange">
         Incident open
       </Link>
+    ) : (
+      WATCH_TEXT[state]
     );
-  } else if (w.lastStatus === "fail") {
-    icon = <XCircleIcon aria-hidden size={14} />;
-    text = "Last check failed";
-  } else if (w.lastStatus === "pass") {
-    icon = <CheckCircleIcon aria-hidden size={14} />;
-    text = "Passing";
-  } else {
-    icon = <ClockIcon aria-hidden size={14} />;
-    text = "Not checked yet";
-  }
   return (
-    <span className="flex items-center gap-1 text-xs">
-      {icon}
+    <StatusPill tone={WATCH_TONE[state]} size="sm" icon={WATCH_ICON[state]}>
       {text}
-    </span>
+    </StatusPill>
   );
 }
 

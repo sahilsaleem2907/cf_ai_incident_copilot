@@ -7,10 +7,10 @@ import { usePageVisible } from "../hooks/usePageVisible";
 import { useRateLimitToast } from "../hooks/useRateLimitToast";
 import { MONITOR_PASSES } from "../../worker/agent/monitor";
 import { createIncident, DEMO_CHANGED, ERROR_TEXT, notifyIncidentsChanged, parseRateLimited } from "../lib/api";
-import { CATEGORY_TEXT, otherHost, runNote } from "../lib/incident";
+import { otherHost, runNote } from "../lib/incident";
 import { ChatPane } from "./ChatPane";
 import { Composer } from "./Composer";
-import { IncidentStatusBadge } from "./StatusBadge";
+import { CategoryPill, IncidentStatusBadge } from "./StatusBadge";
 
 export function IncidentView({ id }: { id: string }) {
   const { state, feed, role, notFound, send, getEvidence, decide, resolve, markRead } = useIncident(id);
@@ -90,7 +90,7 @@ export function IncidentView({ id }: { id: string }) {
         <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-2">
           <h1 className="min-w-0 truncate font-mono text-base">{state.target}</h1>
           <IncidentStatusBadge status={state.status} />
-          {state.category && <span className="text-sm text-(--cf-fg-muted)">· {CATEGORY_TEXT[state.category] ?? state.category}</span>}
+          {state.category && <CategoryPill category={state.category} />}
           {viewer && (
             <Badge variant="neutral" icon={<EyeIcon aria-hidden size={14} />} className="ml-auto">
               View only

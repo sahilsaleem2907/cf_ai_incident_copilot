@@ -1,12 +1,17 @@
 import { Banner, Checkbox, ClipboardText, Radio } from "@cloudflare/kumo";
-import { ArrowSquareOutIcon } from "@phosphor-icons/react";
+import { ArrowSquareOutIcon, CheckCircleIcon, TimerIcon, XCircleIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import { DEMO_MODE_LABELS, DEMO_PROBLEMS, modesFrom, type DemoProblem } from "../../demo-service/src/modes";
+import { DEMO_MODE_LABELS, DEMO_PROBLEMS, modesFrom, type DemoMode, type DemoProblem } from "../../demo-service/src/modes";
 import { DEMO_CHANGED, ERROR_TEXT, getDemo, setDemoModes, type Demo } from "../lib/api";
+import { DEMO_MODE_TONE } from "../lib/status";
+import { StatusPill } from "./StatusBadge";
 
 const SAVE_FAILED = "Couldn't change the mode. Try again.";
 const NONE = "none";
 type Choice = DemoProblem | typeof NONE;
+
+const modeIcon = (m: DemoMode) =>
+  m === "healthy" ? <CheckCircleIcon aria-hidden size={14} weight="fill" /> : m === "slow" ? <TimerIcon aria-hidden size={14} weight="bold" /> : <XCircleIcon aria-hidden size={14} weight="fill" />;
 
 /**
  * "Break the demo service" panel (FR-33, TDD §12.1). One main problem at a time (they change how the page
@@ -58,17 +63,21 @@ export function DemoPanel() {
   return (
     <section aria-labelledby="demo-panel-title" className="flex flex-col gap-4">
       <div>
-        <h2 id="demo-panel-title" className="font-display text-base font-medium">
+        <h2 id="demo-panel-title" className="section-label">
           Demo service
         </h2>
-        <p className="mt-1 text-sm text-(--cf-fg-muted)">Break your own demo site, then ask the copilot what's wrong.</p>
+        <p className="mt-2 text-sm text-(--cf-fg-muted)">Break your own demo site, then ask the copilot what's wrong.</p>
       </div>
 
       {demo && (
         <>
-          <p className="text-sm" aria-live="polite">
-            <span className="text-(--cf-fg-muted)">Now: </span>
-            <span className="font-medium">{demo.modes.map((m) => DEMO_MODE_LABELS[m]).join(" + ")}</span>
+          <p className="flex flex-wrap items-center gap-1.5 text-sm" aria-live="polite">
+            <span className="text-(--cf-fg-muted)">Now:</span>
+            {demo.modes.map((m) => (
+              <StatusPill key={m} tone={DEMO_MODE_TONE[m]} icon={modeIcon(m)}>
+                {DEMO_MODE_LABELS[m]}
+              </StatusPill>
+            ))}
           </p>
 
           <Radio.Group<Choice>

@@ -12,7 +12,8 @@
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "test": "vitest run",
-    "smoke": "node scripts/smoke.ts"
+    "smoke": "node scripts/smoke.ts",
+    "eval": "node eval/run.ts"
   },
   "dependencies": {
     "@cloudflare/kumo": "2.14.0",

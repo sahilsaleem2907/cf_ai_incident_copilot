@@ -23,5 +23,5 @@ export default tseslint.config(
     ...reactHooks.configs.flat["recommended-latest"],
     languageOptions: { globals: globals.browser },
   },
-  { files: ["*.config.{js,ts}", "scripts/**/*.ts"], languageOptions: { globals: globals.node } },
+  { files: ["*.config.{js,ts}", "scripts/**/*.ts", "eval/**/*.ts"], languageOptions: { globals: globals.node } },
 );

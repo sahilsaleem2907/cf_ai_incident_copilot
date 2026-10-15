@@ -1,6 +1,6 @@
-import { Button } from "@cloudflare/kumo";
 import { PaperPlaneRightIcon } from "@phosphor-icons/react";
 import { useState, type KeyboardEvent, type ReactNode } from "react";
+import { CtaButton } from "./CtaButton";
 
 type Props = {
   onSend: (text: string) => Promise<void>;
@@ -64,9 +64,9 @@ export function Composer({ onSend, value, onChange, disabled, disabledReason, pl
           aria-describedby={disabled && disabledReason ? "composer-reason" : undefined}
           className="max-h-48 min-h-11 flex-1 resize-y bg-transparent px-2 py-1.5 outline-none placeholder:text-(--cf-fg-muted) disabled:cursor-not-allowed"
         />
-        <Button type="submit" variant="primary" icon={PaperPlaneRightIcon} disabled={off || !text.trim()} loading={busy}>
+        <CtaButton type="submit" icon={PaperPlaneRightIcon} disabled={off || !text.trim()} loading={busy}>
           Send
-        </Button>
+        </CtaButton>
       </div>
       {disabled && disabledReason && (
         <p id="composer-reason" className="mt-1 text-xs text-(--cf-fg-muted)">

@@ -38,6 +38,8 @@ describe("DiagnosisWorkflow (mock LLM, fake internet)", () => {
       ["http-1", "fail"],
     ]);
     expect(s).toMatchObject({ category: "origin_5xx", status: "investigating", activeRunId: null, mode: "ai" });
+    // WP-20: the eval reads who made the findings from the snapshot.
+    expect(s.timeline.find((t) => t.type === "run_finished")?.detail).toMatchObject({ status: "done", source: "model", fallbackTurns: 0 });
     expect(s.approvals.map((a) => [a.actionId, a.status])).toEqual([["add_to_watchlist", "expired"]]);
     const narration = s.messages.find((m) => m.id === `narr-${runId}`)!;
     expect(narration.content).toContain("[http-1]");

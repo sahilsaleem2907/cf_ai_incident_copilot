@@ -23,6 +23,72 @@
   --color-kumo-brand: var(--color-cf-orange);
   --color-kumo-brand-hover: var(--color-cf-orange-hover);
 }
+/* Kumo's Switch hard-codes blue for "on" instead of using the brand token. */
+:root [data-kumo-component="Switch"][aria-checked="true"] {
+  background-color: var(--color-cf-orange);
+  --tw-ring-color: var(--color-cf-orange-muted);
+}
+:root [data-kumo-component="Switch"][aria-checked="true"] > div {
+  background-color: #fff;
+}
+
+/* Status tones (TDD §12.2): one colour per meaning, used by StatusPill for incidents, checks, watches and approvals.
+   `-fg` is the text and icon colour; the pill background is a tint of it. */
+:root {
+  --status-orange-fg: light-dark(#bf4c14, #ff8a5c);
+  --status-purple-fg: light-dark(#7e22ce, #c084fc);
+  --status-green-fg:  light-dark(#047857, #34d399);
+  --status-red-fg:    light-dark(#b91c1c, #f87171);
+  --status-yellow-fg: light-dark(#a16207, #facc15);
+  --status-grey-fg:   light-dark(#525252, #a3a3a3);
+  /* Dashes and dots of the background grid (cloudflare.com's hero, kept faint). */
+  --grid-dot: light-dark(rgb(38 38 38 / 0.09), rgb(240 227 222 / 0.07));
+  --grid-dash: light-dark(#e3d3cc, rgb(240 227 222 / 0.22));
+  --glow-warm: light-dark(rgb(255 94 31 / 0.16), rgb(255 94 31 / 0.12));
+  --brand-slack: light-dark(#4a154b, #e01e5a);
+  --brand-discord: #5865f2;
+  --glow-core: light-dark(rgb(255 196 120 / 0.28), rgb(255 170 90 / 0.12));
+}
+
+/* Soft pill colours: coloured text on a light tint of the same colour. */
+.tone-orange { --tone: var(--status-orange-fg); }
+.tone-purple { --tone: var(--status-purple-fg); }
+.tone-green  { --tone: var(--status-green-fg); }
+.tone-red    { --tone: var(--status-red-fg); }
+.tone-yellow { --tone: var(--status-yellow-fg); }
+.tone-grey   { --tone: var(--status-grey-fg); }
+.status-pill {
+  color: var(--tone);
+  background-color: color-mix(in oklab, var(--tone) 14%, transparent);
+}
+
+/* Right-column section headings (Demo service, Watchlist). */
+.section-label {
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cf-fg-muted);
+}
+
+/* Faint columns of short dashes behind the main area. */
+.bg-dot-grid {
+  background-image: radial-gradient(circle, var(--grid-dot) 0.75px, transparent 1.1px);
+  background-size: 8px 4px;
+}
+/* Warm glow rising from the bottom, New incident page only. */
+.bg-glow {
+  background-image:
+    radial-gradient(40% 30% at 50% 100%, var(--glow-core), transparent 70%),
+    radial-gradient(75% 55% at 50% 100%, var(--glow-warm), transparent 75%);
+}
+/* A dashed rule in the same rhythm as the grid. */
+.divider-dashed {
+  height: 1px;
+  border: 0;
+  background-image: repeating-linear-gradient(to right, var(--grid-dash) 0 4px, transparent 4px 8px);
+}
 
 /* Evidence chip target: a short orange ring on the check card (TDD §12.2). */
 @keyframes flash-ring {

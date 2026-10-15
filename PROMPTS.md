@@ -371,3 +371,92 @@ Answers to Claude's questions:
 (Plan approved: sidebar polling every 10 s with unread dots and `markRead`, browser notifications from a button, Slack/Discord webhooks encrypted with AES-GCM, and `NotifyWorkflow` sending at most once per state change.)
 
 (WP-19 built: sidebar polling with unread markers, browser notifications, Slack/Discord webhooks sent by `NotifyWorkflow`. 585 tests pass. The fake-Discord integration test gets exactly one message per state change. Locally, a watch failure showed as "New" and raised one browser notification. Webhooks go live once the user sets `WEBHOOK_KEY` on the deployed Worker.)
+
+### 01:23 · WP-20 plan
+
+> Lets build WP-20 now.
+
+**Claude asked:** where should the one live eval run happen (it spends real neurons either way)?
+**Answer:** against local `pnpm dev` with the live model, so it tests today's code without waiting for a deploy.
+
+**Claude asked:** the incident snapshot doesn't say which model answered or whether the rules filled in the diagnosis. Record that?
+**Answer:** yes, add it to the `run_finished` timeline event (no database change).
+
+(Plan approved: `eval/cases.ts` with the five cases and the scoring, `eval/run.ts` run as `pnpm eval --base <url>`, `run_finished` records the findings source and fallback turns, one live local run, `eval/results.md` committed.)
+
+**Claude asked:** the old dev server on port 5173 (started 21:28 the day before) fails every request with "fetch failed", and the eval needs 5173. Stop it, use another port, or leave it to the user?
+**Answer:** "ive handled." (At 01:3x the same process was still listening on 5173, so Claude waited for the user before the live run.)
+
+> freed, try now.
+
+(WP-20 built: `pnpm eval --base <url>` with five cases, scoring and `eval/results.md`; `run_finished` now says who made the findings. One live local run: **5/5 passed**, 642 neurons. `redirect_loop` needed the rules to fill in an invalid model answer; noted in the results. 595 tests pass.)
+
+### 02:16 · WP-27 UI polish plan
+
+> I have a few UI improvements to make: make the 'New Incident' button orange as a reusable button for the whole platform; the 'x new' badge in lighter orange; Slack and Discord SVG icons in a row; move turn on notifications to the header, left of GitHub; one standard status colour across the platform (resolved green, investigating orange, etc.); move the watch URL to the right bar with sections Demo Service and Watchlist; the header title as the Cloudflare SVG × 'Incident Copilot'; a small dashed-line background design from the given image (cloudflare.com hero). /grill-me
+
+**Claude asked:** Investigating is orange and Resolved green; what colour for Awaiting approval and Mitigated?
+**Answer:** purple and grey.
+
+**Claude asked:** how should a status look, and where?
+**Answer:** a soft pill (light tinted background, coloured text, icon) everywhere, incident page and sidebar rows.
+
+**Claude asked:** what should the reusable orange button add on top of Kumo's primary button?
+**Answer:** a pill-shaped `CtaButton` wrapper (button or link), used for New incident, Send, Approve, Watch, Save webhook.
+
+**Claude asked:** where do the Slack/Discord webhook settings go once browser notifications move to the header?
+**Answer:** bell in the header, webhook stays in the left sidebar.
+
+**Claude asked:** what does the header bell show after it's clicked, and on phones?
+**Answer:** "Use a toggle that switches on or off."
+
+**Claude asked:** a site can't take back browser permission, so "off" means the app stops sending them (saved in this browser). OK?
+**Answer:** yes, app-level on/off.
+
+**Claude asked:** how should the Slack and Discord logos look?
+**Answer:** grey; the saved one lights up in its brand colour.
+
+**Claude asked:** how should the right bar split Demo service and Watchlist, and what happens on small screens?
+**Answer:** two headed blocks with one "Demo & watchlist" drop-down on small screens; "divider needs to follow the dashed theme."
+
+**Claude asked:** which Cloudflare logo before "× Incident Copilot"?
+**Answer:** the orange cloud only.
+
+**Claude asked:** where does the background pattern go, and copy the warm glow?
+**Answer:** main area dot grid, plus the soft glow on the New incident page only.
+
+**Claude asked:** what should an unread row look like now that rows have status pills?
+**Answer:** orange dot + bold host, drop the visible word "New".
+
+**Claude asked:** TDD §12.1 said not to use the Cloudflare logo. How to handle it?
+**Answer:** use the logo, keep the "Built on Cloudflare" footer, log the change.
+
+(Plan approved: WP-27 with `CtaButton`, `web/lib/status.ts` + `StatusPill`, `CloudflareMark` header, `NotificationToggle` switch, `WebhookSettings` with Slack/Discord logos, right bar Demo service + dashed divider + Watchlist, dot grid + glow.)
+
+(WP-27 built: an orange pill `CtaButton` for the main actions; one status colour map with soft pills everywhere; the Cloudflare cloud × Incident Copilot header with a notifications switch next to GitHub; Slack/Discord logos on the webhook section; Demo service and Watchlist in the right column with a dashed divider; a faint dot grid and a warm glow on the start page. 599 tests pass. Checked in a local browser in light and dark, at desktop, tablet and phone widths.)
+
+### 02:39 · WP-27b UI follow-ups plan
+
+> Mostly looks good. Final changes: center the new incident text in the button; add some gap-y between the webhook url and save button; align all columns to their header perfectly (missing in notifications for eg); increase the heading font size just a little (notifications, Incidents), match the left side bar to the right side bar; add a tooltip hint to 'watch my demo' explaining what it'll do; keep the 'Nothing watched yet…' text inside a dashed box, text in the center; give status colors to 'Now: Healthy' and other statuses; keep my name in the signature at the footer ('Build by cloudflare and some love from sahil'). /grill-me
+
+**Claude asked:** which other statuses should get colours besides the demo's "Now:"?
+**Answer:** the demo mode and the diagnosis next to the incident status.
+
+**Claude asked:** which heading style should both sidebars share?
+**Answer:** UPPERCASE, 13 px, on both sides.
+
+**Claude asked:** "Built by Cloudflare" reads as if Cloudflare made the app. Which footer wording?
+**Answer:** "Built on Cloudflare, with ♥ from Sahil", with "Sahil" linking to GitHub.
+
+**Claude asked:** which tooltip text for "Watch my demo"?
+**Answer:** the short one: "Add your demo site to the watchlist."
+
+(WP-27b built: centred CTA labels, webhook spacing, every column lined up with its heading, matching uppercase headings, coloured demo and diagnosis pills, the tooltip, a dashed empty watchlist and the signed footer. Also fixed a button nested inside a button on the blocked notifications switch. 601 tests pass; checked in a local browser in light and dark.)
+
+> Center the footer text.
+
+(Footer text centred, part of WP-27b.)
+
+> Use this as the website icon. (a blue pixel-dot cloud image)
+
+(Favicon added: the image's centre cropped square, `public/favicon.png` 64 px and `public/apple-touch-icon.png` 180 px, linked in `index.html`. Part of WP-27b.)

@@ -4,8 +4,8 @@ import { Link } from "wouter";
 import { AppShell } from "./components/AppShell";
 import { DemoPanel } from "./components/DemoPanel";
 import { IncidentSidebar } from "./components/IncidentSidebar";
-import { NotificationSettings } from "./components/NotificationSettings";
 import { WatchlistPanel } from "./components/WatchlistPanel";
+import { WebhookSettings } from "./components/WebhookSettings";
 import { firstSession, getSession, INCIDENTS_CHANGED, type Session } from "./lib/api";
 import { AppRoutes } from "./routes";
 
@@ -41,12 +41,19 @@ export function App() {
             ready && (
               <>
                 <IncidentSidebar />
-                <WatchlistPanel demoUrl={session?.demoUrl} />
-                <NotificationSettings />
+                <WebhookSettings />
               </>
             )
           }
-          aside={ready && <DemoPanel />}
+          aside={
+            ready && (
+              <div className="flex flex-col gap-5">
+                <DemoPanel />
+                <hr className="divider-dashed" />
+                <WatchlistPanel demoUrl={session?.demoUrl} />
+              </div>
+            )
+          }
           budgetMode={session?.budgetMode}
         >
           {ready ? (

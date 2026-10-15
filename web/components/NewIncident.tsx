@@ -31,7 +31,7 @@ export function NewIncident() {
   };
 
   return (
-    <div className="flex min-h-full shrink-0 flex-col">
+    <div className="bg-glow flex min-h-full shrink-0 flex-col">
       <div className="flex flex-1 items-center justify-center p-6">
         <Empty
           icon={<FirstAidKitIcon size={40} aria-hidden />}
