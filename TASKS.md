@@ -404,6 +404,8 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
+| 2026-10-15 13:55 | 06 | Rule 2's "TLS error" is matched on the runtime's error text, which `http_probe` samples now keep (`message`, ≤ 200 chars). Locally, workerd hides the reason (`internal error; reference = …` for expired and self-signed certs), so in practice `tls_expiry` needs `cert_info` (WP-21, below the cut). Other rule details: latest usable result per tool, `no_addresses` → `dns_failure`, `actions` from rules. **Folded into TDD §9.3.** | Throwaway check against expired.badssl.com and self-signed.badssl.com from workerd |
+| 2026-10-15 13:44 | review | PR #2 (`dev` → `main`, WP-01 to WP-05) merged at 13:40 (`0073839`) after Sift's 5 findings were answered as false alarms | User merged after the review |
 | 2026-10-15 01:59 | review | Sift CI workflows prepared for `main` (`61b5aef`, local worktree, unpushed until the user confirms). The zip upload (`6cfd23c`) is a binary in the repo and can be removed once the YAML files are in | Sift reviews PRs through GitHub Actions on the default branch |
 | 2026-10-15 01:57 | review | The review target is `main` (the default branch), not `master`. PR #1 `dev` → `main` was closed unmerged. `master` (at `867d8d6`) stays as the first review base but is unused | User raised PR #1 against `main`. Sift runs from `main`'s workflows |
 | 2026-10-15 01:50 | review | All work moves to a `dev` branch; changes reach the main line only through a reviewed PR | User wants a Sift code review before work counts as merged |

@@ -482,6 +482,15 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 
 `template.ts` renders the same four sections from the rule's evidence IDs. It's used for the rule-based path and as the narrate fallback.
 
+**Rule details (WP-06):**
+- **Which evidence:** for each tool, the rules read the **latest result that holds evidence**. For `http_probe` that means any result with samples; for the others, `ok` results. Refusals and outages (`error`, `unavailable`) are skipped, so a resolver outage is never read as `dns_failure`. `cert_info` and `provider_status` may be missing (WP-21); rules 2 and 5 then just don't match.
+- **Rule 1** needs both resolvers to have answered. With no DNS check at all, an `http_probe` refused with `no_addresses` (the guard's own lookup found nothing) also counts.
+- **Rule 2's TLS error** is a failed sample whose runtime error text mentions TLS, SSL, certificate or handshake (`isTlsError` in `tools/http.ts`). *Spike finding:* locally, workerd hides the reason (an expired or self-signed certificate throws `internal error; reference = …`), so this only fires if production gives a clearer message. Reliable `tls_expiry` needs `cert_info`. The "best certificate" is the one with the most days left among those whose SAN matches the host.
+- **Rule 5's "HTTP is failing"** means a sample with no response or a status ≥ 500. **Rule 6's** `high` needs every sample (at least 3) to be 5xx.
+- **Rule 10** needs every sample to end 2xx/3xx, so one bad sample out of three is `inconclusive`, not `healthy`.
+- `classify` returns the full `Findings` (the `submit_findings` shape, `diagnosis/categories.ts`). `cause` is one sentence ending in its `[ids]`, `next_steps` is a fixed list per category, and `actions` is `["restore_demo_service"]` for everything except `healthy`. The Workflow drops it when it isn't proposable (§7.6).
+- The template strips a summary's trailing period so the `[id]` stays in the same sentence for the citation check (§9.2).
+
 ## 10. State machine (`agent/transitions.ts`)
 
 | From | To | Trigger |
@@ -587,7 +596,7 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | Unit (node) | `ssrf.test.ts` | A table of 40+ IPv4/IPv6 cases (blocked and allowed), schemes, ports, IP literals, hop re-checks |
 | | `target.test.ts` | URL, then hostname, then "demo", then need_target; "dot" normalization |
 | | `dns.test.ts`, `http.test.ts` | DoH JSON parsing and the mismatch flag; samples, hops, loop detection, header picks, asset extraction, read cap |
-| | `classify.test.ts` | One fixture per category plus precedence between rules |
+| | `classify.test.ts`, `template.test.ts` | One fixture per category plus precedence between rules; the four template sections, with every evidence bullet cited |
 | | `citations.test.ts` | Unknown IDs and uncited factual sentences are removed |
 | | `transitions.test.ts` | Every legal edge, and illegal edges throw |
 | | `webhook.test.ts` | Allowlist accept/reject, AES-GCM round trip, masking |
