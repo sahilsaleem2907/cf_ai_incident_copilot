@@ -199,3 +199,11 @@ Answers to Claude's questions:
 - Diagnosis → "Main problem, slowness as evidence": one category per diagnosis, no changes to the diagnosis code.
 
 (Done in `e891c6c`: the demo now takes one main problem plus an optional slow-down; clashing sets are refused with `invalid_modes`. 466 tests green. Local mock runs: slow + errors → `origin_5xx`, slow + redirect loop → `redirect_loop`, slow + bad caching → `high_latency`. The panel was browser-checked in light, dark and at 390 px.)
+
+### 17:49 · WP-12 Act
+
+> Nice this is completed now. Lets move on to WP-12
+
+- Fix offer → "Rules always offer it": tell the AI when the target is the demo, and the rules add "Restore demo service" whenever the demo is broken.
+
+(Plan approved: an action catalog with proposability rules; the agent proposes, dedupes and supersedes approvals (D13); the Workflow finishes the run, waits up to 24 h for approval, then restores the demo and verifies; verify and monitor checks run inside the agent; a 15 s monitor resolves after 3 passes; an `ApprovalCard` with Approve and Reject, plus a Resolve button.)
