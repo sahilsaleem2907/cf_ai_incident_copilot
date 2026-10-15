@@ -14,6 +14,8 @@ export default tseslint.config(
       // Unawaited promises in Workers silently drop work; keep these on everywhere.
       "@typescript-eslint/no-floating-promises": "error",
       "@typescript-eslint/no-misused-promises": "error",
+      // The Agents SDK runs SQL as a tagged template statement: this.sql`UPDATE …`.
+      "@typescript-eslint/no-unused-expressions": ["error", { allowTaggedTemplates: true }],
     },
   },
   {

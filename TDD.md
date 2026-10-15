@@ -70,7 +70,7 @@ Demo Worker: public /w/<ws>/… (reads DemoState DO) · DemoAdmin WorkerEntrypoi
 | `NotifyWorkflow` | One retried step that sends a webhook (D18) | |
 | Demo Worker | Public demo pages per workspace and mode, `DemoState` DO, `DemoAdmin` RPC | |
 
-**Routing:** `run_worker_first: ["/api/*", "/agents/*"]`, `not_found_handling: "single-page-application"`.
+**Routing:** `run_worker_first: ["/api/*", "/agents/*", "/w/*"]` (`/w/*` for the local demo pass-through, §7.5), `not_found_handling: "single-page-application"`.
 
 ## 4. Repository layout
 
@@ -96,7 +96,7 @@ web/
               ApprovalCard StatusBadge DemoPanel WatchlistPanel WebhookSettings VoiceButton
               PostmortemDialog BudgetBanner ReadOnlyBanner
   hooks/      useIncident.ts useIncidents.ts useNotifications.ts useRecorder.ts
-demo-service/ wrangler.jsonc src/index.ts src/state.ts src/pages.ts
+demo-service/ wrangler.jsonc src/index.ts src/state.ts src/pages.ts src/modes.ts
 migrations/   0001_init.sql
 infra/        main.tf variables.tf outputs.tf
 eval/         run.ts cases.ts results.md
@@ -114,7 +114,7 @@ test/         unit/*.test.ts integration/*.test.ts demo/*.test.ts fixtures/
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-  "assets": { "not_found_handling": "single-page-application", "run_worker_first": ["/api/*", "/agents/*"] },
+  "assets": { "not_found_handling": "single-page-application", "run_worker_first": ["/api/*", "/agents/*", "/w/*"] },
   "observability": { "enabled": true },
   "ai": { "binding": "AI" },
   "d1_databases": [{ "binding": "DB", "database_name": "incident-copilot", "database_id": "<from terraform output>", "migrations_dir": "migrations" }],
@@ -137,7 +137,7 @@ test/         unit/*.test.ts integration/*.test.ts demo/*.test.ts fixtures/
 ```
 
 - **Secrets:** `WEBHOOK_KEY` (base64, 32 bytes), set with `wrangler secret put`.
-- **Local:** `.dev.vars` sets `LLM_MODE=mock`.
+- **Local:** `.dev.vars` sets `LLM_MODE=mock`, plus `DEMO_BASE_URL` and `SSRF_DEV_ALLOW_ORIGIN` = `http://localhost:5173` for the local demo (§7.5).
 - **Demo wrangler:** `name: incident-copilot-demo`, a `DemoState` DO with a `new_sqlite_classes` migration, and `WorkerEntrypoint` `DemoAdmin` exported alongside the default fetch handler.
 
 ### 5.2 Constants (`worker/loop/budget.ts`, `safety/*`)
@@ -158,6 +158,7 @@ test/         unit/*.test.ts integration/*.test.ts demo/*.test.ts fixtures/
 | `CRT_CACHE_TTL` | 1 h (Cache API) |
 | `EVIDENCE_DIGEST_MAX` | 1.5 KB per check (this is what moves between steps and goes to the LLM) |
 | `HIGH_LATENCY_MS` | median total ≥ 2000 ms or median TTFB ≥ 1500 ms |
+| `LLM_TIMEOUT_MS` | 25 000 per LLM call. A timeout counts as a failure, so the fast fallback answers (*WP-07*) |
 | `MONITOR_TICK_S` | 15 (on-demand), max 10 ticks |
 | `BURST_TICK_S` | 60 × 15 |
 | `WATCH_MIN_INTERVAL_S` | 300 |
@@ -208,6 +209,12 @@ monitor(id PK CHECK(id=1), kind, ticks_left, consecutive_passes, schedule_id)   
 postmortem(id PK CHECK(id=1), markdown, generated_at)
 ```
 
+*WP-08 additions:*
+- `incident.watch_id` and `incident.unread` (mirrored to the index).
+- `runs.question` and `runs.mode`. `runs.status` is one of `running`, `done`, `limit_turns`, `limit_tools`, `limit_deadline`, `limit_budget`, `llm_unavailable` or `failed` (§8.2).
+- `checks.turn` and `checks.seq` with `UNIQUE(run_id, turn, seq)`, so a retried planning step gets the same evidence IDs back.
+- Lists are ordered by insertion (`rowid`).
+
 ### 6.3 Synced state (`agent/state.ts`), kept small (full evidence goes through `getEvidence`)
 
 ```ts
@@ -231,8 +238,17 @@ interface IncidentState {
 interface CheckView { evidenceId: string; tool: ToolName; label: string;
   status: "pending" | "running" | "pass" | "fail" | "error" | "unavailable"; summary: string;
   startedAt: number; finishedAt?: number }
-// WS side-channel (broadcast, not state): {type:"delta", messageId, text} | {type:"stream_end", messageId}
+// WS side-channel (broadcast, not state): {type:"stream_start", messageId} | {type:"delta", messageId, text} | {type:"stream_end", messageId}
 ```
+
+*WP-08:*
+- The state also carries the latest run's `findings` (for the approval card's "why").
+- `CheckView` has a `runId`.
+- Timeline `detail` values are flat scalars: a recursive JSON type makes the RPC stub types too deep to check.
+- `stream_start` resets the client buffer when a retried narration streams again.
+- `syncState()` rebuilds the state from SQL after every change, and `validateStateChange` rejects every client-originated write.
+
+*WP-12:* `ApprovalView` is `{id, runId, actionId, title, status, cause, evidence, outcome?: {ok, text, verified?}, createdAt, decidedAt?}`. `cause` and `evidence` are read from the proposing run's `findings_json`, so an old card keeps its own "why". `outcome` comes from `approvals.outcome_json`, and `verified` is set only once the re-check after the action has run. No schema change was needed.
 
 ### 6.4 IDs
 
@@ -246,10 +262,10 @@ Incident, workspace and approval IDs are 128-bit random hex values (`crypto.getR
 |---|---|---|---|
 | `GET /api/session` | | `{demoUrl, budgetMode, limits}` | Sets `__Host-ws` (HttpOnly, Secure, SameSite=Lax, 1 year) if it's missing |
 | `GET /api/incidents` | | `[{id,target,status,origin,unread,updatedAt}]` | Sidebar polling (D16) |
-| `POST /api/incidents` | `{message}` | `{id}` / 400 `{error:"need_target"}` / 429 `{retryAfter}` | Target parse (D9), then quota (D14), then `IncidentAgent.init` |
+| `POST /api/incidents` | `{message}` | `{id}` / 400 `{error:"need_target"}` / 429 `{retryAfter}` / 503 `{error:"demo_unavailable"}` | Target parse (D9), then quota (D14), then `IncidentAgent.init`. 503 while `DEMO_BASE_URL` still holds the `<sub>` placeholder |
 | `GET /api/incidents/:id` | | Snapshot (`IncidentState` + findings) | Owner only. Used by eval and smoke tests. |
 | `POST /api/incidents/:id/read` | | 204 | Clears `unread` |
-| `GET /api/demo` · `POST /api/demo/mode` | `{mode}` | `{mode, url}` | Calls `env.DEMO.setMode(ws, mode)` |
+| `GET /api/demo` · `POST /api/demo/mode` | `{modes}` | `{modes, url}` / 400 `{error:"invalid_modes"}` / 503 `{error:"demo_unavailable"}` | Calls `env.DEMO.getModes` / `setModes(ws, modes)`. `modes` is `["healthy"]` or one problem plus an optional `"slow"` (§7.5). 503 while `DEMO_BASE_URL` holds `<sub>` |
 | `GET/POST /api/watches` · `DELETE /api/watches/:id` | `{url, intervalSec}` | Watch list | Per-workspace and global caps |
 | `GET/PUT/DELETE /api/webhook` | `{url}` | `{kind, hint}` | Allowlist, then encryption |
 | `POST /api/voice` | `audio/webm` body | `{text}` | Size cap, then limit, then whisper, then normalization |
@@ -265,9 +281,11 @@ addPendingChecks(runId, calls: PlannedCall[]): Promise<string[]>   // allocates 
 recordCheck(evidenceId, result: ToolResult): Promise<void>         // upsert → idempotent
 setFindings(runId, f: Findings): Promise<void>
 narrate(runId): Promise<{ messageId: string }>                    // streams; idempotent per runId (D4)
-proposeAction(runId, action: ProposedAction, workflowId): Promise<{ approvalId: string | null }>
-recordApprovalOutcome(approvalId, outcome): Promise<void>
-afterAction(runId, verify: QuickCheckResult): Promise<void>        // → mitigated + monitor schedule
+proposeAction(runId, workflowId): Promise<{ approvalId: string | null; actionId }>   // picks the action itself (§7.6)
+recordApprovalOutcome(approvalId, "rejected"|"expired"|"failed", detail?): Promise<void>
+executeAction(approvalId): Promise<{ ok, text }>                   // WP-12: idempotent
+afterAction(runId, approvalId): Promise<{ pass, text }>            // WP-12: runs quickCheck itself → mitigated + monitor
+monitorTick(): Promise<void>                                       // WP-12: agent schedule callback (also RPC for tests)
 reportWatchCheck(pass: boolean, digest): Promise<void>             // from cron
 // @callable (WebSocket). Every method except getEvidence requires role=owner (D8)
 sendMessage(text) · approve(approvalId) · reject(approvalId) · resolve() · generatePostmortem()
@@ -275,6 +293,14 @@ markRead() · getEvidence(evidenceId)
 ```
 
 `onConnect(conn, ctx)` parses the cookie from `ctx.request` and calls `conn.setState({ role })`. Owner-only callables use `getCurrentAgent().connection.state.role`.
+
+*WP-08 as built:*
+- **Signatures:** `addPendingChecks(runId, turn, calls)`; `setFindings(runId, findings, mode)`; `finishRun(runId, status, {toolCalls, llmTurns})` (first call wins); `startRun(question, kind)` throws `run_active`; plus `getSnapshot()`.
+- **Viewers:** `shouldConnectionBeReadonly` also marks them readonly. A socket for an incident that doesn't exist is closed with 4404.
+- **Routing:** the Worker only routes WebSocket upgrades to `/agents/incident-agent/<32-hex id>`. Every other agent path and plain HTTP gets a 404, so no stray Durable Objects are created.
+- **Callables without decorator syntax:** `@callable()` only records the method in the SDK's registry (the decorator context is unused), so `IncidentAgent.ts` registers `sendMessage`, `resolve`, `markRead` and `getEvidence` with `callable()(fn)` after the class. That avoids the Babel decorator transform and the ES2021 target the SDK otherwise needs in Vite and Vitest.
+- **Typed stub:** `agent/stub.ts` `incidentAgent(env, id)` wraps `getAgentByName`, whose type only accepts agents with `unknown` state.
+- **Deferred to their WPs:** the Workflow launch (WP-09, marked in `startRun`); `proposeAction`, `recordApprovalOutcome`, `afterAction`, approve/reject and the monitor (WP-12); quotas (WP-17); `reportWatchCheck` (WP-18); `generatePostmortem` (WP-22).
 
 ### 7.3 Tool contracts (`tools/registry.ts`). Inputs use zod. Outputs are `ToolResult {evidenceId, ok, status, summary, digest, raw}`.
 
@@ -302,7 +328,18 @@ streamLlm(env, req, onDelta): Promise<LlmResult>
 - Models are called through `env.AI.run(model, input, { gateway: { id: env.AI_GATEWAY_ID } })`. Both models use the **OpenAI chat-completions format**, so `client.ts` has one request builder and one response mapper. `models.ts` only adds per-model extras (below). Shapes were confirmed in spike WP-02.
 - After each call, `usage.ts` adds **`usage.neurons`**, which Workers AI reports on every response. If it's missing, it falls back to the token rates: gpt-oss-120b 31,818 / 68,182 neurons per M input/output tokens (≈ 0.0318 / 0.0682 per token), and glm-4.7-flash 5,500 / 36,400 per M (≈ 0.0055 / 0.0364).
 - A Workers AI "daily allocation exceeded" error sets the day to `NEURON_DAILY`.
-- When `LLM_MODE=mock`, `mock.ts` returns scripted turns keyed by target pattern (demo modes, `cloudflare.com`, generic) and streams canned text. Its responses are built from the real recorded responses in `test/fixtures/llm/`.
+- When `LLM_MODE=mock`, `mock.ts` returns scripted turns and streams canned text, with 0 neurons. Its responses use the recorded chat-completions shape and go through the same mapper.
+  - The first planning turn calls `dns_lookup` and `http_probe` on the `Target:` from the prompt.
+  - The next turn calls `submit_findings` with a category read from the evidence summaries. *WP-07 deviation:* the TDD said "keyed by target pattern", but a demo URL doesn't show its mode, so the mock reads the evidence and works for any target.
+  - Narration fills the four sections from the findings and evidence in the prompt.
+  - Test triggers in the question: `#llm-down` throws `LlmUnavailable`; `#llm-invalid` returns a call whose arguments don't parse.
+- **Fallback rules (WP-07):**
+  - `2001` (gateway not configured) and "allocation exceeded" skip the fallback: both models fail the same way and share one allocation. Allocation also marks the day as spent in `llm_usage`.
+  - Anything else falls back once: a 429, `5007`, a timeout (`LLM_TIMEOUT_MS`), or an empty answer.
+  - Streaming falls back only before the first delta.
+  - `client.ts` takes `LlmDeps {ai, gatewayId, mode, usage}` (built by `llmDeps(env)`), so unit tests pass a fake `ai`.
+- **Tool schemas sent to the model have no regex `pattern`s** (`lib/schema.ts` `toolParameters`). zod still validates the arguments on the server.
+- **Last planning turn:** `llmTools({finishOnly: true})` offers only `submit_findings`, so `tool_choice:"required"` forces the model to finish.
 
 #### 7.4.1 Spike findings (WP-02, 2026-10-15, live calls from `wrangler dev`)
 
@@ -315,6 +352,9 @@ streamLlm(env, req, onDelta): Promise<LlmResult>
 | gpt reasoning | Can't be turned off; `reasoning_effort` low/medium/high (default medium). Text took about 3 s, a tool turn 1.4–1.7 s, but the forced `submit_findings` turn took **19 s** once. | Watch latency against `RUN_DEADLINE_MS` in WP-09. Use `reasoning_effort:"low"` if turns run slow. |
 | Streaming | `stream:true` returns an SSE `ReadableStream`, and it works through the gateway binding. Chunks are `chat.completion.chunk` with `choices[0].delta.{content \| reasoning \| reasoning_content \| tool_calls[{index, id?, function:{name?, arguments fragment}}]}`. Per-chunk `usage` is partial. The last data line is `{"response":"","usage":{…,"neurons"}}`, then `[DONE]`. Chunks carry a `p` padding field. | `stream.ts` forwards only `delta.content` and takes usage from the final summary line. Narration doesn't use tools, so tool-call fragments aren't reassembled. |
 | AI Gateway | Only the `default` ID is created automatically. Any other ID fails with `AiGatewayError` "2001: Please configure AI Gateway in the Cloudflare dashboard" until it exists. **`incident-copilot` was created in the dashboard** (2026-10-15). | This is a configuration error, not an outage: both models fail the same way, so it maps to `LlmUnavailable` (rule path) and is logged as an error. Terraform (WP-25) imports the gateway if the provider supports it (R1). |
+| glm tool grammar (*WP-07 live*) | glm builds a constrained grammar from each tool's JSON schema and fails with `3030: Grammar error: … look-around … is not supported` on the `dns_lookup` hostname regex. With the regex in the schema, **every planning call that fell back to glm would fail.** | `toolParameters()` drops `pattern` from LLM tool schemas; the hostname gets a `description` instead. |
+| Last turn (*WP-07 live*) | Told "This is your last turn: call submit_findings now", glm still asked for `dns_lookup` + `http_probe`. With only `submit_findings` offered, it returned valid findings (IDs, not sentences) in about 6 s. | WP-09 passes `llmTools({finishOnly: true})` on the last turn. |
+| Streamed narration (*WP-07 live*) | gpt streamed about 180 content deltas (reasoning deltas arrive separately and are dropped). It cites with **full-width brackets `【http-1】`**, which the citation check would have stripped. Once, a stream came back as a single run of `!!!…`; it didn't happen again in later runs. A narration cost about 40–55 neurons. | `citations.ts` turns `【id】` into `[id]` first. `isWellFormedNarration()` (needs the "Likely cause" label and a known `[id]`) lets WP-08 swap junk for `renderTemplate`. The prompt asks for plain square brackets. |
 | Errors | Thrown as `InferenceUpstreamError` with `name` `AiError` or `AiGatewayError` and a numeric code at the start of `message` (`5007: No such model …`, `2001: …`). 429 and "allocation exceeded" weren't observed. | `client.ts` parses the code from the message. Rate-limit and allocation errors are matched by message as planned. Fixture: `test/fixtures/llm/errors.json`. |
 
 ### 7.5 Demo service
@@ -328,18 +368,58 @@ streamLlm(env, req, onDelta): Promise<LlmResult>
 | `redirect_loop` | `/w/<ws>/` sends a 302 to `/w/<ws>/r`, which sends a 302 back to `/w/<ws>/` |
 | `bad_cache` | Static files get `cache-control: no-store`, and every response gets `Set-Cookie: demo_session=…` |
 
-`DemoAdmin extends WorkerEntrypoint` has `getMode(ws)` and `setMode(ws, mode)`. Both use `DemoState` (`idFromName(ws)`) and validate the mode with zod. There's no public admin route.
+**Combinations (WP-11 addition):** a workspace's demo can be in several modes at once, but only combinations that can really exist together:
+- `healthy` must be on its own.
+- At most one **main problem** (`errors`, `redirect_loop`, `bad_cache`) can be on, because each one changes how the page answers. Bad caching would also be invisible behind a 500 or a redirect.
+- `slow` can be added to any of them; it delays whatever the page answers.
+
+The canonical order is `DEMO_MODES` order, for example `["slow", "errors"]`. The diagnosis still reports one category, the main problem, and the slow timings stay visible as evidence. Because the rules check latency before caching (§9.3), `slow` + `bad_cache` is diagnosed as `high_latency`.
+
+`DemoAdmin extends WorkerEntrypoint` has `getModes(ws)` and `setModes(ws, modes)`. Both use `DemoState` (`idFromName(ws)`) and validate the set with zod (`DemoModesSchema`, which calls `normalizeModes`). There's no public admin route.
+
+*As built (WP-11):*
+- **Files:**
+  - `demo-service/src/modes.ts` holds the mode lists, `normalizeModes` and `modesFrom` (the combination rules), the zod schema (marked pure, so the web bundle drops zod) and the UI labels. The main Worker and the web client share it.
+  - `state.ts` is `DemoState`, which stores the modes in `ctx.storage.kv` (default `["healthy"]`).
+  - `pages.ts` serves the pages.
+- **Paths:**
+  - `<ws>` must be a 32-hex ID, otherwise the path is a 404 and no Durable Object is created.
+  - Only `/w/<ws>/`, `/w/<ws>/r`, `static/app.css` and `static/app.js` exist.
+  - `/r` always sends a 302 to the page. In `redirect_loop` mode the page sends a 302 back to `/r`, which makes the loop. In `errors` mode every path returns 500.
+  - The `bad_cache` cookie is `demo_session=<uuid>; Path=/w/<ws>/`.
+- **RPC errors:**
+  - Bad input throws `invalid_workspace` or `invalid_modes`. A ZodError would lose its message over RPC.
+  - The methods are `async`, so a throw arrives as a rejected promise.
+  - Tests await the call inside `try`/`catch`: `expect(rpc).rejects` leaves a pipelined RPC promise unhandled.
+- **Local demo URL:** under `vite dev` an auxiliary Worker has **no port of its own**. A separate `wrangler dev` would be a second copy with its own state, so the probes would never see a mode change. Instead:
+  - The main Worker passes `/w/*` through `env.DEMO.fetch()`, which `DemoAdmin.fetch` serves with the same handler. It does this **only when `DEMO_BASE_URL` is its own origin**.
+  - `.dev.vars` sets `DEMO_BASE_URL` and `SSRF_DEV_ALLOW_ORIGIN` to `http://localhost:5173`.
+  - Deployed, `DEMO_BASE_URL` is the demo's `workers.dev` URL, so the main Worker answers `/w/*` with 404.
+  - Spike: probes from the local Workflow reach `localhost:5173` even with `global_fetch_strictly_public`.
+- **Local check:** all five modes, driven through `/api/demo/mode` and a real Workflow, gave the expected category (slow → `high_latency`, errors → `origin_5xx`, redirect_loop → `redirect_loop`, bad_cache → `cache_misconfiguration`, healthy → `healthy`). With the mock: slow + errors → `origin_5xx`, slow + redirect_loop → `redirect_loop`, slow + bad_cache → `high_latency`.
+- **`DemoPanel`:** a "Problem" radio group (None, 500 errors, Redirect loop, Bad caching) plus an "Also slow" checkbox. A "Now:" line shows the current combination.
 
 ### 7.6 Action catalog (`actions/catalog.ts`)
 
 | ID | Args | Proposable when | Execute | Verify |
 |---|---|---|---|---|
-| `restore_demo_service` | `{}` | Target host = demo host, path starts with `/w/<incident.workspaceId>/`, category ≠ `healthy` | `env.DEMO.setMode(ws, "healthy")` | `quickCheck` pass, then `afterAction` |
+| `restore_demo_service` | `{}` | Target host = demo host, path starts with `/w/<incident.workspaceId>/`, category ≠ `healthy` | `env.DEMO.setModes(ws, ["healthy"])` (clears every mode) | `quickCheck` pass, then `afterAction` |
 | `add_to_watchlist` | `{intervalSec: 300}` | Not already watched and under caps | Insert into `watches` | None; outcome goes on the timeline |
 | `recheck_burst` | `{}` | No monitor active | Agent `monitor(kind:"burst")` | Ticks |
 | `generate_postmortem` | `{}` | status = `resolved` | `generatePostmortem()` | None |
 
 The Workflow drops any action that isn't proposable. At most one action per run.
+
+*As built (WP-12), `worker/actions/catalog.ts`:*
+- `proposable(action, ctx)` is pure. `restore_demo_service` needs:
+  - the target to be **this workspace's** demo page (`isOwnDemo`: the same origin as `DEMO_BASE_URL`, and a path under `/w/<workspaceId>/`);
+  - a category that isn't `healthy`;
+  - a status of `investigating` or `awaiting_approval` (§10 has no edge from `mitigated` or `resolved` to `awaiting_approval`).
+
+  The other three actions return false until their WPs (18, 22, 24).
+- **Rule merge (user decision):** `pickAction` takes the model's `actions`, then the rule actions (`restore_demo_service` for any non-healthy category), removes duplicates, and uses the first proposable one. A broken demo therefore always gets the card, even when the model leaves it out. In WP-11's live runs it did leave it out for slow, redirect loop and bad caching.
+- The planning prompt says "This target is the user's own demo service" when `RunContext.isDemo` is true.
+- `execute` for restore calls `env.DEMO.setModes(ws, ["healthy"])`. `ACTION_TITLES` gives the card titles.
 
 ## 8. Core flows
 
@@ -372,7 +452,7 @@ if action:
   try   await this.waitForApproval(step, { timeout: "24 hours" })
   catch WorkflowRejectedError → step.do("rejected", agent.recordApprovalOutcome); return
   catch timeout → step.do("expired", ...); return              // "no action taken" → investigating
-  out = step.do("action", () => execute(action))              // idempotent (setMode healthy is)
+  out = step.do("action", () => execute(action))              // idempotent (setModes ["healthy"] is)
   v   = step.do("verify", () => quickCheck(target))
   step.do("after-action", () => agent.afterAction(runId, v))   // mitigated + monitor (D11)
 step.do("finish", agent.finishRun)                            // clears activeRunId
@@ -380,6 +460,36 @@ RULE_PATH: run dns, http, cert, provider (those not already run) → classify �
 ```
 
 Tool steps retry with `{limit: 2}` because each retry spends subrequest budget. LLM steps have the model fallback inside the step. `finishRun` runs before the approval wait, so the input is enabled again while waiting (D13).
+
+**Limits keep progress (user requirement, 2026-10-15).** Hitting any limit ends the run with the best diagnosis from what was already found. It never throws work away or fails the run. The limits are turns, tool calls, the 60 s deadline, the subrequest budget, `max_tokens`, the neuron allocation and the LLM being unavailable.
+- **Evidence is durable as it lands.** Each check is stored by `recordCheck` in its own step, so nothing gathered is lost to a later failure, and the rule path never re-runs a check that already has a result.
+- **Turn or tool cap:** the last planning turn offers only `submit_findings` (`llmTools({finishOnly: true})`), so the model sums up what it has. If the tool budget runs out early, that finish turn comes next, as long as the LLM is available and budget is left.
+- **Deadline, subrequest budget, `LlmUnavailable`, allocation:** go straight to findings. Use `classify` over all evidence gathered so far, merged with any usable part of the model's last `submit_findings` through `salvageFindings` (`loop/findings.ts`). The rule path only runs missing checks if budget is left; otherwise it classifies what exists.
+- **Invalid or cut-off `submit_findings`** (bad field, sentence evidence, `truncated` JSON): after the one feedback retry (FR-12), `salvageFindings` keeps the model's valid fields and fills the rest from the rules.
+- **Narration cut short** (`LlmUnavailable.partial`, or `truncated`): keep the streamed text if `isWellFormedNarration` passes, run `checkCitations` on it, and add "_Narration was cut short._". Otherwise store `renderTemplate`. Text the user already saw is never silently replaced by something unrelated.
+- **The run records why it stopped** (`runs.status`: `done` · `limit_turns` · `limit_tools` · `limit_deadline` · `limit_budget` · `llm_unavailable`), plus a timeline event. The UI says which limit hit and how many checks the diagnosis uses.
+
+**As built (WP-09):**
+- **Driver + `io`.** All the run logic is the pure `loop/plan.ts` `diagnose(io, runId, limits)`. `workflows/diagnosis.ts` only supplies `io`: `step` = `step.do` with `{limit: 2, delay: "1 second", backoff: "exponential"}`, the agent RPC, `callLlm`, `runTool` with global `fetch` and `devAllowOrigin(env)`. `io.now()` is only called inside steps (each step returns `at`), so time-based decisions replay the same way after a restart.
+- **Step names:** `context` · `llm-turn-N` · `pending-N` · `tool-<evidenceId>` · `pending-rules` · `rules` · `findings` · `narrate` · `finish` (`finish-failed` on an unexpected error).
+- **Budget.** It's rebuilt from step results: 1 per agent RPC, 1 or 2 per LLM turn (fallback), each tool's real count plus its `recordCheck`. A tool's worst-case cap is reserved before it runs, and 4 are held back from the start for the tail.
+- **Statuses.** A finish-only turn is forced by the turn cap (the last turn), the tool cap, or not enough budget for another tool plus a turn. Its status is `limit_turns` / `limit_tools` / `limit_budget` even when the model then submits good findings. Once the deadline passes there are **no more LLM turns**: rules + salvage, `limit_deadline`. A second invalid turn goes to the rules with status `done`.
+- **Rule path.** It runs only the baseline checks (`dns_lookup` host, `http_probe` target) that this run hasn't done, if budget and time allow. Then the agent's `ruleFindings(runId, lastFindingsArgs)` = `classify` over all stored checks + `salvageFindings` (raw evidence never leaves the DO).
+- **Findings** must cite evidence IDs that exist; unknown IDs are dropped, and none left counts as invalid. Calls past the tool cap are dropped and the model is told.
+- **A check that throws** is stored as an `error` check. A tool step that fails even after retries is counted at its cap and the run continues.
+- **`finishRun`** marks checks that were planned but never run as `unavailable` ("Not run: the run stopped before this check.").
+- **Launch.** `startRun` → `launchRun(runId)` (idempotent, ID `diag-<incidentId>-<seq>`, stored in `runs.workflow_id`). If the Workflow can't start, the run finishes `failed` with a system message. Test seam: `DIAGNOSIS_AUTOSTART=off` (integration config only) skips the auto-launch so agent tests can drive runs by hand.
+- `PLAN_MAX_TOKENS` = 1500, because gpt's reasoning shares the budget.
+- **Baseline first (WP-13b).** A new incident's run starts with the DNS (host) and HTTP (target) checks, before the first AI turn (step `pending-baseline`, turn 0). They count against the tool cap. Follow-ups skip it, because they reuse earlier evidence. Reason: live models planned one check per turn, so every run hit the 3-turn cap. Now the model usually submits on turn 1, and the first card shows in about a second after the Workflow starts. `DiagnoseLimits.baseline` turns it off in the unit tests about planning turns.
+- **Card before narration (WP-13b).** `propose` now runs right after `findings`, before `narrate`, so the card shows while the narration streams.
+- **Approval tail (WP-12).** The order after `narrate` is:
+  - `propose`, then `finish`. The run ends before the wait, so the input is enabled again (D13).
+  - Then `io.waitForApproval()` (24 h) returns `approved`, `rejected` or `expired`.
+  - **approved:** steps `action` then `verify`. **rejected / expired:** step `approval-<decision>`. **The action failed:** step `action-failed`.
+
+  The tail runs outside the main `try`, so a failure there never turns a finished run into `failed`. `RunSummary.action = {approvalId, decision, verified?}`.
+- **Budget.** `tailReserve` is now 8: rules, findings, narrate and finish, plus propose, outcome, action and verify. Each of these is one agent call. **The verify and monitor quick checks run inside the agent** (`afterAction`, `monitorTick`), so their up to 10 fetches don't use the Workflow's subrequest budget.
+- **The wait's error class.** Locally, a timeout throws `WorkflowTimeoutError`. The rule stays: anything that isn't `WorkflowRejectedError` counts as expired.
 
 **`waitForApproval` behaviour (WP-02, local Workflows, `agents` 0.28.1):**
 - **Approve:** returns the `metadata` passed to `approveWorkflow`.
@@ -396,6 +506,17 @@ Tool steps retry with `{limit: 2}` because each retry spends subrequest budget. 
 3. The Workflow resumes.
 4. Reject calls `rejectWorkflow`. A supersede calls `rejectWorkflow(..., {reason: "superseded"})`.
 
+*As built (WP-12):*
+- **Decisions are recorded in the agent first, then the Workflow is told.**
+  - `reject` moves the incident to `investigating` right away.
+  - `approve` marks the card approved. If the waiting Workflow can't be reached, the card is recorded as `failed`.
+  - The Workflow's later outcome steps are first-decision-wins no-ops.
+- **`expired` overrides an `approved` card that never ran.** This happens when an approve races the timeout.
+- **The status leaves `awaiting_approval` only when no card is pending any more.**
+- **Duplicates (D13):** the same action as a pending card is a duplicate, gets a `proposal_deduped` timeline event, and that run doesn't wait.
+- **Resolving by hand** closes pending cards as rejected ("resolved by hand") and stops the monitor.
+- **Errors from `approveWorkflow` / `rejectWorkflow`** are logged and never thrown.
+
 ### 8.4 Monitoring (D11), in `agent/monitor.ts`
 
 1. `afterAction(pass)` sets passes = 1, status = `mitigated`, and schedules `monitorTick` every 15 s (10 ticks at most).
@@ -403,6 +524,12 @@ Tool steps retry with `{limit: 2}` because each retry spends subrequest budget. 
 3. When the ticks run out, the incident stays `mitigated`.
 4. Bursts work the same way at 60 s × 15.
 5. For watch incidents, `reportWatchCheck` from cron feeds the same counter. In that case a pass while `investigating` moves to `mitigated` (recovered without action).
+
+*As built (WP-12):*
+- **The pure reducer.** `monitor.ts` `tick(state, status, pass)` holds the logic, with `MONITOR_TICK_S` 15, `MONITOR_MAX_TICKS` 10 and `MONITOR_PASSES` 3.
+- **One tick at a time.** Each tick is a one-shot `this.schedule(15, "monitorTick")`, chained to the next, and its `schedule_id` is stored. `resolve()` cancels it.
+- **Timeline.** Every tick writes a `monitor_tick` event, and running out of ticks writes `monitor_ended`.
+- **How long it takes.** The verify check counts as pass 1, so a restored demo resolves about 30 s after Approve.
 
 ### 8.5 Watch (cron, D12)
 
@@ -464,6 +591,15 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 4. Append "_n uncited statement(s) removed_" if anything was removed.
 5. The final stored message replaces the streamed buffer. Nothing is repaired with an extra LLM turn, to stay within the 4-turn budget.
 
+*WP-07:*
+- Full-width `【id】` citations are normalized to `[id]` first.
+- A citation written after the full stop (`Fact. [http-1]`) stays with its sentence.
+- A bold label such as `**Likely cause:**` is kept even if its sentence is removed.
+- "Factual" means digits, `ms`, TTL/TTFB, upper-case record types (not the article "A") and header names.
+- `isWellFormedNarration()` rejects output with no "Likely cause" label or no known citation; `narrate` then stores the template instead.
+
+*WP-13b (seen live):* the model put the cause on its own line without a citation, the check removed it, and "**Likely cause:**" was left empty. `finalizeNarration` → `fillEmptyCause` now puts the findings' cause back on that line, with its known evidence IDs.
+
 ### 9.3 Rule-based classification (`diagnosis/classify.ts`), applied first match wins
 
 | # | Category | Rule | Confidence |
@@ -481,6 +617,15 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | 11 | `inconclusive` | Anything else (timeouts with good DNS, 4xx, …) | low |
 
 `template.ts` renders the same four sections from the rule's evidence IDs. It's used for the rule-based path and as the narrate fallback.
+
+**Rule details (WP-06):**
+- **Which evidence:** for each tool, the rules read the **latest result that holds evidence**. For `http_probe` that means any result with samples; for the others, `ok` results. Refusals and outages (`error`, `unavailable`) are skipped, so a resolver outage is never read as `dns_failure`. `cert_info` and `provider_status` may be missing (WP-21); rules 2 and 5 then just don't match.
+- **Rule 1** needs both resolvers to have answered. With no DNS check at all, an `http_probe` refused with `no_addresses` (the guard's own lookup found nothing) also counts.
+- **Rule 2's TLS error** is a failed sample whose runtime error text mentions TLS, SSL, certificate or handshake (`isTlsError` in `tools/http.ts`). *Spike finding:* locally, workerd hides the reason (an expired or self-signed certificate throws `internal error; reference = …`), so this only fires if production gives a clearer message. Reliable `tls_expiry` needs `cert_info`. The "best certificate" is the one with the most days left among those whose SAN matches the host.
+- **Rule 5's "HTTP is failing"** means a sample with no response or a status ≥ 500. **Rule 6's** `high` needs every sample (at least 3) to be 5xx.
+- **Rule 10** needs every sample to end 2xx/3xx, so one bad sample out of three is `inconclusive`, not `healthy`.
+- `classify` returns the full `Findings` (the `submit_findings` shape, `diagnosis/categories.ts`). `cause` is one sentence ending in its `[ids]`, `next_steps` is a fixed list per category, and `actions` is `["restore_demo_service"]` for everything except `healthy`. The Workflow drops it when it isn't proposable (§7.6).
+- The template strips a summary's trailing period so the `[id]` stays in the same sentence for the citation check (§9.2).
 
 ## 10. State machine (`agent/transitions.ts`)
 
@@ -528,18 +673,43 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 - **Header:** wordmark "Incident Copilot", `BudgetBanner`, and a GitHub link. Don't use the Cloudflare logo; "Built on Cloudflare" in the footer is enough.
 - **Left `Sidebar`:** "New incident" and the incident list (status badge, unread dot, polled every 10 s), followed by `WatchlistPanel` and `WebhookSettings`.
 - **Main area:** `ChatPane`.
-- **Right column:** `DemoPanel`, which collapses below the `lg` breakpoint.
+- **Right column:** `DemoPanel`. Below the `lg` breakpoint it becomes a closed "Demo service" disclosure at the top of `<main>` (an `aria-expanded` button, as for evidence). `useMediaQuery` mounts it in one place only, so the panel keeps a single state.
 
 ### 12.2 Components
 
 - **`ChatPane`:** messages, check cards inline in run order, approval cards, and a composer that's disabled while `activeRunId` is set. The empty state shows chips for "Use demo service" and "diagnose cloudflare.com". The composer includes `VoiceButton`.
 - **`CheckCard`:** tool icon, label, and a `StatusBadge` with icon **and** text (`Pending`, `Running` with a `Loader`, `✓ Pass`, `✕ Fail`, `Unavailable`). It shows a summary and expands with `Collapsible` to show evidence in `Code`, which is fetched lazily with `getEvidence`. Clicking an `[http-1]` chip scrolls to the card and flashes an orange ring.
 - **`ApprovalCard`:** the action title, why it's proposed (cause plus refs), and **Approve** (orange primary) and **Reject** buttons. It shows the resolved state: approved, rejected, expired or superseded. For viewers, the buttons are hidden and `ReadOnlyBanner` is shown.
+  - *As built (WP-12):* the card sits right after its run's narration in the feed. Its status badge reads, in words:
+    - Waiting for your approval;
+    - Approved, working on it… / checking it…;
+    - Approved and verified;
+    - Approved, but still failing / the action failed;
+    - Rejected;
+    - Expired, no action taken;
+    - Replaced by a newer proposal.
+
+    A pending card has an orange border. Viewers see "Only the incident's owner can approve this."
+  - The header has a **Resolve** button (owner, not resolved) and a "Watching after the fix: n of 3" line while the monitor runs.
+  - A finished restore fires `demo:changed`, so the `DemoPanel` reloads.
 - **Status chip in the incident header:** `investigating`, `awaiting approval`, `mitigated` or `resolved`, always with text. It's followed by Resolve and Postmortem buttons.
 
 ### 12.3 State
 
 `useIncident(id)` wraps `useAgent<IncidentState>`. It merges `delta` broadcasts into a streaming buffer keyed by `messageId` and exposes the callables. `useIncidents()` polls the list and fires `useNotifications()` when a new unread row appears (Notification API, only after permission is granted from a button click).
+
+*As built (WP-10):*
+- **Pure helpers** in `web/lib/` (unit-tested in `test/unit/web/`):
+  - `stream.ts`: the frame reducer (`stream_start` resets);
+  - `feed.ts`: `buildFeed` lays out each run's question, then its checks (a pending check in the active run shows as Running), then its narration. The live buffer stands in for the narration until the stored one arrives;
+  - `markdown.ts`: the narration subset parsed into a tree and rendered as React elements, never HTML. `[id]` becomes an `EvidenceChip` only for known IDs;
+  - `incident.ts`: `otherHost` (§8.6, reuses `safety/target.ts` `parseTarget`) and `runNote`, which names the limit that ended the last run;
+  - `api.ts`: API errors mapped to plain sentences.
+- **Role:** the agent's `whoami()` callable gives the client its role, because the SDK doesn't tell a client its connection is readonly. Viewers get no composer, a "View only" badge in the sticky header and the `ReadOnlyBanner`.
+- **Shared types:** `tsconfig.web.json` includes the few pure worker files the browser reuses (agent state types, categories, tool types, `safety/target.ts`, `lib/ids.ts`).
+- **Kumo theming:** Kumo's brand token is pointed at `--color-cf-orange` (it's blue by default), so primary buttons and focus rings are orange. Below 768 px the Kumo `Sidebar` becomes an off-canvas sheet with a trigger.
+- **Evidence:** the check card's evidence is a plain disclosure `<button aria-expanded>` that lazy-loads `getEvidence` into `CodeBlock`.
+- **Vite:** `optimizeDeps.include` lists `agents/react` and `wouter`. Otherwise Vite discovered them on the first load and reloaded mid-render ("Invalid hook call").
 
 ### 12.4 Design system (D17)
 
@@ -587,19 +757,24 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | Unit (node) | `ssrf.test.ts` | A table of 40+ IPv4/IPv6 cases (blocked and allowed), schemes, ports, IP literals, hop re-checks |
 | | `target.test.ts` | URL, then hostname, then "demo", then need_target; "dot" normalization |
 | | `dns.test.ts`, `http.test.ts` | DoH JSON parsing and the mismatch flag; samples, hops, loop detection, header picks, asset extraction, read cap |
-| | `classify.test.ts` | One fixture per category plus precedence between rules |
-| | `citations.test.ts` | Unknown IDs and uncited factual sentences are removed |
+| | `classify.test.ts`, `template.test.ts` | One fixture per category plus precedence between rules; the four template sections, with every evidence bullet cited |
+| | `citations.test.ts` | Unknown IDs and uncited factual sentences are removed; `【id】`; well-formed check |
+| | `llm-client.test.ts`, `stream.test.ts`, `findings.test.ts`, `mock.test.ts`, `prompts.test.ts` | Mapper on every recorded fixture, fallback rules with a fake `ai`, SSE parsing of both recorded streams, the `submit_findings` schema (rejects the spike's sentence evidence), mock turns, prompt content |
 | | `transitions.test.ts` | Every legal edge, and illegal edges throw |
 | | `webhook.test.ts` | Allowlist accept/reject, AES-GCM round trip, masking |
 | | `origin.test.ts` | Origin-pin scope rules |
-| Integration (`@cloudflare/vitest-plugin`, main Worker, mocked outbound fetch, `LLM_MODE=mock`) | `agent.test.ts` | `init`, owner/viewer roles, idempotent `recordCheck`, index sync |
-| | `diagnosis.test.ts` | Scripted mock LLM: tools, then findings, then narrate. Invalid call ×2 → rule path. LLM unavailable → rule path. Budget cap. |
-| | `approval.test.ts` | Propose → approve → `setMode` called → verify → `mitigated` → 2 ticks → `resolved`. Reject → `investigating`. Supersede. |
+| Integration (`@cloudflare/vitest-plugin`, main Worker, mocked outbound fetch, `LLM_MODE=mock`) | `agent.test.ts` | `init`, owner/viewer roles over a real WebSocket (`helpers/ws.ts` speaks the SDK's `rpc` / `cf_agent_state` frames), idempotent `addPendingChecks`/`recordCheck`, narration streaming, idempotency and template fallback, limits, index sync |
+| | `incidents.test.ts` | `need_target`, create, list per workspace, owner-only snapshot, read |
+| | `diagnosis.test.ts` | Real Workflow, mock LLM, fake internet: tools → findings → narrate; healthy → resolved; `#llm-down` → rules; `#llm-invalid` ×2 → rules; NXDOMAIN; follow-up run |
+| Unit | `plan.test.ts` | The driver with a fake `io`: happy path, invalid once/twice, origin pin, LLM down, tool cap, turn cap, budget, deadline, throwing check, unexpected failure, rule-based mode |
+| | `approval.test.ts` | Propose → approve → `setModes(["healthy"])` called → verify → `mitigated` → 2 ticks → `resolved`. Reject → `investigating`. Timeout (`forceEventTimeout("wait-for-approval")`) → expired. Approve twice, a viewer, resolving by hand, a duplicate follow-up, a retried proposal. The demo stub's default `fetch` serves `/w/<ws>/` by mode, and the fake internet routes the test demo host to it. Supersede itself is covered at the agent level: with one proposable action, it can't happen end to end yet. |
 | | `cron.test.ts` | Due-watch query with LIMIT and caps; failure starts WatchWorkflow; duplicate ID ignored |
-| Demo (`@cloudflare/vitest-plugin`, demo Worker) | `demo.test.ts` | Every mode's status, headers and timing, through `exports.default` and the `DemoAdmin` RPC |
+| Demo (`@cloudflare/vitest-plugin`, demo Worker) | `demo.test.ts` | Every mode's status, headers and timing, through `exports.default` and the `DemoAdmin` RPC; per-workspace state; bad input; no admin route |
 
-- **Projects** (`vitest.config.ts`): `unit` runs in node. `integration` loads `wrangler.jsonc`. `demo` loads `demo-service/wrangler.jsonc`.
-- **Demo stub:** the test runtime won't start while a service binding points at a Worker it doesn't know about. So `integration` adds a small inline stand-in `incident-copilot-demo` Worker behind `DEMO`, and `approval.test.ts` asserts what the main Worker asks it to do (e.g. `setMode`). The real demo service is tested only in `demo`.
+- **Projects** (`vitest.config.ts`): `unit` runs in node. `integration` loads `wrangler.jsonc` with `LLM_MODE=mock` and a valid test `DEMO_BASE_URL`, and with `remoteBindings: false`, so the AI binding never goes remote: tests need no login and spend no neurons. `demo` loads `demo-service/wrangler.jsonc`.
+- **Fake internet (WP-09):** the integration project's `outboundService` is an inline `fake-internet` Worker. It answers DoH for `*.example.com` (NXDOMAIN for `nxdomain.example.com`), returns 500 for `broken.example.com` and serves HTML for other `*.example.com` hosts, so no integration test touches the real network. `diagnosis.test.ts` runs real local Workflows through `introspectWorkflow`; `plan.test.ts` covers every limit with a fake `io`.
+- Unit tests load the recorded fixtures as JSON imports and the `.sse` files with Vite `?raw` imports (`test/unit/raw.d.ts`), because the worker tsconfig has no Node types.
+- **Demo stub:** the test runtime won't start while a service binding points at a Worker it doesn't know about. So `integration` adds a small inline stand-in `incident-copilot-demo` Worker behind `DEMO`. It keeps modes in memory, records every `setModes`, and exposes the record as `calls(ws)`. `demo-api.test.ts` and `approval.test.ts` assert what the main Worker asks it to do (e.g. `setModes`). The real demo service is tested only in `demo`.
 - Tests use `env` and `exports` from `cloudflare:workers` (the plugin's `cloudflare:test` `env`/`SELF` are deprecated). Workflow tests use the plugin's Workflow introspection APIs. Retrying events with `waitForEvent` and the timeout path are verified in WP-02.
 
 ## 15. CI/CD and IaC
@@ -607,8 +782,20 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 - **`ci.yml`** (on PRs): `pnpm i --frozen-lockfile`, `pnpm typecheck`, `pnpm lint`, `pnpm test`, then `terraform fmt -check` and `terraform init -backend=false && terraform validate` (D15).
 - **`deploy.yml`** (on push to `main`): runs the tests, `wrangler d1 migrations apply DB --remote` and `vite build`, deploys `demo-service`, then deploys main, then runs a smoke test.
   - Deploys use `cloudflare/wrangler-action`.
-  - The smoke test calls `GET /api/health`, then `GET /api/session`, then `POST /api/demo/mode healthy`, then `POST /api/incidents "diagnose demo"`. It polls the snapshot until `activeRunId` is null and expects `category = healthy`. Run it with `LLM_MODE` live but only once per deploy, or skip the LLM with a `?smoke=rule` flag that forces `rule_based`.
+  - The smoke test calls `GET /api/health`, then `GET /api/session`, then `POST /api/demo/mode {modes:["healthy"]}`, then `POST /api/incidents "diagnose demo"`. It polls the snapshot until `activeRunId` is null and expects `category = healthy`. Run it with `LLM_MODE` live but only once per deploy, or skip the LLM with a `?smoke=rule` flag that forces `rule_based`.
 - **Secrets:** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` live in GitHub. `WEBHOOK_KEY` is set once with `wrangler secret put`.
+- **First deploy (WP-13, by hand from `dev`):**
+  1. `wrangler d1 migrations apply DB --remote`.
+  2. `pnpm build`, which writes both Workers to `dist/`.
+  3. **Demo first:** `wrangler deploy -c dist/incident_copilot_demo/wrangler.json`. The main Worker's `DEMO` binding needs the demo to exist.
+  4. Set `DEMO_BASE_URL` in `wrangler.jsonc` to the deployed demo.
+  5. `pnpm build`, then `wrangler deploy`. `.wrangler/deploy/config.json` points it at `dist/incident_copilot/wrangler.json`.
+
+  Results: the main Worker is about 485 KiB gzipped with a 53 ms start-up; the demo is 26 KiB. `.dev.vars` (and with it `SSRF_DEV_ALLOW_ORIGIN`) is never uploaded. The first request after the deploy got one transient `1042`; it didn't happen again.
+- **CPU (R9), from `wrangler tail --format json` during the live walkthrough:** 310 events, none cut off (all `ok`, plus `canceled` for closed sockets and the paused approval wait).
+  - The demo Worker peaked at 2 ms.
+  - The main Worker's HTTP routes stayed ≤ 8 ms.
+  - Inside the Durable Object and the Workflow, CPU went above 10 ms: `narrate` 182 ms (streaming), the Workflow `run` 49 ms, agent init and snapshot calls up to 41 ms, `afterAction` 21 ms, a monitor alarm 13 ms. Nothing failed, but `narrate` is the hottest path; watch it if Error 1102 ever shows up.
 - **Terraform (`infra/`, local state, gitignored):** Cloudflare provider v5 with `cloudflare_d1_database`, plus the AI Gateway resource if the provider supports it. Otherwise the gateway is created in the dashboard and the README says so (R1). The `database_id` output is copied into `wrangler.jsonc` once. Wrangler owns everything else (§5.1).
 
 ## 16. LLM eval (`eval/run.ts`)

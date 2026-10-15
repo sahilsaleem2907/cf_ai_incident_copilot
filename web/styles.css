@@ -18,6 +18,19 @@
 }
 #root { isolation: isolate; }
 
+/* Kumo's brand (primary buttons, focus rings) is blue by default; ours is Cloudflare orange (TDD §12.4). */
+:root {
+  --color-kumo-brand: var(--color-cf-orange);
+  --color-kumo-brand-hover: var(--color-cf-orange-hover);
+}
+
+/* Evidence chip target: a short orange ring on the check card (TDD §12.2). */
+@keyframes flash-ring {
+  0%, 60% { box-shadow: 0 0 0 3px var(--color-cf-orange); }
+  100% { box-shadow: 0 0 0 3px transparent; }
+}
+.flash-ring { animation: flash-ring 1.4s ease-out; }
+
 /* Page defaults: theming goes through light-dark() and data-mode only (TDD §12.4). */
 @layer base {
   :root { color-scheme: light; }

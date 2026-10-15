@@ -10,6 +10,11 @@ export const SNIPPET_TO_LLM = 500;
 export const EVIDENCE_DIGEST_MAX = 1536;
 export const HIGH_LATENCY_TOTAL_MS = 2000;
 export const HIGH_LATENCY_TTFB_MS = 1500;
+/** Per LLM call. gpt once took 19 s on a forced submit_findings turn; a timeout moves to the fast fallback. */
+export const LLM_TIMEOUT_MS = 25_000;
+/** Workers AI free allocation per day, and where the budget guard switches to rule-based mode (WP-17). */
+export const NEURON_DAILY = 10_000;
+export const BUDGET_GUARD_AT = 9_000;
 
 export class BudgetExceededError extends Error {
   override name = "BudgetExceededError";

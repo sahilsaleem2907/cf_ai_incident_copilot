@@ -12,6 +12,12 @@ export function readWorkspaceId(c: Context): string | undefined {
   return isId(value) ? value : undefined;
 }
 
+/** The workspace ID from a raw Cookie header: WebSocket upgrades reach the agent without Hono. */
+export function workspaceFromCookieHeader(header: string | null): string | undefined {
+  const value = /(?:^|;\s*)__Host-ws=([^;]*)/.exec(header ?? "")?.[1];
+  return isId(value) ? value : undefined;
+}
+
 /**
  * Anonymous workspace identity (FR-8). A well-formed cookie is trusted without a D1 read; a forged ID
  * only creates a fresh, empty workspace. Missing or malformed cookies get a new workspace.

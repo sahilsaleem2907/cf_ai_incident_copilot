@@ -99,3 +99,148 @@ Answers to Claude's questions:
 > all commits from WP-01 to 05 should go via the dev PR. Only the workflow files added should be going to main for now.
 
 (`main` was rebuilt locally as one fresh commit `f5707d2` holding only `.github/workflows/`. Not pushed yet.)
+
+> done.
+
+(Checked: `origin/main` = `f5707d2`, `origin/dev` = `d72886c`, and `dev` is 18 commits ahead of `main`. GitHub closed PR #1 when `main` was replaced, leaving its head stuck at `5041859`. No Actions runs yet. No repo secrets set.)
+
+> Give me a pr title and body quickly.
+
+(Drafted the title and body for the new dev → main PR covering WP-01 to WP-05.)
+
+### 13:38 · Sift review of PR #2
+
+> Look at https://github.com/sahilsaleem2907/cf_ai_incident_copilot/pull/2 review and lets solve valid bugs.
+
+Answers to Claude's questions:
+- **Next step:** Change nothing. All 5 Sift findings are false alarms: `satisfies` works on TS 6; Hono 4.13's `getCookie` takes the `"host"` string; the `!` in `iprange.ts` only runs on the fixed range list; and `fitDigest` checks the size again after adding `…`.
+
+> reply to the comments, why its not a bug for feedback with /helpful or /not-helpful. In this case all /not-helpful.
+
+(Replied `/not-helpful` with the reason on all 5 Sift inline comments on PR #2.)
+
+### 13:44 · WP-06 Rules
+
+> Use /var/folders/…/incident-copilot-handoff.md for context. Lets then continue to WP-06.
+
+(Read the handoff. Found PR #2 already merged into `main` (`0073839`) and refreshed the TASKS review status. Plan for WP-06 approved: `diagnosis/categories.ts`, `classify.ts` (11 rules), `template.ts`, plus keeping the TLS error text in `http_probe` samples so rule 2 can see it.)
+
+(WP-06 done in `6dad2cf`: 11 rules with 39 classify cases and 6 template cases; 286 tests green. Throwaway check: workerd reports expired and self-signed certificates only as `internal error; reference = …`, so `tls_expiry` from HTTP alone is best effort until `cert_info` exists.)
+
+### 14:06 · WP-07 LLM layer
+
+> Lets start with WP-07.
+
+(Plan approved: `worker/llm/` (`models`, `client`, `usage`, `stream`, `prompts`, `citations`, `mock`) plus the `submit_findings` schema in `worker/loop/findings.ts`. The mock picks its answer from the evidence, because a demo URL doesn't show its mode. A throwaway live check costs about 50 neurons.)
+
+(WP-07 done in `4e82395`; 359 tests green. The live check (about 370 neurons) found that glm rejects regex look-around in tool schemas, so the fallback would always have failed in planning; schemas now leave out `pattern`. glm also ignores "last turn" wording, so the last turn offers only `submit_findings`. gpt cites as `【id】` when streaming, and one stream came back as `!!!…`; both are handled.)
+
+### 14:33 · Limits must keep progress
+
+> One thing to be careful about is even if the model runs into a limit, it should return whatever findings it has acheived till then and not drop the context.
+
+(Added to the LLM layer: a `truncated` flag for answers cut off at `max_tokens`; a broken narration stream now keeps its text in `LlmUnavailable.partial`; `salvageFindings` keeps the model's valid fields from an invalid or cut-off `submit_findings` and fills the rest from the rules. Wrote the rule into TDD §8.2 ("Limits keep progress") and the WP-08/09 checklists: evidence stored per step, last turn finish-only, a diagnosis on every limit, `runs.status` names the limit, a test per limit.)
+
+### 14:40 · WP-08 IncidentAgent
+
+> Lets continue to WP-08
+
+(Plan approved: `worker/agent/` (schema, state, transitions, `IncidentAgent`) plus `/api/incidents`. Callables are registered without decorator syntax, so the build needs no Babel step. Workflow launch, approvals, watch and postmortem methods stay in their own WPs (09, 12, 18, 22). Narration keeps a well-formed partial stream (limits keep progress).)
+
+(WP-08 done in `7b2bc3c`; 405 tests green. Smoke test on `pnpm dev`: created an incident, read its snapshot, the owner's callables worked over a WebSocket, a visitor was refused as view-only. "diagnose demo" returns 503 `demo_unavailable` until WP-11 sets a local demo URL.)
+
+### 15:15 · WP-09 DiagnosisWorkflow
+
+> Lets move to the next one, sounds good.
+
+(Plan approved: a pure driver `loop/plan.ts` `diagnose(io, …)` behind a thin `DiagnosisWorkflow`, so every limit (turns, tools, budget, deadline, LLM down, invalid ×2) is unit-tested and always ends in a diagnosis. Integration tests run a real Workflow offline, against an inline "fake internet" Worker and the mock LLM.)
+
+(WP-09 done in `a5ca0ba`; 427 tests green, all offline. Dev smoke with the mock LLM: "diagnose cloudflare.com" ran real DNS and HTTP checks through a local Workflow, came out healthy → resolved, and was narrated with citations in about 3 s.)
+
+### 16:24 · WP-10 Chat UI
+
+> Lets plan WP-10 now.
+
+(Plan approved: routes `/` and `/i/:id`; `useIncident` over `useAgent` with a stream buffer; check cards with lazy evidence; a small safe markdown renderer with clickable `[http-1]` chips; an other-host follow-up offer; a read-only view for link visitors (new `whoami` callable); limit and rule-based notes. Pure helpers are unit-tested; the UI is checked with headless-browser screenshots in light and dark.)
+
+(WP-10 done in `dea9b32`; 443 tests green, build OK. A headless browser walkthrough with the mock LLM covered: create → live checks → streamed narration → evidence → chip scroll → follow-up → other-host offer → read-only visitor, in light, dark and at phone width. The screenshots caught narrow-screen layout, a sticky header lost on scroll, a hidden view-only banner and a first-load Vite reload, all fixed.)
+
+### 16:40 · Handoff
+
+> /handoff
+
+(Wrote the handoff for the next session (WP-11 onward) to the OS temp folder: `incident-copilot-handoff-wp11.md`.)
+
+### 16:47 · PR for WP-06 to WP-10
+
+> Lets push to origin dev, and raise a PR to main with proper title and description.
+
+(`dev` was already pushed. Opened PR #3 `dev` → `main`, "WP-06 to WP-10: diagnosis rules, LLM layer, IncidentAgent, DiagnosisWorkflow and chat UI", with a summary per WP, the key decisions, the testing done and what's not included.)
+
+### 16:49 · New session: context from the WP-11 handoff
+
+> Gain context from /var/folders/sv/ky3w59_s6bxbgfj8r92tpj5w0000gp/T/incident-copilot-handoff-wp11.md
+
+(Read the handoff, TASKS board, the WP-11 checklist, TDD §7.5 and the demo-service scaffold. No code changes.)
+
+### 16:54 · WP-11 Demo service
+
+> Yes
+
+(Plan approved: the five modes on a `DemoState` Durable Object, `DemoAdmin` RPC, `/api/demo`, and a `DemoPanel` that collapses below `lg`. Locally, the main Worker passes `/w/*` through to the demo service only when `DEMO_BASE_URL` is its own origin, because an auxiliary Worker under Vite has no port of its own.)
+
+(WP-11 done in `09398c0`; 460 tests green. Locally, all five demo modes were diagnosed with the right category through a real Workflow. A headless browser check covered: the mode stays set after a reload, the demo page answers in the chosen mode, arrow keys switch modes, the URL copies, and the panel works on a phone in light and dark. The local `.dev.vars` had `LLM_MODE=live`, so those 12 runs used the live model.)
+
+### 17:26 · WP-11 addition: combined demo modes
+
+> One small addition, we should be able to choose multiple modes in demo at the same time. But in only logical combo. eg: healthy and 500 cant exsist together.
+
+- Combos → "One problem + slow": pick one main problem (500 errors, redirect loop or bad caching) and optionally make it slow.
+- Diagnosis → "Main problem, slowness as evidence": one category per diagnosis, no changes to the diagnosis code.
+
+(Done in `e891c6c`: the demo now takes one main problem plus an optional slow-down; clashing sets are refused with `invalid_modes`. 466 tests green. Local mock runs: slow + errors → `origin_5xx`, slow + redirect loop → `redirect_loop`, slow + bad caching → `high_latency`. The panel was browser-checked in light, dark and at 390 px.)
+
+### 17:49 · WP-12 Act
+
+> Nice this is completed now. Lets move on to WP-12
+
+- Fix offer → "Rules always offer it": tell the AI when the target is the demo, and the rules add "Restore demo service" whenever the demo is broken.
+
+(Plan approved: an action catalog with proposability rules; the agent proposes, dedupes and supersedes approvals (D13); the Workflow finishes the run, waits up to 24 h for approval, then restores the demo and verifies; verify and monitor checks run inside the agent; a 15 s monitor resolves after 3 passes; an `ApprovalCard` with Approve and Reject, plus a Resolve button.)
+
+(WP-12 done in `f97d8fb`; 495 tests green. Local browser walkthrough with the mock LLM: errors, slow, redirect loop, bad caching and slow + errors each went break → approval card → Approve → "Approved and verified" → mitigated → resolved in 32–45 s. Reject went back to investigating, and a viewer saw no buttons. The walkthrough caught the card saying "verified" before the re-check ran; fixed. One approval test failed once on a cold run and hasn't been reproduced since.)
+
+### 18:54 · WP-12 follow-up: flaky test + live AI check
+
+> lets verify the flaky test again and lets run the real AI checkl, I have updated the env from mock to live.
+
+(Flaky test: caught in 1 of 5 full runs (`approval.test.ts:51`). It was a race in the test: the card is proposed one step before the run finishes. Polling every 1 ms reproduced it in 4 of 5 runs; the fix (wait for card + finished run) passed 8 of 8 there, then the full suite. Fixed in `7787ac5`. Live AI check: the real model proposed the restore itself; card at 23.5 s, resolved at 53 s after Approve; 199 neurons. The run used 3 turns because of a refused DNS lookup of localhost (local only).)
+
+### 19:06 · WP-13 Deploy 1
+
+> Done, lets continue to WP-13 now.
+
+(Plan approved: apply the D1 migration remotely, deploy the demo Worker first (the main Worker's binding needs it), set the real demo URL, deploy the main Worker, then run the PRD §13 walkthrough steps 1–5 on the live URL, the three SSRF refusals and a CPU check from `wrangler tail`. About 1,000 neurons. The URL isn't shared until WP-17 (D2).)
+
+(WP-13 done in `6114882`. Both Workers deployed; PRD §13 steps 1–5 pass on the live URL; the three private addresses are refused; no CPU cut-offs (narrate peaks at 182 ms in the Durable Object). 907 neurons. Found: the card takes about 35 s (the model plans one check per turn, so every run hits the 3-turn limit; narration about 13 s), and a live narration once left "Likely cause:" empty.)
+
+### 19:39 · WP-13b Live speed + empty cause
+
+- Live fixes → "Fix now, small extra WP": run the DNS and HTTP checks before the first AI turn, show the approval card before the narration, and put back a cited cause if the citation check empties "Likely cause:". Then redeploy and re-time.
+
+(WP-13b done in `8053dba`, redeployed. Live re-time: first check card 22 s → 7.5 s, demo card 35 s → 9.6 s (shown while the narration streams), runs end `done` in 1 AI turn, and "Likely cause" is filled. About 140 neurons per run. Steps 1–5 now take about 55–60 s with a person clicking; the 30 s monitor wait (2 ticks × 15 s) is the largest part.)
+
+### 19:48 · Day 1 wrap-up: transcript export
+
+> Complete the export.
+
+(Exported 7 sessions (planning + Day 1) to [`prompts/`](prompts/): full conversations with every tool call and result. Removed: the Cloudflare account ID, the developer's IP from request logs, and any token pattern (none found). Screenshots, private reasoning blocks and editor bookkeeping aren't exported. See [`prompts/README.md`](prompts/README.md).)
+
+### 21:20 · Sift review of PR #3 (latest round)
+
+> https://github.com/sahilsaleem2907/cf_ai_incident_copilot/pull/3. Check the latest sift comments, are any bugs? If so lets fix it.
+
+- **Small fix:** Yes, fix it: show the error text safely in `worker/llm/client.ts`.
+- **Sift replies:** Yes, reply `/not-helpful` with the reason on every false alarm.
+
+(The latest two Sift reviews on `6dd092c` raised 18 items; none is a real bug. Most are parser false alarms (`satisfies`, the generated `import()` types, the Workers `scheduler` global). The rest are guarded already: exhaustive switches, `?.` chains, `isId(unknown)`, `getSession` catching its own errors, `state` null until set, no SSR. One clean-up: `client.ts` read `(e as Error).message`, which gives "undefined" if something other than an Error is thrown; now an `errText` helper. 502 tests green.)

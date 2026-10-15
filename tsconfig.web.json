@@ -7,5 +7,17 @@
     "jsx": "react-jsx",
     "types": ["vite/client"]
   },
-  "include": ["web", "test/unit/web"]
+  // Pure worker modules the browser reuses (composite projects must list every file they compile).
+  "include": [
+    "web",
+    "test/unit/web",
+    "worker/agent/state.ts",
+    "worker/diagnosis/categories.ts",
+    "worker/tools/types.ts",
+    "worker/lib/doh.ts",
+    "worker/safety/target.ts",
+    "worker/lib/ids.ts",
+    "demo-service/src/modes.ts",
+    "worker/agent/monitor.ts"
+  ]
 }

@@ -21,14 +21,17 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** none (WP-05 ✅ 01:44). Setting up code review (below).
-- **Next:** WP-06 Rules
-- **Hours today:** 1.4 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
+- **Current:** none (WP-13 ✅ 19:15). Day 1 Musts done
+- **Next:** WP-14 Tests (Day 2)
+- **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
-  - Branches: `dev` = all work (`5041859`); `main` = WP-05 + `sift-workflows.zip` upload (`6cfd23c`); `master` = WP-01 scaffold (`867d8d6`, the first review base, now unused).
-  - PR #1 `dev` → `main` was opened and then **closed unmerged** (2026-10-15 01:57), with no Sift comments yet.
-  - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are committed on local `main` as `61b5aef` in a separate worktree. **Not pushed: waiting for the user's OK.** Once pushed, reopen or raise a `dev` → `main` PR for Sift to review.
-- **Blockers / risks:** Sift review hasn't run yet (needs the workflows on `main`). `main` and `dev` have diverged (the upload commit and the Sift workflows are only on `main`), so merge `main` into `dev` or rebase before the next PR. Watch gpt latency in WP-09: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
+  - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
+  - PR #2 `dev` → `main` ("WP-01 to WP-05") was reviewed by Sift: 5 findings, all false alarms, each answered `/not-helpful` with the reason. **Merged** 2026-10-15 13:40 (`0073839`).
+  - PR #1 was closed unmerged; `master` (`867d8d6`) is unused.
+  - **PR #3** `dev` → `main` ("WP-06 to WP-10 …") opened 16:47: https://github.com/sahilsaleem2907/cf_ai_incident_copilot/pull/3. Waiting for Sift review.
+- **Blockers / risks:** none blocking.
+  - Watch gpt latency: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
+  - **Live walkthrough timing (after WP-13b):** about 10 s to the first card, then about 31 s from Approve to Resolved (2 monitor ticks × 15 s). With a person clicking, steps 1–5 take about 55–60 s, right at the PRD's 60 s. A shorter monitor tick would add slack.
 
 ---
 
@@ -41,14 +44,15 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 03 | D1 + workspace cookie + session/health + target parser | 0.75 | 01 | ✅ | 01:16 | 01:18 | `9d691c6`. 0.25 h vs 0.75 est |
 | 04 | Safety core: SSRF, reader, origin pin, budget | 1.0 | 01 | ✅ | 01:26 | 01:30 | `4dbe27d`. 0.25 h vs 1.0 est |
 | 05 | Tools: `dns_lookup`, `http_probe`, `quickCheck`, registry | 1.5 | 04 | ✅ | 01:38 | 01:44 | `307d342`. 0.25 h vs 1.5 est |
-| 06 | Rules: `classify.ts`, `template.ts` | 0.5 | 05 | ⬜ | | | |
-| 07 | LLM layer: adapter, fallback, usage, prompts, mock, citations, streaming | 1.5 | 02 | ⬜ | | | |
-| 08 | IncidentAgent: schema, state, roles, RPC, transitions, narrate | 1.5 | 03, 07 | ⬜ | | | |
-| 09 | DiagnosisWorkflow: planning loop, bounds, rule path | 1.5 | 05, 06, 08 | ⬜ | | | |
-| 10 | Chat UI | 1.75 | 08 | ⬜ | | | |
-| 11 | Demo service + `DemoPanel` | 1.0 | 03 | ⬜ | | | |
-| 12 | Act: actions, approval, verify, monitor, `ApprovalCard` | 1.5 | 09, 11 | ⬜ | | | |
-| 13 | Deploy 1 + live walkthrough + SSRF/CPU checks | 0.5 | 12 | ⬜ | | | |
+| 06 | Rules: `classify.ts`, `template.ts` | 0.5 | 05 | ✅ | 13:44 | 13:49 | `6dad2cf`. 0.1 h vs 0.5 est. TLS spike: workerd hides cert errors (TDD §9.3) |
+| 07 | LLM layer: adapter, fallback, usage, prompts, mock, citations, streaming | 1.5 | 02 | ✅ | 14:06 | 14:18 | `4e82395`. 0.2 h vs 1.5 est. Live check ≈ 370 neurons; found the glm grammar bug and `【id】` citations |
+| 08 | IncidentAgent: schema, state, roles, RPC, transitions, narrate | 1.5 | 03, 07 | ✅ | 14:40 | 14:50 | `7b2bc3c`. 0.25 h vs 1.5 est. Also `/api/incidents` (nobody owned it; WP-10 needs it) |
+| 09 | DiagnosisWorkflow: planning loop, bounds, rule path | 1.5 | 05, 06, 08 | ✅ | 15:15 | 15:22 | `a5ca0ba`. 0.15 h vs 1.5 est. Dev smoke: cloudflare.com end to end in 3 s (mock LLM) |
+| 10 | Chat UI | 1.75 | 08 | ✅ | 16:24 | 16:35 | `dea9b32`. 0.2 h vs 1.75 est. Browser-checked in light, dark and at 390 px |
+| 11 | Demo service + `DemoPanel` | 1.0 | 03 | ✅ | 16:54 | 17:12 | `09398c0`. 0.3 h vs 1.0 est. Local run of all five modes gave the right category; browser-checked in light, dark and at 390 px. Addition: combined modes (`e891c6c`, decisions log) |
+| 12 | Act: actions, approval, verify, monitor, `ApprovalCard` | 1.5 | 09, 11 | ✅ | 17:49 | 18:03 | `f97d8fb`. 0.23 h vs 1.5 est. Local walkthrough: 5 modes break → approve → resolved; reject; viewer. 495 tests |
+| 13 | Deploy 1 + live walkthrough + SSRF/CPU checks | 0.5 | 12 | ✅ | 19:06 | 19:15 | `6114882`. 0.15 h vs 0.5 est. Live walkthrough passes; slow (about 100 s vs 60 s target), see the log |
+| 13b | Live speed + empty "Likely cause" (found in WP-13) | — | 13 | ✅ | 19:20 | 19:44 | `8053dba`. Baseline checks before the first AI turn, card before narration, cause refilled. Card 35 s → 10 s; runs `done` instead of `limit_turns`; about 140 neurons per run instead of 200 |
 
 > **Slip rule:** if Day 1 runs over, WP-12 and WP-13 move to the start of Day 2, ahead of every Should item.
 
@@ -168,104 +172,106 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-06</b> Rules</summary>
 
-- [ ] `classify.ts` (11 rules, first match wins)
-- [ ] `template.ts` (four sections with evidence IDs)
-- [ ] `classify.test.ts` (one fixture per category + precedence)
-- [ ] **Done when:** classification tests pass for every category
+- [x] `classify.ts` (11 rules, first match wins) + `categories.ts` (types, `Findings`, one-line definitions)
+- [x] `template.ts` (four sections with evidence IDs)
+- [x] `classify.test.ts` (one fixture per category + precedence + edges, 39 cases) + `template.test.ts`
+- [x] **Done when:** classification tests pass for every category
 </details>
 
 <details>
 <summary><b>WP-07</b> LLM layer</summary>
 
-- [ ] `client.ts` adapter + `models.ts` mappers
-- [ ] Primary → fallback model on error/429
-- [ ] `usage.ts` neuron accounting
-- [ ] `prompts.ts` (planning + narration)
-- [ ] `submit_findings` tool + zod
-- [ ] `mock.ts` scripted turns
-- [ ] `citations.ts` post-check + `citations.test.ts`
-- [ ] `stream.ts`
-- [ ] **Done when:** mock and live calls return normalized `LlmResult`; citation tests pass
+- [x] `client.ts` adapter + `models.ts` mappers
+- [x] Primary → fallback model on error/429 (plus timeout and empty answers; 2001/allocation skip it)
+- [x] `usage.ts` neuron accounting (`llm_usage`, `today()` ready for WP-17)
+- [x] `prompts.ts` (planning + narration)
+- [x] `submit_findings` tool + zod (`loop/findings.ts`; `llmTools({finishOnly})` for the last turn)
+- [x] `mock.ts` scripted turns (reads the evidence; `#llm-down` / `#llm-invalid` triggers)
+- [x] `citations.ts` post-check + `citations.test.ts` (+ `【id】`, `isWellFormedNarration`)
+- [x] `stream.ts`
+- [x] **Done when:** mock and live calls return normalized `LlmResult`; citation tests pass
 </details>
 
 <details>
 <summary><b>WP-08</b> IncidentAgent</summary>
 
-- [ ] SQL schema
-- [ ] Synced `IncidentState`
-- [ ] `onConnect` roles (owner / viewer)
-- [ ] RPC methods + owner-only callables
-- [ ] `transitions.ts` (+ `transitions.test.ts`)
-- [ ] `narrate` (streams, idempotent per `runId`)
-- [ ] D1 index sync
-- [ ] **Done when:** agent integration tests for init, roles, narration pass
+- [x] SQL schema (+ `checks.turn/seq` for retry-safe evidence IDs)
+- [x] Synced `IncidentState` (rebuilt from SQL; client writes rejected)
+- [x] `onConnect` roles (owner / viewer; viewers also readonly)
+- [x] RPC methods + owner-only callables (approval/watch/postmortem methods in WP-12/18/22)
+- [x] `transitions.ts` (+ `transitions.test.ts`)
+- [x] `narrate` (streams, idempotent per `runId`); a cut-off stream keeps its partial text if well formed (TDD §8.2 "Limits keep progress")
+- [x] D1 index sync
+- [x] `/api/incidents` (create, list, snapshot, read)
+- [x] **Done when:** agent integration tests for init, roles, narration pass
 </details>
 
 <details>
 <summary><b>WP-09</b> DiagnosisWorkflow</summary>
 
-- [ ] Planning loop (≤ 3 turns, ≤ 6 tools, 60 s, 45 subrequests)
-- [ ] Invalid-call rule (1st → feedback, 2nd → rule path)
-- [ ] Rule path (`LlmUnavailable` / budget mode)
-- [ ] Findings step + narrate step + `finishRun`
-- [ ] `diagnosis.test.ts`
-- [ ] **Done when:** diagnosis integration tests pass with the mock LLM
+- [x] Planning loop (≤ 3 turns, ≤ 6 tools, 60 s, 45 subrequests)
+- [x] Invalid-call rule (1st → feedback, 2nd → rule path)
+- [x] Rule path (`LlmUnavailable` / budget mode)
+- [x] **Limits keep progress** (TDD §8.2): every limit ends in findings from the evidence so far (`salvageFindings` + `classify`), last turn `finishOnly`, `runs.status` records which limit hit; a test per limit (`plan.test.ts`)
+- [x] Findings step + narrate step + `finishRun`
+- [x] `diagnosis.test.ts` (real Workflow, offline via fake internet)
+- [x] **Done when:** diagnosis integration tests pass with the mock LLM
 </details>
 
 <details>
 <summary><b>WP-10</b> Chat UI</summary>
 
-- [ ] `routes.tsx` (`/`, `/i/:id`)
-- [ ] `useIncident`: wraps `useAgent`, merges `delta` broadcasts into a buffer keyed by `messageId`, exposes callables
-- [ ] `ChatPane`: messages, check cards inline in run order, empty state (`Empty`) with "Use demo service" and "diagnose cloudflare.com" chips
-- [ ] `Composer`: Enter sends, Shift+Enter adds a new line, disabled while `activeRunId` is set, handles 400 `need_target` and 409
-- [ ] `MessageBubble`: streaming buffer replaced by the final stored text; stream region has `aria-live="polite"`
-- [ ] `CheckCard`: tool icon, label, summary, `Collapsible` evidence in `Code` (lazy `getEvidence`)
-- [ ] `StatusBadge`: icon **and** text for Pending, Running (`Loader`), Pass, Fail, Unavailable
-- [ ] `EvidenceChip`: clicking `[http-1]` scrolls to its card and flashes the orange ring
-- [ ] Incident header: target in mono and a status chip that always has text
-- [ ] "New incident for X" button when a follow-up names a host outside the origin pin (§8.6)
-- [ ] `IncidentSidebar`: "New incident" button and a basic list with status badges
-- [ ] `ReadOnlyBanner` for viewer connections
-- [ ] Keyboard pass: every control reachable, nothing shown by colour alone
-- [ ] **Done when:** full chat works end to end in the browser with `LLM_MODE=mock`
+- [x] `routes.tsx` (`/`, `/i/:id`)
+- [x] `useIncident`: wraps `useAgent`, merges `delta` broadcasts into a buffer keyed by `messageId`, exposes callables
+- [x] `ChatPane`: messages, check cards inline in run order, empty state (`Empty`) with "Use demo service" and "diagnose cloudflare.com" chips
+- [x] `Composer`: Enter sends, Shift+Enter adds a new line, disabled while `activeRunId` is set, handles 400 `need_target` and 409
+- [x] `MessageBubble`: streaming buffer replaced by the final stored text; stream region has `aria-live="polite"`
+- [x] `CheckCard`: tool icon, label, summary, evidence disclosure in `CodeBlock` (lazy `getEvidence`)
+- [x] `StatusBadge`: icon **and** text for Pending, Running (`Loader`), Pass, Fail, Error, Unavailable
+- [x] `EvidenceChip`: clicking `[http-1]` scrolls to its card and flashes the orange ring
+- [x] Incident header: target in mono and a status chip that always has text
+- [x] "New incident for X" button when a follow-up names a host outside the origin pin (§8.6)
+- [x] `IncidentSidebar`: "New incident" button and a basic list with status badges
+- [x] `ReadOnlyBanner` for viewer connections (+ "View only" badge in the header)
+- [x] Keyboard pass: every control reachable, nothing shown by colour alone
+- [x] **Done when:** full chat works end to end in the browser with `LLM_MODE=mock`
 </details>
 
 <details>
 <summary><b>WP-11</b> Demo service</summary>
 
-- [ ] Modes: healthy, slow, errors, redirect_loop, bad_cache
-- [ ] `DemoState` DO
-- [ ] `DemoAdmin` RPC entrypoint
-- [ ] `/api/demo` + `/api/demo/mode`
-- [ ] Local demo URL: `.dev.vars` sets `DEMO_BASE_URL` to the local demo origin and `SSRF_DEV_ALLOW_ORIGIN` to the same origin
-- [ ] `DemoPanel` (right column): mode picker (`Select`/`Radio`) and the demo URL (`ClipboardText`)
-- [ ] `demo.test.ts`
-- [ ] **Done when:** each mode behaves as in TDD §7.5; demo test passes
+- [x] Modes: healthy, slow, errors, redirect_loop, bad_cache
+- [x] `DemoState` DO
+- [x] `DemoAdmin` RPC entrypoint
+- [x] `/api/demo` + `/api/demo/mode`
+- [x] Local demo URL: `.dev.vars` sets `DEMO_BASE_URL` to the local demo origin and `SSRF_DEV_ALLOW_ORIGIN` to the same origin
+- [x] `DemoPanel` (right column): mode picker (`Select`/`Radio`) and the demo URL (`ClipboardText`)
+- [x] `demo.test.ts`
+- [x] **Done when:** each mode behaves as in TDD §7.5; demo test passes
 </details>
 
 <details>
 <summary><b>WP-12</b> Act</summary>
 
-- [ ] Action catalog + proposable checks
-- [ ] Propose / supersede / dedupe
-- [ ] `waitForApproval`, approve/reject callables
-- [ ] Execute + verify + `afterAction`
-- [ ] Monitor ticks (15 s × 10, 3 passes → resolved)
-- [ ] `ApprovalCard`: action title, why it's proposed (cause + refs), real `<button>`s for Approve (orange) and Reject; shows approved, rejected, expired or superseded; buttons hidden for viewers
-- [ ] Resolve button in the incident header
-- [ ] `approval.test.ts`
-- [ ] **Done when:** approval test passes; local walkthrough break → approve → resolved works
+- [x] Action catalog + proposable checks
+- [x] Propose / supersede / dedupe
+- [x] `waitForApproval`, approve/reject callables
+- [x] Execute + verify + `afterAction`
+- [x] Monitor ticks (15 s × 10, 3 passes → resolved)
+- [x] `ApprovalCard`: action title, why it's proposed (cause + refs), real `<button>`s for Approve (orange) and Reject; shows approved, rejected, expired or superseded; buttons hidden for viewers
+- [x] Resolve button in the incident header
+- [x] `approval.test.ts`
+- [x] **Done when:** approval test passes; local walkthrough break → approve → resolved works
 </details>
 
 <details>
 <summary><b>WP-13</b> Deploy 1</summary>
 
-- [ ] `wrangler deploy` both Workers
-- [ ] Live PRD §13 steps 1–5
-- [ ] SSRF refusals: `169.254.169.254`, `localhost`, `10.0.0.1`
-- [ ] CPU time check in Workers Logs
-- [ ] **Done when:** live URL passes the walkthrough (**don't share it yet**)
+- [x] `wrangler deploy` both Workers
+- [x] Live PRD §13 steps 1–5
+- [x] SSRF refusals: `169.254.169.254`, `localhost`, `10.0.0.1`
+- [x] CPU time check in Workers Logs
+- [x] **Done when:** live URL passes the walkthrough (**don't share it yet**)
 </details>
 
 ### Day 2
@@ -403,6 +409,20 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
+| 2026-10-15 19:44 | 13b | **Live speed fixes (user chose "fix now").** (1) A new incident's baseline checks (DNS for the host, HTTP for the target) run before the first AI turn (`pending-baseline`), and the rule path reuses the same helper. (2) `propose` moved before `narrate`, so the card shows while the narration streams. (3) `fillEmptyCause` puts the findings' cited cause back when the citation check empties "Likely cause:". Redeployed and re-timed live: first check card 22 s → 7.5 s; demo card 35 s → 9.6 s; both runs `done` in 1 AI turn; the cause is filled. 279 neurons for 2 runs. **Folded into TDD §8.2, §9.2.** | WP-13 live walkthrough: about 100 s against the 60 s target, with every run hitting the turn cap |
+| 2026-10-15 19:15 | 13 | **First deploy.** D1 migrated remotely; the demo Worker went first, then `DEMO_BASE_URL` was set, then the main Worker (TDD §15). On the live site, PRD §13 steps 1–5 pass: workspace → cloudflare.com healthy (`dns-1`/`http-1` pass, resolved) → 500 errors → `origin_5xx` citing `[http-1]` with the card → Approve → verified → resolved (30 s). `169.254.169.254`, `localhost` and `10.0.0.1` were refused by the SSRF guard with clear messages, and no fetch was made. CPU: no event was cut off; details in TDD §15. 907 neurons for 5 runs. **Issues found:** (1) **slow** — the card came about 35 s after asking (≈ 5 s Workflow queue, 3 AI turns of 3–10 s, 13 s narration), so the full walkthrough is about 100 s against the PRD's 60 s; (2) the live model asks for **one check per turn**, so every run ends `limit_turns` and the UI shows a turn-limit note; (3) the live narration once left **"Likely cause:" empty** after the citation check removed an uncited sentence. | Found during the WP-13 live walkthrough |
+| 2026-10-15 19:00 | 12 | **Live AI check (one 500-errors run, local, `LLM_MODE=live`).** The model proposed `restore_demo_service` **itself** (the demo hint works; the rule merge wasn't needed). Card at 23.5 s → Approve → verified → resolved at 53 s. Cost 199 neurons (estimate was about 100); the daily local total is 2,855. The run ended `limit_turns` with 3 turns and 1 check: most likely the model's `dns_lookup` of `localhost` was refused (it isn't a public hostname), which cost an extra turn. That's local only; recheck on the deployed `workers.dev` demo in WP-13. | User asked for the live check after WP-12 |
+| 2026-10-15 18:58 | 12 | **Flaky `approval.test.ts` fixed.** It was a race in the test, not a timeout. The Workflow proposes the card one step before `finish`, so a poll could see the card while the run was still active, and the test's `activeRunId: null` check failed. The dedupe test could also have hit `run_active`. The tests now wait for "card shown and run finished" (`cardShown`), and the 20 s wait went back to 8 s. | Caught in 1 of 5 full runs (`approval.test.ts:51`). Polling every 1 ms reproduced it in 4 of 5 runs; with the fix, 8 of 8 passed |
+| 2026-10-15 18:01 | 12 | **Act as built.** (1) **Rule merge** (user decision): `pickAction` adds `restore_demo_service` to the model's actions for any non-healthy category, and the planning prompt says when the target is the user's demo, so a broken demo always gets the card. (2) **Verify and monitor quick checks run inside the agent** (`afterAction`, `monitorTick`), not in the Workflow, so they don't use its 45-subrequest budget; `tailReserve` 4 → 8 for propose, outcome, action and verify. (3) The run finishes before the approval wait (D13), and the tail runs outside the main `try`. (4) Decisions are recorded in the agent first, then the Workflow is told; `expired` overrides an `approved` card that never ran; resolving by hand closes pending cards and stops the monitor. (5) The card says "verified" only after the re-check (`outcome.verified`). **Folded into TDD §6.3, §7.2, §7.6, §8.2–§8.4, §12.2, §14.** | WP-11's live runs showed the model leaving the action out. The browser walkthrough found the card saying "verified" before the re-check ran; fixed. Local walkthrough with the mock LLM: errors, slow, redirect_loop, bad_cache and slow + errors all went break → card → Approve → mitigated → resolved in 32–45 s; reject → investigating; a viewer sees no buttons |
+| 2026-10-15 17:30 | 11 | **Combined demo modes** (user request): the demo holds a set of modes, either `["healthy"]` or one main problem (errors, redirect_loop, bad_cache) plus an optional `slow`. The RPC is now `getModes`/`setModes` and the API takes `{modes}` (400 `invalid_modes`). `restore_demo_service` will call `setModes(ws, ["healthy"])`. The panel is a "Problem" radio group plus an "Also slow" checkbox. The diagnosis still names one category; slow + bad_cache comes out as `high_latency` because latency is checked before caching. **Folded into TDD §7.1, §7.5, §7.6, §8.2, §14.** | The user chose "one problem + slow" and "main problem, slowness as evidence". The other problems clash: a page can't both 500 and redirect, and bad caching is invisible behind either |
+| 2026-10-15 17:11 | 11 | **Local demo URL:** under `vite dev` the demo Worker has no port of its own, and a separate `wrangler dev` would keep its own mode state. So the main Worker passes `/w/*` through `env.DEMO.fetch()` only when `DEMO_BASE_URL` is its own origin (local dev), and `.dev.vars` points both `DEMO_BASE_URL` and `SSRF_DEV_ALLOW_ORIGIN` at `http://localhost:5173`. Deployed, `/w/*` on the main Worker is a 404. `DemoAdmin` throws plain `invalid_mode`/`invalid_workspace` (a ZodError loses its message over RPC). Below `lg` the panel is a closed disclosure instead of hidden. **Folded into TDD §4, §5.1, §7.1, §7.5, §12.1, §14.** | Spike: local Workflow probes reach `localhost:5173` despite `global_fetch_strictly_public`. A local run of all five modes gave the right category each time. Note: the local `.dev.vars` had `LLM_MODE=live`, so these 12 runs used the live model; the daily local estimate is 2,656 neurons |
+| 2026-10-15 16:34 | 10 | New `whoami()` callable for the read-only UI. Kumo's brand token is set to Cloudflare orange (it's blue by default). The sidebar becomes an off-canvas sheet below 768 px. The evidence disclosure is a plain `aria-expanded` button rather than Kumo `Collapsible`. Vite pre-bundles `agents/react` and `wouter`. Browser checks used `playwright-core` from the session scratchpad with the cached headless Chromium; nothing was added to the repo. **Folded into TDD §12.3.** | Screenshots found three layout bugs (narrow screens, sticky header lost on scroll, banner off-screen for viewers) and a first-load reload; all fixed |
+| 2026-10-15 15:22 | 09 | The run is a pure driver (`loop/plan.ts`) behind a thin Workflow, so every limit is unit-tested. A finish turn forced by a cap reports that cap even when the model then submits good findings. Past the deadline there are no more LLM turns (rules + salvage). The rule path fills only the checks this run is missing. `finishRun` closes never-run checks as `unavailable`. Integration tests run offline through an inline fake-internet Worker (`outboundService`). `DIAGNOSIS_AUTOSTART=off` is a test-only seam. **Folded into TDD §8.2, §14.** | Determinism under Workflow replay, the user's "limits keep progress" rule, and offline CI |
+| 2026-10-15 14:50 | 08 | Callables are registered with `callable()(fn)` after the class instead of `@callable()` syntax (the decorator only fills a registry), so no Babel transform or ES2021 target is needed. A typed `incidentAgent()` stub wrapper works around `getAgentByName` only typing `unknown`-state agents. Timeline details are flat scalars (recursive JSON broke the RPC stub types). `POST /api/incidents` returns 503 `demo_unavailable` while `DEMO_BASE_URL` has `<sub>`. ESLint allows tagged-template statements (`this.sql`…``). **Folded into TDD §6.2, §6.3, §7.1, §7.2, §14.** | Found while building; the SDK docs require a decorator build step otherwise |
+| 2026-10-15 14:30 | 07→08/09 | **Limits keep progress:** a run that hits any limit (turns, tools, deadline, subrequests, `max_tokens`, neurons, LLM down) ends with the best diagnosis from what it already found. LLM layer now: `truncated` flag on cut-off answers, `LlmUnavailable.partial` keeps streamed text, `salvageFindings` keeps the model's valid fields. WP-08/09 rules (durable evidence, `finishOnly` last turn, partial narration, `runs.status` per limit) added to their checklists. **Folded into TDD §8.2.** | User requirement: never drop the context gathered so far |
+| 2026-10-15 14:17 | 07 | Live check findings: (1) glm rejects regex look-around in tool schemas (`3030 Grammar error`), so every glm fallback in planning would have failed. LLM tool schemas now drop `pattern` (zod still validates). (2) glm ignores "last turn" in the prompt, so the last turn offers only `submit_findings`. (3) gpt streams citations as `【id】`; the citation check normalizes them. (4) One gpt stream was pure `!!!…`; `isWellFormedNarration()` lets narrate fall back to the template. Also: `LLM_TIMEOUT_MS` 25 s → fallback; 2001/allocation skip the fallback; the mock reads evidence (not the target); `remoteBindings: false` in tests. **Folded into TDD §5.2, §7.4, §7.4.1, §9.2, §14.** | Throwaway `/api/dev/llm` route, about 370 neurons over 7 runs (the plan said about 50; the extra runs chased the glm grammar error and the two streaming issues) |
+| 2026-10-15 13:49 | 06 | Rule 2's "TLS error" is matched on the runtime's error text, which `http_probe` samples now keep (`message`, ≤ 200 chars). Locally, workerd hides the reason (`internal error; reference = …` for expired and self-signed certs), so in practice `tls_expiry` needs `cert_info` (WP-21, below the cut). Other rule details: latest usable result per tool, `no_addresses` → `dns_failure`, `actions` from rules. **Folded into TDD §9.3.** | Throwaway check against expired.badssl.com and self-signed.badssl.com from workerd |
+| 2026-10-15 13:44 | review | PR #2 (`dev` → `main`, WP-01 to WP-05) merged at 13:40 (`0073839`) after Sift's 5 findings were answered as false alarms | User merged after the review |
 | 2026-10-15 01:59 | review | Sift CI workflows prepared for `main` (`61b5aef`, local worktree, unpushed until the user confirms). The zip upload (`6cfd23c`) is a binary in the repo and can be removed once the YAML files are in | Sift reviews PRs through GitHub Actions on the default branch |
 | 2026-10-15 01:57 | review | The review target is `main` (the default branch), not `master`. PR #1 `dev` → `main` was closed unmerged. `master` (at `867d8d6`) stays as the first review base but is unused | User raised PR #1 against `main`. Sift runs from `main`'s workflows |
 | 2026-10-15 01:50 | review | All work moves to a `dev` branch; changes reach the main line only through a reviewed PR | User wants a Sift code review before work counts as merged |
@@ -428,10 +448,10 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 ## Daily wrap-up
 
 ### Day 1 (2026-10-15)
-- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03, WP-04, WP-05. Review setup: `dev` branch, PR #1 (closed), Sift workflows prepared on `main` (unpushed)
-- **Moved / slipped:**
-- **Hours:** 1.4 / 14.75 h
-- **Transcript exported to `prompts/`:** ⬜
+- **Done:** WP-01 (plus the package change folded into TDD and PRD) to WP-13, plus WP-13b (the live speed fixes found in WP-13). All Day 1 Musts are done. Review setup: `dev` branch, Sift workflows on `main`, PR #2 (WP-01 to WP-05) merged, PR #3 (WP-06 to WP-10) open
+- **Moved / slipped:** nothing. Added: WP-11 combined demo modes, WP-13b
+- **Hours:** 2.93 / 14.75 h on WPs
+- **Transcript exported to `prompts/`:** ✅ 7 sessions (planning + Day 1), secrets removed; see [`prompts/README.md`](prompts/README.md)
 
 ### Day 2 (2026-10-16)
 - **Done:**

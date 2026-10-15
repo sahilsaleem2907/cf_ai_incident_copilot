@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { countingFetch, SubrequestCounter } from "../../worker/loop/budget";
 import { DIGEST_MAX } from "../../worker/tools/digest";
-import { findAsset, HTTP_PROBE_CAP, httpInput, runHttpProbe } from "../../worker/tools/http";
+import { findAsset, HTTP_PROBE_CAP, httpInput, isTlsError, runHttpProbe } from "../../worker/tools/http";
 import { byHost, dohHandler, fakeClock, fakeFetch, type Handler } from "./helpers/fake-fetch";
 
 const DNS = dohHandler({
@@ -51,6 +51,23 @@ describe("http_probe", () => {
     const r = await probe(() => (clock.advance(3000), html("<p>slow</p>")), { clock }).result;
     expect(r.status).toBe("fail");
     expect(r.summary).toMatch(/^Slow: median 3000 ms/);
+  });
+
+  it("keeps the error text and labels TLS failures", async () => {
+    const r = await probe(() => {
+      throw new Error("TLS peer's certificate is not trusted; reason = certificate has expired");
+    }).result;
+    expect(r).toMatchObject({ ok: true, status: "fail", summary: "TLS error on 3/3 samples." });
+    expect(r.raw.samples[0]).toMatchObject({ status: null, error: "network", message: expect.stringContaining("certificate has expired") });
+    expect(isTlsError(r.raw.samples[0]!)).toBe(true);
+  });
+
+  it("doesn't call an opaque runtime error a TLS failure", async () => {
+    const r = await probe(() => {
+      throw new Error("internal error; reference = abc123");
+    }).result;
+    expect(r.summary).toBe("Connection failed on 3/3 samples.");
+    expect(isTlsError(r.raw.samples[0]!)).toBe(false);
   });
 
   it("stops after one sample on a redirect loop", async () => {

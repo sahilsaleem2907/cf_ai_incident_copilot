@@ -10,6 +10,8 @@ export const HTTP_PROBE_CAP = 20;
 const RAW_SNIPPET = 2048;
 const PICKED_HEADERS = ["server", "cf-ray", "cf-cache-status", "cache-control", "content-type", "location"] as const;
 const TEXTUAL = /^(text\/|application\/(json|xml|xhtml\+xml|javascript))/i;
+/** Locally, workerd hides the reason ("internal error; reference = …"), so this only matches clearer runtime messages. */
+const TLS_ERROR = /\b(tls|ssl|certificate|handshake)\b/i;
 
 export const httpInput = z.object({
   url: z.string().refine((u) => {
@@ -29,6 +31,8 @@ export type Sample = {
   totalMs: number;
   stop: HopStop;
   error?: string;
+  /** The runtime's error text for a failed request, at most 200 chars. */
+  message?: string;
   hops: { url: string; status: number; location: string | null }[];
 };
 export type AssetProbe =
@@ -134,9 +138,16 @@ function toSample(r: HopResult): Sample {
     stop: r.stop,
     hops,
   };
-  if (r.error) sample.error = r.error.error;
+  if (r.error) {
+    sample.error = r.error.error;
+    sample.message = r.error.message.slice(0, 200);
+  }
   if (r.blocked) sample.error = r.blocked.code;
   return sample;
+}
+
+export function isTlsError(s: Sample): boolean {
+  return s.stop === "error" && s.error === "network" && TLS_ERROR.test(s.message ?? "");
 }
 
 /** First same-origin script or stylesheet in the page (D10). */
@@ -194,7 +205,7 @@ function judge(raw: HttpRaw): { status: CheckStatus; summary: string } {
 
   const errored = raw.samples.filter((s) => s.stop === "error");
   if (errored.length) {
-    const kind = errored[0]!.error === "timeout" ? "Timed out" : "Connection failed";
+    const kind = errored.some(isTlsError) ? "TLS error" : errored[0]!.error === "timeout" ? "Timed out" : "Connection failed";
     return { status: "fail", summary: `${kind} on ${errored.length}/${n} samples.` };
   }
   const statuses = raw.samples.map((s) => s.status ?? 0);
