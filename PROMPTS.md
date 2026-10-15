@@ -207,3 +207,5 @@ Answers to Claude's questions:
 - Fix offer → "Rules always offer it": tell the AI when the target is the demo, and the rules add "Restore demo service" whenever the demo is broken.
 
 (Plan approved: an action catalog with proposability rules; the agent proposes, dedupes and supersedes approvals (D13); the Workflow finishes the run, waits up to 24 h for approval, then restores the demo and verifies; verify and monitor checks run inside the agent; a 15 s monitor resolves after 3 passes; an `ApprovalCard` with Approve and Reject, plus a Resolve button.)
+
+(WP-12 done in `f97d8fb`; 495 tests green. Local browser walkthrough with the mock LLM: errors, slow, redirect loop, bad caching and slow + errors each went break → approval card → Approve → "Approved and verified" → mitigated → resolved in 32–45 s. Reject went back to investigating, and a viewer saw no buttons. The walkthrough caught the card saying "verified" before the re-check ran; fixed. One approval test failed once on a cold run and hasn't been reproduced since.)

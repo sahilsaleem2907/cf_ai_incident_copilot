@@ -21,9 +21,9 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-12 Act (started 17:49)
+- **Current:** none (WP-12 ✅ 18:03)
 - **Next:** WP-13 Deploy 1 + live walkthrough
-- **Hours today:** 2.55 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
+- **Hours today:** 2.78 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
   - PR #2 `dev` → `main` ("WP-01 to WP-05") was reviewed by Sift: 5 findings, all false alarms, each answered `/not-helpful` with the reason. **Merged** 2026-10-15 13:40 (`0073839`).
@@ -49,7 +49,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 09 | DiagnosisWorkflow: planning loop, bounds, rule path | 1.5 | 05, 06, 08 | ✅ | 15:15 | 15:22 | `a5ca0ba`. 0.15 h vs 1.5 est. Dev smoke: cloudflare.com end to end in 3 s (mock LLM) |
 | 10 | Chat UI | 1.75 | 08 | ✅ | 16:24 | 16:35 | `dea9b32`. 0.2 h vs 1.75 est. Browser-checked in light, dark and at 390 px |
 | 11 | Demo service + `DemoPanel` | 1.0 | 03 | ✅ | 16:54 | 17:12 | `09398c0`. 0.3 h vs 1.0 est. Local run of all five modes gave the right category; browser-checked in light, dark and at 390 px. Addition: combined modes (`e891c6c`, decisions log) |
-| 12 | Act: actions, approval, verify, monitor, `ApprovalCard` | 1.5 | 09, 11 | 🔄 | 17:49 | | |
+| 12 | Act: actions, approval, verify, monitor, `ApprovalCard` | 1.5 | 09, 11 | ✅ | 17:49 | 18:03 | `f97d8fb`. 0.23 h vs 1.5 est. Local walkthrough: 5 modes break → approve → resolved; reject; viewer. 495 tests |
 | 13 | Deploy 1 + live walkthrough + SSRF/CPU checks | 0.5 | 12 | ⬜ | | | |
 
 > **Slip rule:** if Day 1 runs over, WP-12 and WP-13 move to the start of Day 2, ahead of every Should item.
