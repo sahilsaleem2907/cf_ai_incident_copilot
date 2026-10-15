@@ -21,9 +21,9 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-07 LLM layer (started 14:06)
+- **Current:** none (WP-07 ✅ 14:18)
 - **Next:** WP-08 IncidentAgent
-- **Hours today:** 1.5 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
+- **Hours today:** 1.7 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
   - PR #2 `dev` → `main` ("WP-01 to WP-05") was reviewed by Sift: 5 findings, all false alarms, each answered `/not-helpful` with the reason. **Merged** 2026-10-15 13:40 (`0073839`).
@@ -43,7 +43,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 04 | Safety core: SSRF, reader, origin pin, budget | 1.0 | 01 | ✅ | 01:26 | 01:30 | `4dbe27d`. 0.25 h vs 1.0 est |
 | 05 | Tools: `dns_lookup`, `http_probe`, `quickCheck`, registry | 1.5 | 04 | ✅ | 01:38 | 01:44 | `307d342`. 0.25 h vs 1.5 est |
 | 06 | Rules: `classify.ts`, `template.ts` | 0.5 | 05 | ✅ | 13:44 | 13:49 | `6dad2cf`. 0.1 h vs 0.5 est. TLS spike: workerd hides cert errors (TDD §9.3) |
-| 07 | LLM layer: adapter, fallback, usage, prompts, mock, citations, streaming | 1.5 | 02 | 🔄 | 14:06 | | |
+| 07 | LLM layer: adapter, fallback, usage, prompts, mock, citations, streaming | 1.5 | 02 | ✅ | 14:06 | 14:18 | `4e82395`. 0.2 h vs 1.5 est. Live check ≈ 370 neurons; found the glm grammar bug and `【id】` citations |
 | 08 | IncidentAgent: schema, state, roles, RPC, transitions, narrate | 1.5 | 03, 07 | ⬜ | | | |
 | 09 | DiagnosisWorkflow: planning loop, bounds, rule path | 1.5 | 05, 06, 08 | ⬜ | | | |
 | 10 | Chat UI | 1.75 | 08 | ⬜ | | | |
@@ -178,15 +178,15 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-07</b> LLM layer</summary>
 
-- [ ] `client.ts` adapter + `models.ts` mappers
-- [ ] Primary → fallback model on error/429
-- [ ] `usage.ts` neuron accounting
-- [ ] `prompts.ts` (planning + narration)
-- [ ] `submit_findings` tool + zod
-- [ ] `mock.ts` scripted turns
-- [ ] `citations.ts` post-check + `citations.test.ts`
-- [ ] `stream.ts`
-- [ ] **Done when:** mock and live calls return normalized `LlmResult`; citation tests pass
+- [x] `client.ts` adapter + `models.ts` mappers
+- [x] Primary → fallback model on error/429 (plus timeout and empty answers; 2001/allocation skip it)
+- [x] `usage.ts` neuron accounting (`llm_usage`, `today()` ready for WP-17)
+- [x] `prompts.ts` (planning + narration)
+- [x] `submit_findings` tool + zod (`loop/findings.ts`; `llmTools({finishOnly})` for the last turn)
+- [x] `mock.ts` scripted turns (reads the evidence; `#llm-down` / `#llm-invalid` triggers)
+- [x] `citations.ts` post-check + `citations.test.ts` (+ `【id】`, `isWellFormedNarration`)
+- [x] `stream.ts`
+- [x] **Done when:** mock and live calls return normalized `LlmResult`; citation tests pass
 </details>
 
 <details>
@@ -432,9 +432,9 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 ## Daily wrap-up
 
 ### Day 1 (2026-10-15)
-- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03, WP-04, WP-05, WP-06. Review setup: `dev` branch, Sift workflows on `main`, PR #2 (WP-01 to WP-05) merged
+- **Done:** WP-01 (plus the package change folded into TDD and PRD), WP-02, WP-03, WP-04, WP-05, WP-06, WP-07. Review setup: `dev` branch, Sift workflows on `main`, PR #2 (WP-01 to WP-05) merged
 - **Moved / slipped:**
-- **Hours:** 1.5 / 14.75 h
+- **Hours:** 1.7 / 14.75 h
 - **Transcript exported to `prompts/`:** ⬜
 
 ### Day 2 (2026-10-16)

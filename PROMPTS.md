@@ -132,3 +132,5 @@ Answers to Claude's questions:
 > Lets start with WP-07.
 
 (Plan approved: `worker/llm/` (`models`, `client`, `usage`, `stream`, `prompts`, `citations`, `mock`) plus the `submit_findings` schema in `worker/loop/findings.ts`. The mock picks its answer from the evidence, because a demo URL doesn't show its mode. A throwaway live check costs about 50 neurons.)
+
+(WP-07 done in `4e82395`; 359 tests green. The live check (about 370 neurons) found that glm rejects regex look-around in tool schemas, so the fallback would always have failed in planning; schemas now leave out `pattern`. glm also ignores "last turn" wording, so the last turn offers only `submit_findings`. gpt cites as `【id】` when streaming, and one stream came back as `!!!…`; both are handled.)
