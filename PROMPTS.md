@@ -434,3 +434,21 @@ Answers to Claude's questions:
 (Plan approved: WP-27 with `CtaButton`, `web/lib/status.ts` + `StatusPill`, `CloudflareMark` header, `NotificationToggle` switch, `WebhookSettings` with Slack/Discord logos, right bar Demo service + dashed divider + Watchlist, dot grid + glow.)
 
 (WP-27 built: an orange pill `CtaButton` for the main actions; one status colour map with soft pills everywhere; the Cloudflare cloud × Incident Copilot header with a notifications switch next to GitHub; Slack/Discord logos on the webhook section; Demo service and Watchlist in the right column with a dashed divider; a faint dot grid and a warm glow on the start page. 599 tests pass. Checked in a local browser in light and dark, at desktop, tablet and phone widths.)
+
+### 02:39 · WP-27b UI follow-ups plan
+
+> Mostly looks good. Final changes: center the new incident text in the button; add some gap-y between the webhook url and save button; align all columns to their header perfectly (missing in notifications for eg); increase the heading font size just a little (notifications, Incidents), match the left side bar to the right side bar; add a tooltip hint to 'watch my demo' explaining what it'll do; keep the 'Nothing watched yet…' text inside a dashed box, text in the center; give status colors to 'Now: Healthy' and other statuses; keep my name in the signature at the footer ('Build by cloudflare and some love from sahil'). /grill-me
+
+**Claude asked:** which other statuses should get colours besides the demo's "Now:"?
+**Answer:** the demo mode and the diagnosis next to the incident status.
+
+**Claude asked:** which heading style should both sidebars share?
+**Answer:** UPPERCASE, 13 px, on both sides.
+
+**Claude asked:** "Built by Cloudflare" reads as if Cloudflare made the app. Which footer wording?
+**Answer:** "Built on Cloudflare, with ♥ from Sahil", with "Sahil" linking to GitHub.
+
+**Claude asked:** which tooltip text for "Watch my demo"?
+**Answer:** the short one: "Add your demo site to the watchlist."
+
+(WP-27b built: centred CTA labels, webhook spacing, every column lined up with its heading, matching uppercase headings, coloured demo and diagnosis pills, the tooltip, a dashed empty watchlist and the signed footer. Also fixed a button nested inside a button on the blocked notifications switch. 601 tests pass; checked in a local browser in light and dark.)
