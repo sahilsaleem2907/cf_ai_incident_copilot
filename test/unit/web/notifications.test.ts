@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { newlyUnread } from "../../../web/hooks/useIncidents";
-import { notificationBody } from "../../../web/hooks/useNotifications";
+import { notificationBody, notificationsOn } from "../../../web/hooks/useNotifications";
 import { getWebhook, removeWebhook, saveWebhook, testWebhook, type IncidentRow } from "../../../web/lib/api";
 
 const row = (id: string, unread: boolean, over: Partial<IncidentRow> = {}): IncidentRow => ({
@@ -33,6 +33,17 @@ describe("notificationBody", () => {
   it("says the host, the status in words, and whether a watch opened it", () => {
     expect(notificationBody(row("a", true))).toBe("api.example.com · Investigating (watch)");
     expect(notificationBody(row("a", true, { origin: "chat", status: "resolved" }))).toBe("api.example.com · Resolved");
+  });
+});
+
+describe("notificationsOn (the header switch)", () => {
+  it("needs the browser's permission and the switch not turned off", () => {
+    expect(notificationsOn("granted", null)).toBe(true); // allowed before the switch existed: stays on
+    expect(notificationsOn("granted", "on")).toBe(true);
+    expect(notificationsOn("granted", "off")).toBe(false);
+    for (const p of ["default", "denied", "unsupported"] as const) {
+      for (const s of [null, "on", "off"] as const) expect(notificationsOn(p, s)).toBe(false);
+    }
   });
 });
 

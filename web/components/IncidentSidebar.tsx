@@ -1,15 +1,15 @@
-import { Badge, Sidebar } from "@cloudflare/kumo";
+import { Sidebar } from "@cloudflare/kumo";
 import { EyeIcon } from "@phosphor-icons/react";
 import { useCallback } from "react";
 import { useLocation } from "wouter";
 import { useIncidents } from "../hooks/useIncidents";
 import { showIncidentNotification } from "../hooks/useNotifications";
 import type { IncidentRow } from "../lib/api";
-import { STATUS_TEXT } from "../lib/incident";
+import { IncidentStatusBadge, StatusPill } from "./StatusBadge";
 
 /**
- * The workspace's incidents (D16, FR-50): polled every 10 s while the tab is visible. Unread ones get a dot
- * and the word "New"; watch-opened ones say "Watch". A row that turns unread raises a browser notification
+ * The workspace's incidents (D16, FR-50): polled every 10 s while the tab is visible. Unread ones get an orange
+ * dot and a bold host ("New" for screen readers); each shows its status pill; watch-opened ones say "Watch". A row that turns unread raises a browser notification
  * (if allowed), unless it's the incident already open in a visible tab.
  */
 export function IncidentSidebar() {
@@ -35,7 +35,11 @@ export function IncidentSidebar() {
       <Sidebar.GroupLabel>
         <span className="flex items-center gap-1.5">
           Incidents
-          {unread > 0 && <Badge variant="secondary">{unread} new</Badge>}
+          {unread > 0 && (
+            <StatusPill tone="orange" size="sm">
+              {unread} new
+            </StatusPill>
+          )}
         </span>
       </Sidebar.GroupLabel>
       <Sidebar.Menu>
@@ -44,14 +48,18 @@ export function IncidentSidebar() {
           return (
             <Sidebar.MenuItem key={r.id}>
               <Sidebar.MenuButton href={`/i/${r.id}`} active={location === `/i/${r.id}`} className="h-auto py-1.5">
-                <span className="flex min-w-0 flex-col">
+                <span className="flex min-w-0 flex-col gap-1">
                   <span className={`flex items-center gap-1.5 truncate font-mono text-xs ${r.unread ? "font-semibold" : ""}`}>
-                    {r.unread && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-(--cf-fg)" />}
+                    {r.unread && (
+                      <>
+                        <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-cf-orange" />
+                        <span className="sr-only">New:</span>
+                      </>
+                    )}
                     <span className="truncate">{host}</span>
                   </span>
                   <span className="flex items-center gap-1 text-xs text-(--cf-fg-muted)">
-                    {r.unread && <span className="font-medium text-(--cf-fg)">New ·</span>}
-                    {STATUS_TEXT[r.status]}
+                    <IncidentStatusBadge status={r.status} size="sm" />
                     {r.origin === "watch" && (
                       <>
                         {" · "}

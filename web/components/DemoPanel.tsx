@@ -58,10 +58,10 @@ export function DemoPanel() {
   return (
     <section aria-labelledby="demo-panel-title" className="flex flex-col gap-4">
       <div>
-        <h2 id="demo-panel-title" className="font-display text-base font-medium">
+        <h2 id="demo-panel-title" className="section-label">
           Demo service
         </h2>
-        <p className="mt-1 text-sm text-(--cf-fg-muted)">Break your own demo site, then ask the copilot what's wrong.</p>
+        <p className="mt-2 text-sm text-(--cf-fg-muted)">Break your own demo site, then ask the copilot what's wrong.</p>
       </div>
 
       {demo && (

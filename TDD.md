@@ -700,10 +700,10 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 
 ### 12.1 Layout (`AppShell`)
 
-- **Header:** wordmark "Incident Copilot", `BudgetBanner`, and a GitHub link. Don't use the Cloudflare logo; "Built on Cloudflare" in the footer is enough.
-- **Left `Sidebar`:** "New incident" and the incident list (status badge, unread dot, polled every 10 s), followed by `WatchlistPanel` and `WebhookSettings`.
-- **Main area:** `ChatPane`.
-- **Right column:** `DemoPanel`. Below the `lg` breakpoint it becomes a closed "Demo service" disclosure at the top of `<main>` (an `aria-expanded` button, as for evidence). `useMediaQuery` mounts it in one place only, so the panel keeps a single state.
+- **Header:** Kumo's `CloudflareLogo` glyph (the orange cloud), a muted "×" and "Incident Copilot", linking to `/`; on the right, the `NotificationToggle` switch and a GitHub link (both icon-only below `sm`); `BudgetBanner` under it. The "Built on Cloudflare" footer stays. *(WP-27, user decision: replaces the earlier "no Cloudflare logo" rule.)*
+- **Left `Sidebar`:** "New incident" (`CtaLinkButton`) and the incident list (status pill, unread dot, polled every 10 s), followed by `WebhookSettings`.
+- **Main area:** `ChatPane`, over a faint dot grid (`.bg-dot-grid`). The New incident page adds a warm glow at the bottom (`.bg-glow`).
+- **Right column:** `DemoPanel`, a dashed divider (`.divider-dashed`), then `WatchlistPanel`, each under a small uppercase `.section-label` heading. Below the `lg` breakpoint it becomes a closed "Demo & watchlist" disclosure at the top of `<main>` (an `aria-expanded` button, as for evidence). `useMediaQuery` mounts it in one place only, so the panels keep a single state.
 
 ### 12.2 Components
 
@@ -719,10 +719,23 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
     - Expired, no action taken;
     - Replaced by a newer proposal.
 
-    A pending card has an orange border. Viewers see "Only the incident's owner can approve this."
+    A pending card has an orange border (purple since WP-27, see `StatusPill`). Viewers see "Only the incident's owner can approve this."
   - The header has a **Resolve** button (owner, not resolved) and a "Watching after the fix: n of 3" line while the monitor runs.
   - A finished restore fires `demo:changed`, so the `DemoPanel` reloads.
 - **Status chip in the incident header:** `investigating`, `awaiting approval`, `mitigated` or `resolved`, always with text. It's followed by Resolve and Postmortem buttons.
+- **`StatusPill`** (`StatusBadge.tsx`, WP-27): a soft pill (coloured text and icon on a light tint of the same colour) for every status in the app: incident status (header and sidebar rows), check status, watch status and approval status. One colour language, in `web/lib/status.ts`:
+
+  | Colour | Means | Incident | Check | Watch | Approval |
+  |---|---|---|---|---|---|
+  | Orange | in progress / needs a look | Investigating | Running | Incident open | Working on it |
+  | Purple | waiting on you | Awaiting approval | | | Waiting for your approval |
+  | Green | good | Resolved | Pass | Passing | Approved and verified |
+  | Red | broken | | Fail | Last check failed | Still failing / failed |
+  | Yellow | the check itself errored | | Error | | |
+  | Grey | quiet / done / not yet | Mitigated | Pending, Unavailable | Not checked yet | Rejected, expired, replaced |
+
+  A pending approval card's border is purple, to match.
+- **`CtaButton` / `CtaLinkButton`** (WP-27): Kumo's primary button (orange) as a pill; same props as Kumo's. Used for New incident, Send, Approve, Watch and Save webhook.
 
 ### 12.3 State
 
@@ -730,10 +743,14 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 
 *As built (WP-19):*
 - **Polling:** `useIncidents` polls every 10 s while the tab is visible, reloads at once when the tab comes back, on `INCIDENTS_CHANGED`, and on navigation. `newlyUnread` diffs against the previous load and announces nothing on the first one.
-- **Unread:** a dot, bold text and the word "New" on the row, plus a "n new" badge on the group label. Narration and automatic status changes (monitor ticks, watch checks) set unread; the user's own changes don't.
+- **Unread:** a dot, bold text and the word "New" on the row, plus a "n new" badge on the group label. *(WP-27: an orange dot and bold host; "New" is screen-reader text only; the "n new" badge is a light-orange pill.)* Narration and automatic status changes (monitor ticks, watch checks) set unread; the user's own changes don't.
 - **Read:** `IncidentView` (owner) calls the `markRead` callable when it opens, and on new replies or status while the tab is visible.
 - **Browser notifications:** one per newly unread row (`tag` = incident ID), except the incident open in a visible tab. Clicking one focuses the tab and opens the incident.
 - **`NotificationSettings`** (the TDD's `WebhookSettings`, in the sidebar): browser on / turn on / blocked; webhook save (`SensitiveInput`), masked hint, send test, remove; "not set up on this deployment" when there's no key.
+
+*As built (WP-27):*
+- **`NotificationToggle`** (header): a Kumo `Switch`. A site can't take back a granted permission, so on/off is the app's own setting, saved in `localStorage` (`notifications`, read and written in try/catch). `notificationsOn(permission, stored)` is true only when permission is `granted` and the switch isn't `off`, so people who allowed notifications before stay on. Switching on with permission `default` asks the browser (still only from the click). Blocked: switch disabled, tooltip "Blocked in browser settings". Unsupported: not shown. `showIncidentNotification` checks the same rule.
+- **`WebhookSettings`** (renamed from `NotificationSettings`, left sidebar): webhook only. Slack and Discord logos (Phosphor) side by side as the title, grey until a webhook is saved; then that app's logo takes its brand colour (`--brand-slack`, `--brand-discord`).
 
 *As built (WP-10):*
 - **Pure helpers** in `web/lib/` (unit-tested in `test/unit/web/`):
@@ -777,8 +794,10 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 - Token values come from cloudflare.com's live CSS (2026-10-14).
 - **Never use Tailwind `dark:` variants.** Kumo uses `light-dark()`, and `theme.ts` sets `data-mode` on `<html>` from `prefers-color-scheme` and listens for changes.
 - Headings use `font-display` at weight 500. Hostnames, evidence IDs and raw evidence use `font-mono`.
-- Orange is only for primary CTAs (Send, Approve) and highlight rings. Everything else uses Kumo's neutral variants.
-- **Kumo components used:** `Sidebar`, `Button`, `Badge`, `LayerCard`, `Surface`, `Collapsible`, `Code`, `Loader`, `Banner`, `Toast`, `Dialog`, `ClipboardText`, `Input`, `SensitiveInput`, `Select`/`Radio`, `Table`, `Tooltip`, `Empty`. Before building, run `npx @cloudflare/kumo ls` and read `node_modules/@cloudflare/kumo/ai/USAGE.md` for exact props.
+- Orange means: main actions (`CtaButton`), highlight rings, the notifications switch when on, unread markers, and "in progress" statuses (the `StatusPill` table in §12.2). Other statuses use their own colour from that table; everything else uses Kumo's neutral variants. *(WP-27, user decision: was "orange only for primary CTAs and highlight rings".)*
+- Kumo's `Switch` hard-codes blue for "on"; `styles.css` overrides it to Cloudflare orange.
+- Background: a faint dot grid behind the main area only, and a warm glow on the New incident page, after cloudflare.com's hero. Dividers in the right column are dashed in the same rhythm.
+- **Kumo components used:** `Sidebar`, `Button`, `Badge`, `Switch`, `CloudflareLogo`, `LayerCard`, `Surface`, `Collapsible`, `Code`, `Loader`, `Banner`, `Toast`, `Dialog`, `ClipboardText`, `Input`, `SensitiveInput`, `Select`/`Radio`, `Table`, `Tooltip`, `Empty`. Before building, run `npx @cloudflare/kumo ls` and read `node_modules/@cloudflare/kumo/ai/USAGE.md` for exact props.
 - **Accessibility:** every control works from the keyboard, the composer submits with Enter (Shift+Enter for a new line), Approve and Reject are real `<button>`s, the stream region has `aria-live="polite"`, and status is never shown by color alone.
 
 ## 13. Observability

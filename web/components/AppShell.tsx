@@ -1,15 +1,18 @@
-import { LinkButton, Sidebar } from "@cloudflare/kumo";
+import { CloudflareLogo, Sidebar } from "@cloudflare/kumo";
 import { CaretRightIcon, GithubLogoIcon, PlusIcon } from "@phosphor-icons/react";
 import { useState, type ReactNode } from "react";
+import { Link } from "wouter";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { BudgetBanner } from "./BudgetBanner";
+import { CtaLinkButton } from "./CtaButton";
+import { NotificationToggle } from "./NotificationToggle";
 
 const REPO_URL = "https://github.com/sahilsaleem2907/cf_ai_incident_copilot";
 
 type Props = {
-  /** Incident list, watchlist and notification settings (WP-10, WP-18, WP-19). */
+  /** Incident list and webhook settings (WP-10, WP-19). */
   sidebar?: ReactNode;
-  /** Right column (DemoPanel). Below `lg` it collapses into a disclosure at the top of <main>. */
+  /** Right column (DemoPanel, WatchlistPanel). Below `lg` it collapses into a disclosure at the top of <main>. */
   aside?: ReactNode;
   children?: ReactNode;
   /** From `/api/session`: "rule_based" shows the BudgetBanner under the title bar. */
@@ -23,16 +26,26 @@ export function AppShell({ sidebar, aside, children, budgetMode }: Props) {
     <div className="flex h-dvh flex-col">
       <header className="shrink-0 border-b border-(--cf-border) bg-(--cf-bg-200)">
         <div className="flex h-14 items-center justify-between px-4">
-          <span className="font-display text-lg font-medium">Incident Copilot</span>
-          <a
-            href={REPO_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-(--cf-fg-muted) hover:text-(--cf-fg) focus-visible:outline-2 focus-visible:outline-cf-orange"
-          >
-            <GithubLogoIcon aria-hidden size={18} />
-            GitHub
-          </a>
+          <Link href="/" className="flex items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-cf-orange">
+            <CloudflareLogo variant="glyph" aria-hidden className="h-6 w-auto" />
+            <span aria-hidden className="text-(--cf-fg-muted)">
+              ×
+            </span>
+            <span className="font-display text-lg font-medium">Incident Copilot</span>
+          </Link>
+          <div className="flex items-center gap-3">
+            <NotificationToggle />
+            <a
+              href={REPO_URL}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="GitHub"
+              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-(--cf-fg-muted) hover:text-(--cf-fg) focus-visible:outline-2 focus-visible:outline-cf-orange"
+            >
+              <GithubLogoIcon aria-hidden size={18} />
+              <span className="max-sm:hidden">GitHub</span>
+            </a>
+          </div>
         </div>
         {budgetMode === "rule_based" && <BudgetBanner />}
       </header>
@@ -41,14 +54,14 @@ export function AppShell({ sidebar, aside, children, budgetMode }: Props) {
       <Sidebar.Provider contained defaultOpen collapsible="offcanvas" mobileBreakpoint={768} className="min-h-0 flex-1">
         <Sidebar aria-label="Incidents">
           <Sidebar.Header>
-            <LinkButton href="/" variant="secondary" icon={PlusIcon} className="w-full">
+            <CtaLinkButton href="/" icon={PlusIcon} className="w-full">
               New incident
-            </LinkButton>
+            </CtaLinkButton>
           </Sidebar.Header>
           <Sidebar.Content>{sidebar}</Sidebar.Content>
         </Sidebar>
 
-        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-(--cf-bg-100)">
+        <main className="bg-dot-grid flex min-w-0 flex-1 flex-col overflow-y-auto bg-(--cf-bg-100)">
           <div className="border-b border-(--cf-border) px-2 py-1 md:hidden">
             <Sidebar.Trigger aria-label="Show incidents" />
           </div>
@@ -57,7 +70,7 @@ export function AppShell({ sidebar, aside, children, budgetMode }: Props) {
         </main>
 
         {wide && aside && (
-          <aside aria-label="Demo service" className="w-80 shrink-0 overflow-y-auto border-l border-(--cf-border) bg-(--cf-bg-200) p-4">
+          <aside aria-label="Demo and watchlist" className="w-80 shrink-0 overflow-y-auto border-l border-(--cf-border) bg-(--cf-bg-200) p-4">
             {aside}
           </aside>
         )}
@@ -74,7 +87,7 @@ export function AppShell({ sidebar, aside, children, budgetMode }: Props) {
 function NarrowAside({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
-    <aside aria-label="Demo service" className="border-b border-(--cf-border) bg-(--cf-bg-200)">
+    <aside aria-label="Demo and watchlist" className="border-b border-(--cf-border) bg-(--cf-bg-200)">
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -83,10 +96,9 @@ function NarrowAside({ children }: { children: ReactNode }) {
         className="flex w-full items-center gap-1.5 px-4 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-cf-orange"
       >
         <CaretRightIcon aria-hidden size={12} className={open ? "rotate-90 transition-transform" : "transition-transform"} />
-        Demo service
+        Demo & watchlist
       </button>
-      {/* The toggle already names the panel, so its own heading is kept for screen readers only. */}
-      <div id="narrow-aside" hidden={!open} className="px-4 pb-4 [&_h2]:sr-only">
+      <div id="narrow-aside" hidden={!open} className="px-4 pb-4">
         {children}
       </div>
     </aside>
