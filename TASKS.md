@@ -21,8 +21,8 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-14 Tests 🔄 (started 21:24 on Day 1 evening; WP-14 to WP-16 run as one plan)
-- **Next:** WP-15 CI/CD, then WP-16 README + PROMPTS
+- **Current:** WP-15 CI/CD 🔄 (started 21:27; WP-14 ✅). WP-14 to WP-16 run as one plan, started early on Day 1 evening
+- **Next:** WP-16 README + PROMPTS
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
@@ -60,8 +60,8 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 | WP | Task | Est | Deps | Status | Started | Done | Commit / notes |
 |---|---|---|---|---|---|---|---|
-| 14 | Tests (Must): fill coverage gaps | 1.25 | 12 | 🔄 | 21:24 (D1) | | |
-| 15 | CI/CD (Must): `ci.yml`, `deploy.yml`, smoke | 0.75 | 14 | ⬜ | | | |
+| 14 | Tests (Must): fill coverage gaps | 1.25 | 12 | ✅ | 21:24 (D1) | 21:27 (D1) | `366d3ed`. 0.05 h vs 1.25 est. +19 tests (`schema`, `cookie`, web `approval`) and 6 `cron` stubs for WP-18; 521 pass, 3 runs in a row. `transitions` already complete. The approval path is covered by `approval.test.ts` (8 cases) |
+| 15 | CI/CD (Must): `ci.yml`, `deploy.yml`, smoke | 0.75 | 14 | 🔄 | 21:27 (D1) | | |
 | 16 | README + PROMPTS (Must, **protected time**) | 1.0 | — | ⬜ | | | |
 | 17 | Limits + budget guard | 1.0 | 15 | ⬜ | | | |
 | 18 | Watch: API, panel, cron, `WatchWorkflow` | 2.0 | 17 | ⬜ | | | |
@@ -279,9 +279,9 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-14</b> Tests</summary>
 
-- [ ] Fill unit coverage gaps
-- [ ] Fill integration gaps (`transitions`, `cron` stubs)
-- [ ] **Done when:** `pnpm test` is green and the approval path is covered
+- [x] Fill unit coverage gaps (`schema`, `cookie`, web `approval`)
+- [x] Fill integration gaps (`transitions` already complete; `cron.test.ts` stubs for WP-18)
+- [x] **Done when:** `pnpm test` is green and the approval path is covered
 </details>
 
 <details>
