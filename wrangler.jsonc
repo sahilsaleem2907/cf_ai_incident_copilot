@@ -18,6 +18,7 @@
   ],
   "durable_objects": { "bindings": [{ "name": "IncidentAgent", "class_name": "IncidentAgent" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["IncidentAgent"] }],
+  "workflows": [{ "name": "diagnosis", "binding": "DIAGNOSIS_WORKFLOW", "class_name": "DiagnosisWorkflow" }],
   "services": [{ "binding": "DEMO", "service": "incident-copilot-demo", "entrypoint": "DemoAdmin" }],
   "vars": {
     "DEMO_BASE_URL": "https://incident-copilot-demo.<sub>.workers.dev",

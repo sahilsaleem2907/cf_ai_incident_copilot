@@ -3,6 +3,7 @@ import { api } from "./api/router";
 import { isId } from "./lib/ids";
 
 export { IncidentAgent } from "./agent/IncidentAgent";
+export { DiagnosisWorkflow } from "./workflows/diagnosis";
 
 const notFound = () => new Response("Not found", { status: 404 });
 

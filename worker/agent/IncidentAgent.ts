@@ -1,11 +1,13 @@
 import { Agent, callable, getCurrentAgent, type Connection, type ConnectionContext } from "agents";
 import type { Findings } from "../diagnosis/categories";
+import { classify } from "../diagnosis/classify";
 import { renderTemplate } from "../diagnosis/template";
 import { workspaceFromCookieHeader } from "../lib/cookie";
 import { llmDeps } from "../llm/client";
 import { LlmUnavailable } from "../llm/models";
 import { narrationSystem, narrationUser, type EvidenceLine } from "../llm/prompts";
 import { streamLlm } from "../llm/stream";
+import { salvageFindings } from "../loop/findings";
 import { finalizeNarration, NARRATION_MAX_TOKENS, type NarrationOutcome } from "../loop/narrate";
 import type { DnsRaw } from "../tools/dns";
 import { evidenceId, toolLabel } from "../tools/registry";
@@ -146,8 +148,31 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     this.touch();
     this.syncState();
     await this.upsertIndex();
-    // WP-09: start DiagnosisWorkflow here with id `diag-<incidentId>-<seq>` (TDD §8.1).
+    // Test seam: the integration tests drive some runs by hand (vitest.config.ts sets it); unset everywhere else.
+    if ((this.env as { DIAGNOSIS_AUTOSTART?: string }).DIAGNOSIS_AUTOSTART !== "off") await this.launchRun(runId);
     return runId;
+  }
+
+  /**
+   * Starts the run's DiagnosisWorkflow (TDD §8.1) with ID `diag-<incidentId>-<seq>`. Idempotent. If the
+   * Workflow can't start, the run ends as `failed` with a note, so the composer isn't left disabled.
+   */
+  async launchRun(runId: string): Promise<string | null> {
+    const run = this.mustRun(runId);
+    const existing = this.sql<{ workflow_id: string | null }>`SELECT workflow_id FROM runs WHERE id = ${runId}`[0]?.workflow_id;
+    if (existing) return existing;
+    if (run.status !== "running") return null;
+    const id = `diag-${this.name}-${run.seq}`;
+    try {
+      await this.runWorkflow("DIAGNOSIS_WORKFLOW", { incidentId: this.name, runId }, { id });
+      this.sql`UPDATE runs SET workflow_id = ${id} WHERE id = ${runId}`;
+      return id;
+    } catch (e) {
+      console.error("could not start the diagnosis workflow", (e as Error).message);
+      this.addMessage(runId, "system", "The diagnosis couldn't start. Please try again in a moment.");
+      await this.finishRun(runId, "failed");
+      return null;
+    }
   }
 
   getRunContext(runId: string): RunContext {
@@ -191,6 +216,16 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     this.sql`UPDATE checks SET status = ${result.status}, summary = ${result.summary}, digest = ${result.digest},
       raw_json = ${JSON.stringify(result.raw ?? null)}, finished_at = ${Date.now()} WHERE evidence_id = ${id}`;
     this.syncState();
+  }
+
+  /**
+   * Rule-based findings over every stored check (raw evidence stays here), keeping whatever the model's
+   * last `submit_findings` got right (TDD §8.2 "Limits keep progress").
+   */
+  ruleFindings(runId: string, modelArgs: unknown): Findings {
+    this.mustRun(runId);
+    const results = this.sql<CheckRow>`SELECT * FROM checks WHERE finished_at IS NOT NULL ORDER BY rowid`.map(toResult);
+    return salvageFindings(modelArgs, classify(results), results.map((r) => r.evidenceId)).findings;
   }
 
   async setFindings(runId: string, findings: Findings, mode: RunMode = "ai"): Promise<void> {
@@ -256,8 +291,12 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
   async finishRun(runId: string, status: Exclude<RunStatus, "running">, stats: { toolCalls?: number; llmTurns?: number } = {}): Promise<void> {
     const run = this.mustRun(runId);
     if (run.status !== "running") return;
-    this.sql`UPDATE runs SET status = ${status}, finished_at = ${Date.now()}, tool_calls = ${stats.toolCalls ?? 0},
+    const now = Date.now();
+    this.sql`UPDATE runs SET status = ${status}, finished_at = ${now}, tool_calls = ${stats.toolCalls ?? 0},
       llm_turns = ${stats.llmTurns ?? 0} WHERE id = ${runId}`;
+    // Checks planned but never run (the run stopped first) shouldn't spin forever in the UI.
+    this.sql`UPDATE checks SET status = 'unavailable', summary = 'Not run: the run stopped before this check.', finished_at = ${now}
+      WHERE run_id = ${runId} AND finished_at IS NULL`;
     this.event("run_finished", { runId, status });
     this.touch();
     this.syncState();

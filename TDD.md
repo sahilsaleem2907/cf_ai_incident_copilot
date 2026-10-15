@@ -425,6 +425,19 @@ Tool steps retry with `{limit: 2}` because each retry spends subrequest budget. 
 - **Narration cut short** (`LlmUnavailable.partial`, or `truncated`): keep the streamed text if `isWellFormedNarration` passes, run `checkCitations` on it, and add "_Narration was cut short._". Otherwise store `renderTemplate`. Text the user already saw is never silently replaced by something unrelated.
 - **The run records why it stopped** (`runs.status`: `done` · `limit_turns` · `limit_tools` · `limit_deadline` · `limit_budget` · `llm_unavailable`), plus a timeline event. The UI says which limit hit and how many checks the diagnosis uses.
 
+**As built (WP-09):**
+- **Driver + `io`.** All the run logic is the pure `loop/plan.ts` `diagnose(io, runId, limits)`. `workflows/diagnosis.ts` only supplies `io`: `step` = `step.do` with `{limit: 2, delay: "1 second", backoff: "exponential"}`, the agent RPC, `callLlm`, `runTool` with global `fetch` and `devAllowOrigin(env)`. `io.now()` is only called inside steps (each step returns `at`), so time-based decisions replay the same way after a restart.
+- **Step names:** `context` · `llm-turn-N` · `pending-N` · `tool-<evidenceId>` · `pending-rules` · `rules` · `findings` · `narrate` · `finish` (`finish-failed` on an unexpected error).
+- **Budget.** It's rebuilt from step results: 1 per agent RPC, 1 or 2 per LLM turn (fallback), each tool's real count plus its `recordCheck`. A tool's worst-case cap is reserved before it runs, and 4 are held back from the start for the tail.
+- **Statuses.** A finish-only turn is forced by the turn cap (the last turn), the tool cap, or not enough budget for another tool plus a turn. Its status is `limit_turns` / `limit_tools` / `limit_budget` even when the model then submits good findings. Once the deadline passes there are **no more LLM turns**: rules + salvage, `limit_deadline`. A second invalid turn goes to the rules with status `done`.
+- **Rule path.** It runs only the baseline checks (`dns_lookup` host, `http_probe` target) that this run hasn't done, if budget and time allow. Then the agent's `ruleFindings(runId, lastFindingsArgs)` = `classify` over all stored checks + `salvageFindings` (raw evidence never leaves the DO).
+- **Findings** must cite evidence IDs that exist; unknown IDs are dropped, and none left counts as invalid. Calls past the tool cap are dropped and the model is told.
+- **A check that throws** is stored as an `error` check. A tool step that fails even after retries is counted at its cap and the run continues.
+- **`finishRun`** marks checks that were planned but never run as `unavailable` ("Not run: the run stopped before this check.").
+- **Launch.** `startRun` → `launchRun(runId)` (idempotent, ID `diag-<incidentId>-<seq>`, stored in `runs.workflow_id`). If the Workflow can't start, the run finishes `failed` with a system message. Test seam: `DIAGNOSIS_AUTOSTART=off` (integration config only) skips the auto-launch so agent tests can drive runs by hand.
+- `PLAN_MAX_TOKENS` = 1500, because gpt's reasoning shares the budget.
+- **Approval tail:** not built yet. WP-12 inserts propose → wait → act → verify after `narrate` (marked in `plan.ts`).
+
 **`waitForApproval` behaviour (WP-02, local Workflows, `agents` 0.28.1):**
 - **Approve:** returns the `metadata` passed to `approveWorkflow`.
 - **Reject:** throws `WorkflowRejectedError` ("Workflow rejected: <reason>").
@@ -655,12 +668,14 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | | `origin.test.ts` | Origin-pin scope rules |
 | Integration (`@cloudflare/vitest-plugin`, main Worker, mocked outbound fetch, `LLM_MODE=mock`) | `agent.test.ts` | `init`, owner/viewer roles over a real WebSocket (`helpers/ws.ts` speaks the SDK's `rpc` / `cf_agent_state` frames), idempotent `addPendingChecks`/`recordCheck`, narration streaming, idempotency and template fallback, limits, index sync |
 | | `incidents.test.ts` | `need_target`, create, list per workspace, owner-only snapshot, read |
-| | `diagnosis.test.ts` | Scripted mock LLM: tools, then findings, then narrate. Invalid call ×2 → rule path. LLM unavailable → rule path. Budget cap. |
+| | `diagnosis.test.ts` | Real Workflow, mock LLM, fake internet: tools → findings → narrate; healthy → resolved; `#llm-down` → rules; `#llm-invalid` ×2 → rules; NXDOMAIN; follow-up run |
+| Unit | `plan.test.ts` | The driver with a fake `io`: happy path, invalid once/twice, origin pin, LLM down, tool cap, turn cap, budget, deadline, throwing check, unexpected failure, rule-based mode |
 | | `approval.test.ts` | Propose → approve → `setMode` called → verify → `mitigated` → 2 ticks → `resolved`. Reject → `investigating`. Supersede. |
 | | `cron.test.ts` | Due-watch query with LIMIT and caps; failure starts WatchWorkflow; duplicate ID ignored |
 | Demo (`@cloudflare/vitest-plugin`, demo Worker) | `demo.test.ts` | Every mode's status, headers and timing, through `exports.default` and the `DemoAdmin` RPC |
 
 - **Projects** (`vitest.config.ts`): `unit` runs in node. `integration` loads `wrangler.jsonc` with `LLM_MODE=mock` and a valid test `DEMO_BASE_URL`, and with `remoteBindings: false`, so the AI binding never goes remote: tests need no login and spend no neurons. `demo` loads `demo-service/wrangler.jsonc`.
+- **Fake internet (WP-09):** the integration project's `outboundService` is an inline `fake-internet` Worker. It answers DoH for `*.example.com` (NXDOMAIN for `nxdomain.example.com`), returns 500 for `broken.example.com` and serves HTML for other `*.example.com` hosts, so no integration test touches the real network. `diagnosis.test.ts` runs real local Workflows through `introspectWorkflow`; `plan.test.ts` covers every limit with a fake `io`.
 - Unit tests load the recorded fixtures as JSON imports and the `.sse` files with Vite `?raw` imports (`test/unit/raw.d.ts`), because the worker tsconfig has no Node types.
 - **Demo stub:** the test runtime won't start while a service binding points at a Worker it doesn't know about. So `integration` adds a small inline stand-in `incident-copilot-demo` Worker behind `DEMO`, and `approval.test.ts` asserts what the main Worker asks it to do (e.g. `setMode`). The real demo service is tested only in `demo`.
 - Tests use `env` and `exports` from `cloudflare:workers` (the plugin's `cloudflare:test` `env`/`SELF` are deprecated). Workflow tests use the plugin's Workflow introspection APIs. Retrying events with `waitForEvent` and the timeout path are verified in WP-02.
