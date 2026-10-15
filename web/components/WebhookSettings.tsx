@@ -52,8 +52,10 @@ export function WebhookSettings() {
 
   return (
     <Sidebar.Group>
-      <Sidebar.GroupLabel>Notifications</Sidebar.GroupLabel>
-      <div className="flex flex-col gap-1.5 px-2 pb-3 break-words whitespace-normal">
+      <Sidebar.GroupLabel>
+        <span className="section-label">Notifications</span>
+      </Sidebar.GroupLabel>
+      <div className="flex flex-col gap-1.5 px-3 pb-3 break-words whitespace-normal">
         <span className="flex items-center gap-1.5 text-sm font-medium">
           <span aria-hidden className="flex items-center gap-0.5">
             <SlackLogoIcon size={18} weight="fill" style={{ color: logoColor("slack") }} />
@@ -64,7 +66,7 @@ export function WebhookSettings() {
         <span className="text-xs text-(--cf-fg-muted)">Posts when a watched site breaks, recovers and is resolved.</span>
         {hook && !hook.available && <span className="text-xs text-(--cf-fg-muted)">{WEBHOOK_ERROR_TEXT.webhooks_unavailable}</span>}
         {hook?.available && !hook.webhook && (
-          <form onSubmit={save} className="flex flex-col gap-1.5">
+          <form onSubmit={save} className="flex flex-col gap-3">
             <SensitiveInput label="Webhook URL" size="sm" value={url} onValueChange={setUrl} placeholder="https://discord.com/api/webhooks/…" />
             <CtaButton type="submit" size="sm" className="w-fit" loading={busy} disabled={!url.trim()}>
               Save webhook

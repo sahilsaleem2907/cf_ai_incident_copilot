@@ -1,3 +1,4 @@
+import type { DemoMode } from "../../demo-service/src/modes";
 import type { CheckView, IncidentStatus } from "../../worker/agent/state";
 import type { CardState } from "./approval";
 
@@ -37,3 +38,19 @@ export const APPROVAL_TONE: Record<CardState["tone"], Tone> = {
   bad: "red",
   closed: "grey",
 };
+
+/** The demo's current mode: a problem is red, the slow-down yellow (it's degraded, not broken). */
+export const DEMO_MODE_TONE: Record<DemoMode, Tone> = {
+  healthy: "green",
+  slow: "yellow",
+  errors: "red",
+  redirect_loop: "red",
+  bad_cache: "red",
+};
+
+/** The diagnosis category next to the incident status: anything but healthy or inconclusive is a problem. */
+export function categoryTone(category: string): Extract<Tone, "green" | "grey" | "red"> {
+  if (category === "healthy") return "green";
+  if (category === "inconclusive") return "grey";
+  return "red";
+}

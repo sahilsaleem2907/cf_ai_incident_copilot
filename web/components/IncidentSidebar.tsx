@@ -27,14 +27,13 @@ export function IncidentSidebar() {
   const rows = useIncidents(location, onNewUnread);
 
   if (rows === null) return null;
-  if (rows.length === 0) return <p className="px-3 py-2 text-sm text-(--cf-fg-muted)">No incidents yet.</p>;
   const unread = rows.filter((r) => r.unread).length;
 
   return (
     <Sidebar.Group>
       <Sidebar.GroupLabel>
         <span className="flex items-center gap-1.5">
-          Incidents
+          <span className="section-label">Incidents</span>
           {unread > 0 && (
             <StatusPill tone="orange" size="sm">
               {unread} new
@@ -42,6 +41,7 @@ export function IncidentSidebar() {
           )}
         </span>
       </Sidebar.GroupLabel>
+      {rows.length === 0 && <p className="px-3 py-1 text-sm text-(--cf-fg-muted)">No incidents yet.</p>}
       <Sidebar.Menu>
         {rows.map((r) => {
           const host = safeHost(r.target);

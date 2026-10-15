@@ -5,14 +5,15 @@ import {
   HourglassIcon,
   MagnifyingGlassIcon,
   MinusCircleIcon,
+  QuestionIcon,
   ShieldCheckIcon,
   WarningCircleIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import type { CheckView, IncidentStatus } from "../../worker/agent/state";
-import { STATUS_TEXT } from "../lib/incident";
-import { CHECK_TONE, INCIDENT_TONE, type Tone } from "../lib/status";
+import { CATEGORY_TEXT, STATUS_TEXT } from "../lib/incident";
+import { categoryTone, CHECK_TONE, INCIDENT_TONE, type Tone } from "../lib/status";
 
 type PillProps = { tone: Tone; icon?: ReactNode; size?: "sm" | "base"; className?: string; children: ReactNode };
 
@@ -57,6 +58,23 @@ export function IncidentStatusBadge({ status, size = "base" }: { status: Inciden
   return (
     <StatusPill tone={INCIDENT_TONE[status]} size={size} icon={INCIDENT_ICON[status](size === "sm" ? 11 : 14)}>
       {STATUS_TEXT[status]}
+    </StatusPill>
+  );
+}
+
+const CATEGORY_ICON: Record<ReturnType<typeof categoryTone>, ReactNode> = {
+  green: <CheckCircleIcon aria-hidden size={14} weight="fill" />,
+  grey: <QuestionIcon aria-hidden size={14} weight="bold" />,
+  red: <XCircleIcon aria-hidden size={14} weight="fill" />,
+};
+
+/** The diagnosis category next to the incident status, e.g. "Origin 5xx" in red, "Healthy" in green. */
+export function CategoryPill({ category }: { category: string }) {
+  const tone = categoryTone(category);
+  return (
+    <StatusPill tone={tone} icon={CATEGORY_ICON[tone]}>
+      <span className="sr-only">Diagnosis: </span>
+      {CATEGORY_TEXT[category] ?? category}
     </StatusPill>
   );
 }

@@ -1,4 +1,4 @@
-import { Button, Input } from "@cloudflare/kumo";
+import { Button, Input, Tooltip } from "@cloudflare/kumo";
 import { CheckCircleIcon, ClockIcon, EyeIcon, TrashIcon, WarningIcon, XCircleIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "wouter";
@@ -86,9 +86,13 @@ export function WatchlistPanel({ demoUrl }: { demoUrl?: string }) {
           </CtaButton>
         </form>
         {demoUrl && !demoWatched && (
-          <Button size="xs" variant="ghost" className="w-fit" disabled={busy} onClick={() => void add(demoUrl)}>
+          // -ml-1.5 cancels the ghost button's padding, so its text lines up with the column.
+          <Tooltip
+            content="Add your demo site to the watchlist."
+            render={<Button size="xs" variant="ghost" className="-ml-1.5 w-fit" disabled={busy} onClick={() => void add(demoUrl)} />}
+          >
             Watch my demo
-          </Button>
+          </Tooltip>
         )}
         {error && (
           <p role="alert" className="text-xs text-(--cf-fg)">
@@ -96,7 +100,11 @@ export function WatchlistPanel({ demoUrl }: { demoUrl?: string }) {
           </p>
         )}
 
-        {watches && watches.length === 0 && <p className="text-xs text-(--cf-fg-muted)">Nothing watched yet. Checks run every few minutes for 24 hours.</p>}
+        {watches && watches.length === 0 && (
+          <p className="rounded-lg border border-dashed border-(--grid-dash) px-3 py-4 text-center text-xs text-(--cf-fg-muted)">
+            Nothing watched yet. Checks run every few minutes for 24 hours.
+          </p>
+        )}
         {watches && watches.length > 0 && (
           <ul className="flex flex-col gap-1.5" aria-label="Watched URLs">
             {watches.map((w) => (

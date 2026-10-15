@@ -1,5 +1,5 @@
 import { CloudflareLogo, Sidebar } from "@cloudflare/kumo";
-import { CaretRightIcon, GithubLogoIcon, PlusIcon } from "@phosphor-icons/react";
+import { CaretRightIcon, GithubLogoIcon, HeartIcon, PlusIcon } from "@phosphor-icons/react";
 import { useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -8,6 +8,7 @@ import { CtaLinkButton } from "./CtaButton";
 import { NotificationToggle } from "./NotificationToggle";
 
 const REPO_URL = "https://github.com/sahilsaleem2907/cf_ai_incident_copilot";
+const AUTHOR_URL = "https://github.com/sahilsaleem2907";
 
 type Props = {
   /** Incident list and webhook settings (WP-10, WP-19). */
@@ -77,7 +78,16 @@ export function AppShell({ sidebar, aside, children, budgetMode }: Props) {
       </Sidebar.Provider>
 
       <footer className="shrink-0 border-t border-(--cf-border) bg-(--cf-bg-200) px-4 py-2 text-xs text-(--cf-fg-muted)">
-        Built on Cloudflare
+        Built on Cloudflare, with <HeartIcon aria-hidden size={12} weight="fill" className="inline align-[-1px] text-cf-orange" />
+        <span className="sr-only">love</span> from{" "}
+        <a
+          href={AUTHOR_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="underline underline-offset-2 hover:text-(--cf-fg) focus-visible:outline-2 focus-visible:outline-cf-orange"
+        >
+          Sahil
+        </a>
       </footer>
     </div>
   );

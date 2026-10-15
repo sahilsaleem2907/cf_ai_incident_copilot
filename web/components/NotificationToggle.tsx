@@ -29,8 +29,9 @@ export function NotificationToggle() {
   );
 
   return blocked ? (
-    <Tooltip content="Blocked in browser settings">
-      <span>{control}</span>
+    // `render`: without it Kumo wraps the trigger in its own <button>, and the switch is a button too.
+    <Tooltip content="Blocked in browser settings" render={<span tabIndex={0} />}>
+      {control}
     </Tooltip>
   ) : (
     control

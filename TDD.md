@@ -700,10 +700,10 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 
 ### 12.1 Layout (`AppShell`)
 
-- **Header:** Kumo's `CloudflareLogo` glyph (the orange cloud), a muted "×" and "Incident Copilot", linking to `/`; on the right, the `NotificationToggle` switch and a GitHub link (both icon-only below `sm`); `BudgetBanner` under it. The "Built on Cloudflare" footer stays. *(WP-27, user decision: replaces the earlier "no Cloudflare logo" rule.)*
-- **Left `Sidebar`:** "New incident" (`CtaLinkButton`) and the incident list (status pill, unread dot, polled every 10 s), followed by `WebhookSettings`.
+- **Header:** Kumo's `CloudflareLogo` glyph (the orange cloud), a muted "×" and "Incident Copilot", linking to `/`; on the right, the `NotificationToggle` switch and a GitHub link (both icon-only below `sm`); `BudgetBanner` under it. The footer reads "Built on Cloudflare, with ♥ from Sahil" (orange heart; "Sahil" links to the author's GitHub). *(WP-27/27b, user decisions: replaces the earlier "no Cloudflare logo" rule.)*
+- **Left `Sidebar`:** "New incident" (`CtaLinkButton`) and the incident list (status pill, unread dot, polled every 10 s), followed by `WebhookSettings`. Group headings use the same `.section-label` as the right column (UPPERCASE, 13 px, muted), and every block lines up with its heading (`px-3`, matching Kumo's label).
 - **Main area:** `ChatPane`, over a faint dot grid (`.bg-dot-grid`). The New incident page adds a warm glow at the bottom (`.bg-glow`).
-- **Right column:** `DemoPanel`, a dashed divider (`.divider-dashed`), then `WatchlistPanel`, each under a small uppercase `.section-label` heading. Below the `lg` breakpoint it becomes a closed "Demo & watchlist" disclosure at the top of `<main>` (an `aria-expanded` button, as for evidence). `useMediaQuery` mounts it in one place only, so the panels keep a single state.
+- **Right column:** `DemoPanel`, a dashed divider (`.divider-dashed`), then `WatchlistPanel`, each under a small uppercase `.section-label` heading. "Watch my demo" has a tooltip ("Add your demo site to the watchlist."); an empty watchlist is a dashed box with centred text. Below the `lg` breakpoint it becomes a closed "Demo & watchlist" disclosure at the top of `<main>` (an `aria-expanded` button, as for evidence). `useMediaQuery` mounts it in one place only, so the panels keep a single state.
 
 ### 12.2 Components
 
@@ -725,17 +725,18 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 - **Status chip in the incident header:** `investigating`, `awaiting approval`, `mitigated` or `resolved`, always with text. It's followed by Resolve and Postmortem buttons.
 - **`StatusPill`** (`StatusBadge.tsx`, WP-27): a soft pill (coloured text and icon on a light tint of the same colour) for every status in the app: incident status (header and sidebar rows), check status, watch status and approval status. One colour language, in `web/lib/status.ts`:
 
-  | Colour | Means | Incident | Check | Watch | Approval |
-  |---|---|---|---|---|---|
-  | Orange | in progress / needs a look | Investigating | Running | Incident open | Working on it |
-  | Purple | waiting on you | Awaiting approval | | | Waiting for your approval |
-  | Green | good | Resolved | Pass | Passing | Approved and verified |
-  | Red | broken | | Fail | Last check failed | Still failing / failed |
-  | Yellow | the check itself errored | | Error | | |
-  | Grey | quiet / done / not yet | Mitigated | Pending, Unavailable | Not checked yet | Rejected, expired, replaced |
+  | Colour | Means | Incident | Check | Watch | Approval | Demo mode ("Now:") | Diagnosis (`CategoryPill`) |
+  |---|---|---|---|---|---|---|---|
+  | Orange | in progress / needs a look | Investigating | Running | Incident open | Working on it | | |
+  | Purple | waiting on you | Awaiting approval | | | Waiting for your approval | | |
+  | Green | good | Resolved | Pass | Passing | Approved and verified | Healthy | Healthy |
+  | Red | broken | | Fail | Last check failed | Still failing / failed | 500 errors, Redirect loop, Bad caching | every real problem (Origin 5xx, DNS failure, …) |
+  | Yellow | degraded / the check itself errored | | Error | | | Slow | |
+  | Grey | quiet / done / not yet | Mitigated | Pending, Unavailable | Not checked yet | Rejected, expired, replaced | | Inconclusive |
 
   A pending approval card's border is purple, to match.
-- **`CtaButton` / `CtaLinkButton`** (WP-27): Kumo's primary button (orange) as a pill; same props as Kumo's. Used for New incident, Send, Approve, Watch and Save webhook.
+- **`CtaButton` / `CtaLinkButton`** (WP-27): Kumo's primary button (orange) as a pill; same props as Kumo's. Used for New incident, Send, Approve, Watch and Save webhook. Labels are centred.
+- **Kumo `Tooltip`:** always pass `render` (the element that triggers it). Without it Kumo wraps the children in its own `<button>`, which nests buttons when the child is a button or switch.
 
 ### 12.3 State
 
