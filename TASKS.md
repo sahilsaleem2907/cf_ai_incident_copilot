@@ -22,7 +22,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** none. WP-14 ✅, WP-16 ✅; WP-15 ⛔ built, waiting on the user (see blockers). All Musts are built
+- **Current:** none. **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
 - **Next:** WP-17 Limits + budget guard (Day 2)
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
@@ -31,7 +31,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
   - PR #1 was closed unmerged; `master` (`867d8d6`) is unused.
   - **PR #3** `dev` → `main` ("WP-06 to WP-10 …") opened 16:47: https://github.com/sahilsaleem2907/cf_ai_incident_copilot/pull/3. Waiting for Sift review.
 - **Blockers / risks:**
-  - **WP-15 waits on the user:** (1) ✅ secrets set 2026-10-15 22:10 (the first try saved the token as a secret *name*, so it should be rolled; not confirmed here). (1, as planned) create a Cloudflare API token ("Edit Cloudflare Workers" template + Account › D1 › Edit) and run `gh secret set CLOUDFLARE_API_TOKEN`; `CLOUDFLARE_ACCOUNT_ID` too. (2) Open a `dev` → `main` PR, so `ci.yml` runs. (3) Merge it: `deploy.yml` deploys and runs the smoke test. **Set the secrets before merging**, or the first deploy fails. PR #3 is already merged, so there's no open PR.
+  - none blocking. WP-15's first automatic deploy passed (merge of PR #4, 2026-10-15).
   - Watch gpt latency: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
   - **Live walkthrough timing (after WP-13b):** about 10 s to the first card, then about 31 s from Approve to Resolved (2 monitor ticks × 15 s). With a person clicking, steps 1–5 take about 55–60 s, right at the PRD's 60 s. A shorter monitor tick would add slack.
 
@@ -63,7 +63,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | WP | Task | Est | Deps | Status | Started | Done | Commit / notes |
 |---|---|---|---|---|---|---|---|
 | 14 | Tests (Must): fill coverage gaps | 1.25 | 12 | ✅ | 21:24 (D1) | 21:27 (D1) | `366d3ed`. 0.05 h vs 1.25 est. +19 tests (`schema`, `cookie`, web `approval`) and 6 `cron` stubs for WP-18; 521 pass, 3 runs in a row. `transitions` already complete. The approval path is covered by `approval.test.ts` (8 cases) |
-| 15 | CI/CD (Must): `ci.yml`, `deploy.yml`, smoke | 0.75 | 14 | ⛔ | 21:27 (D1) | 21:31 (D1) built | `3ae9eeb`. 0.15 h vs 0.75 est. Built and checked locally (actionlint, suite without `.dev.vars`, `pnpm smoke` against `pnpm dev`). **Waiting on the user:** Cloudflare secrets, then a `dev` → `main` PR (CI green), then the merge (deploy + smoke) |
+| 15 | CI/CD (Must): `ci.yml`, `deploy.yml`, smoke | 0.75 | 14 | ✅ | 21:27 (D1) | 22:21 (D1) | `3ae9eeb`. 0.15 h vs 0.75 est (plus the user's secrets). PR #4: CI green (about 1 min, Terraform steps skipped). Merge `1be62ee` → `deploy.yml` run 38772159673 passed: migrations (none new), demo, main (version `f6e0c734`), smoke healthy / rule_based / resolved in about 12 s, against the new version, 0 neurons |
 | 16 | README + PROMPTS (Must, **protected time**) | 1.0 | — | ✅ | 21:31 (D1) | 21:35 (D1) | `857cdb2`. README for reviewers (no live URL until WP-17, D2) + PROMPTS overview by phase; secret sweep clean. Done early, so the README's not-built list is kept current through Day 2 |
 | 17 | Limits + budget guard | 1.0 | 15 | ⬜ | | | |
 | 18 | Watch: API, panel, cron, `WatchWorkflow` | 2.0 | 17 | ⬜ | | | |
@@ -292,8 +292,8 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 - [x] `ci.yml` (typecheck, lint, test, terraform fmt/validate), alongside the existing Sift workflows; PR trigger on `main` (Terraform steps only once `infra/` has `.tf` files)
 - [x] `deploy.yml` (migrations, build, deploy demo then main, smoke)
 - [x] Smoke script (`?smoke=rule` option): `scripts/smoke.ts`, `pnpm smoke <url>`
-- [ ] GitHub secrets (**user**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`)
-- [ ] **Done when:** a PR runs green; merging deploys and passes smoke
+- [x] GitHub secrets (**user**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`)
+- [x] **Done when:** a PR runs green; merging deploys and passes smoke (PR #4, deploy run 38772159673)
 </details>
 
 <details>
