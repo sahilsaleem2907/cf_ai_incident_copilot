@@ -114,3 +114,7 @@ Answers to Claude's questions:
 
 Answers to Claude's questions:
 - **Next step:** Change nothing. All 5 Sift findings are false alarms: `satisfies` works on TS 6; Hono 4.13's `getCookie` takes the `"host"` string; the `!` in `iprange.ts` only runs on the fixed range list; and `fitDigest` checks the size again after adding `…`.
+
+> reply to the comments, why its not a bug for feedback with /helpful or /not-helpful. In this case all /not-helpful.
+
+(Replied `/not-helpful` with the reason on all 5 Sift inline comments on PR #2.)
