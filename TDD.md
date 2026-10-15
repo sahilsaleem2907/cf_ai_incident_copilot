@@ -263,7 +263,7 @@ Incident, workspace and approval IDs are 128-bit random hex values (`crypto.getR
 | `POST /api/incidents` | `{message}` | `{id}` / 400 `{error:"need_target"}` / 429 `{retryAfter}` / 503 `{error:"demo_unavailable"}` | Target parse (D9), then quota (D14), then `IncidentAgent.init`. 503 while `DEMO_BASE_URL` still holds the `<sub>` placeholder |
 | `GET /api/incidents/:id` | | Snapshot (`IncidentState` + findings) | Owner only. Used by eval and smoke tests. |
 | `POST /api/incidents/:id/read` | | 204 | Clears `unread` |
-| `GET /api/demo` · `POST /api/demo/mode` | `{mode}` | `{mode, url}` / 400 `{error:"invalid_mode"}` / 503 `{error:"demo_unavailable"}` | Calls `env.DEMO.getMode` / `setMode(ws, mode)`. 503 while `DEMO_BASE_URL` holds `<sub>` |
+| `GET /api/demo` · `POST /api/demo/mode` | `{modes}` | `{modes, url}` / 400 `{error:"invalid_modes"}` / 503 `{error:"demo_unavailable"}` | Calls `env.DEMO.getModes` / `setModes(ws, modes)`. `modes` is `["healthy"]` or one problem plus an optional `"slow"` (§7.5). 503 while `DEMO_BASE_URL` holds `<sub>` |
 | `GET/POST /api/watches` · `DELETE /api/watches/:id` | `{url, intervalSec}` | Watch list | Per-workspace and global caps |
 | `GET/PUT/DELETE /api/webhook` | `{url}` | `{kind, hint}` | Allowlist, then encryption |
 | `POST /api/voice` | `audio/webm` body | `{text}` | Size cap, then limit, then whisper, then normalization |
@@ -364,12 +364,19 @@ streamLlm(env, req, onDelta): Promise<LlmResult>
 | `redirect_loop` | `/w/<ws>/` sends a 302 to `/w/<ws>/r`, which sends a 302 back to `/w/<ws>/` |
 | `bad_cache` | Static files get `cache-control: no-store`, and every response gets `Set-Cookie: demo_session=…` |
 
-`DemoAdmin extends WorkerEntrypoint` has `getMode(ws)` and `setMode(ws, mode)`. Both use `DemoState` (`idFromName(ws)`) and validate the mode with zod. There's no public admin route.
+**Combinations (WP-11 addition):** a workspace's demo can be in several modes at once, but only combinations that can really exist together:
+- `healthy` must be on its own.
+- At most one **main problem** (`errors`, `redirect_loop`, `bad_cache`) can be on, because each one changes how the page answers. Bad caching would also be invisible behind a 500 or a redirect.
+- `slow` can be added to any of them; it delays whatever the page answers.
+
+The canonical order is `DEMO_MODES` order, for example `["slow", "errors"]`. The diagnosis still reports one category, the main problem, and the slow timings stay visible as evidence. Because the rules check latency before caching (§9.3), `slow` + `bad_cache` is diagnosed as `high_latency`.
+
+`DemoAdmin extends WorkerEntrypoint` has `getModes(ws)` and `setModes(ws, modes)`. Both use `DemoState` (`idFromName(ws)`) and validate the set with zod (`DemoModesSchema`, which calls `normalizeModes`). There's no public admin route.
 
 *As built (WP-11):*
 - **Files:**
-  - `demo-service/src/modes.ts` holds the mode list, the zod schema (marked pure, so the web bundle drops zod) and the UI labels. The main Worker and the web client share it.
-  - `state.ts` is `DemoState`, which stores the mode in `ctx.storage.kv` (default `healthy`).
+  - `demo-service/src/modes.ts` holds the mode lists, `normalizeModes` and `modesFrom` (the combination rules), the zod schema (marked pure, so the web bundle drops zod) and the UI labels. The main Worker and the web client share it.
+  - `state.ts` is `DemoState`, which stores the modes in `ctx.storage.kv` (default `["healthy"]`).
   - `pages.ts` serves the pages.
 - **Paths:**
   - `<ws>` must be a 32-hex ID, otherwise the path is a 404 and no Durable Object is created.
@@ -377,7 +384,7 @@ streamLlm(env, req, onDelta): Promise<LlmResult>
   - `/r` always sends a 302 to the page. In `redirect_loop` mode the page sends a 302 back to `/r`, which makes the loop. In `errors` mode every path returns 500.
   - The `bad_cache` cookie is `demo_session=<uuid>; Path=/w/<ws>/`.
 - **RPC errors:**
-  - Bad input throws `invalid_workspace` or `invalid_mode`. A ZodError would lose its message over RPC.
+  - Bad input throws `invalid_workspace` or `invalid_modes`. A ZodError would lose its message over RPC.
   - The methods are `async`, so a throw arrives as a rejected promise.
   - Tests await the call inside `try`/`catch`: `expect(rpc).rejects` leaves a pipelined RPC promise unhandled.
 - **Local demo URL:** under `vite dev` an auxiliary Worker has **no port of its own**. A separate `wrangler dev` would be a second copy with its own state, so the probes would never see a mode change. Instead:
@@ -385,13 +392,14 @@ streamLlm(env, req, onDelta): Promise<LlmResult>
   - `.dev.vars` sets `DEMO_BASE_URL` and `SSRF_DEV_ALLOW_ORIGIN` to `http://localhost:5173`.
   - Deployed, `DEMO_BASE_URL` is the demo's `workers.dev` URL, so the main Worker answers `/w/*` with 404.
   - Spike: probes from the local Workflow reach `localhost:5173` even with `global_fetch_strictly_public`.
-- **Local check:** all five modes, driven through `/api/demo/mode` and a real Workflow, gave the expected category (slow → `high_latency`, errors → `origin_5xx`, redirect_loop → `redirect_loop`, bad_cache → `cache_misconfiguration`, healthy → `healthy`).
+- **Local check:** all five modes, driven through `/api/demo/mode` and a real Workflow, gave the expected category (slow → `high_latency`, errors → `origin_5xx`, redirect_loop → `redirect_loop`, bad_cache → `cache_misconfiguration`, healthy → `healthy`). With the mock: slow + errors → `origin_5xx`, slow + redirect_loop → `redirect_loop`, slow + bad_cache → `high_latency`.
+- **`DemoPanel`:** a "Problem" radio group (None, 500 errors, Redirect loop, Bad caching) plus an "Also slow" checkbox. A "Now:" line shows the current combination.
 
 ### 7.6 Action catalog (`actions/catalog.ts`)
 
 | ID | Args | Proposable when | Execute | Verify |
 |---|---|---|---|---|
-| `restore_demo_service` | `{}` | Target host = demo host, path starts with `/w/<incident.workspaceId>/`, category ≠ `healthy` | `env.DEMO.setMode(ws, "healthy")` | `quickCheck` pass, then `afterAction` |
+| `restore_demo_service` | `{}` | Target host = demo host, path starts with `/w/<incident.workspaceId>/`, category ≠ `healthy` | `env.DEMO.setModes(ws, ["healthy"])` (clears every mode) | `quickCheck` pass, then `afterAction` |
 | `add_to_watchlist` | `{intervalSec: 300}` | Not already watched and under caps | Insert into `watches` | None; outcome goes on the timeline |
 | `recheck_burst` | `{}` | No monitor active | Agent `monitor(kind:"burst")` | Ticks |
 | `generate_postmortem` | `{}` | status = `resolved` | `generatePostmortem()` | None |
@@ -429,7 +437,7 @@ if action:
   try   await this.waitForApproval(step, { timeout: "24 hours" })
   catch WorkflowRejectedError → step.do("rejected", agent.recordApprovalOutcome); return
   catch timeout → step.do("expired", ...); return              // "no action taken" → investigating
-  out = step.do("action", () => execute(action))              // idempotent (setMode healthy is)
+  out = step.do("action", () => execute(action))              // idempotent (setModes ["healthy"] is)
   v   = step.do("verify", () => quickCheck(target))
   step.do("after-action", () => agent.afterAction(runId, v))   // mitigated + monitor (D11)
 step.do("finish", agent.finishRun)                            // clears activeRunId
@@ -704,14 +712,14 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | | `incidents.test.ts` | `need_target`, create, list per workspace, owner-only snapshot, read |
 | | `diagnosis.test.ts` | Real Workflow, mock LLM, fake internet: tools → findings → narrate; healthy → resolved; `#llm-down` → rules; `#llm-invalid` ×2 → rules; NXDOMAIN; follow-up run |
 | Unit | `plan.test.ts` | The driver with a fake `io`: happy path, invalid once/twice, origin pin, LLM down, tool cap, turn cap, budget, deadline, throwing check, unexpected failure, rule-based mode |
-| | `approval.test.ts` | Propose → approve → `setMode` called → verify → `mitigated` → 2 ticks → `resolved`. Reject → `investigating`. Supersede. |
+| | `approval.test.ts` | Propose → approve → `setModes(["healthy"])` called → verify → `mitigated` → 2 ticks → `resolved`. Reject → `investigating`. Supersede. |
 | | `cron.test.ts` | Due-watch query with LIMIT and caps; failure starts WatchWorkflow; duplicate ID ignored |
 | Demo (`@cloudflare/vitest-plugin`, demo Worker) | `demo.test.ts` | Every mode's status, headers and timing, through `exports.default` and the `DemoAdmin` RPC; per-workspace state; bad input; no admin route |
 
 - **Projects** (`vitest.config.ts`): `unit` runs in node. `integration` loads `wrangler.jsonc` with `LLM_MODE=mock` and a valid test `DEMO_BASE_URL`, and with `remoteBindings: false`, so the AI binding never goes remote: tests need no login and spend no neurons. `demo` loads `demo-service/wrangler.jsonc`.
 - **Fake internet (WP-09):** the integration project's `outboundService` is an inline `fake-internet` Worker. It answers DoH for `*.example.com` (NXDOMAIN for `nxdomain.example.com`), returns 500 for `broken.example.com` and serves HTML for other `*.example.com` hosts, so no integration test touches the real network. `diagnosis.test.ts` runs real local Workflows through `introspectWorkflow`; `plan.test.ts` covers every limit with a fake `io`.
 - Unit tests load the recorded fixtures as JSON imports and the `.sse` files with Vite `?raw` imports (`test/unit/raw.d.ts`), because the worker tsconfig has no Node types.
-- **Demo stub:** the test runtime won't start while a service binding points at a Worker it doesn't know about. So `integration` adds a small inline stand-in `incident-copilot-demo` Worker behind `DEMO`. It keeps modes in memory, records every `setMode`, and exposes the record as `calls(ws)`. `demo-api.test.ts` and `approval.test.ts` assert what the main Worker asks it to do (e.g. `setMode`). The real demo service is tested only in `demo`.
+- **Demo stub:** the test runtime won't start while a service binding points at a Worker it doesn't know about. So `integration` adds a small inline stand-in `incident-copilot-demo` Worker behind `DEMO`. It keeps modes in memory, records every `setModes`, and exposes the record as `calls(ws)`. `demo-api.test.ts` and `approval.test.ts` assert what the main Worker asks it to do (e.g. `setModes`). The real demo service is tested only in `demo`.
 - Tests use `env` and `exports` from `cloudflare:workers` (the plugin's `cloudflare:test` `env`/`SELF` are deprecated). Workflow tests use the plugin's Workflow introspection APIs. Retrying events with `waitForEvent` and the timeout path are verified in WP-02.
 
 ## 15. CI/CD and IaC
@@ -719,7 +727,7 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 - **`ci.yml`** (on PRs): `pnpm i --frozen-lockfile`, `pnpm typecheck`, `pnpm lint`, `pnpm test`, then `terraform fmt -check` and `terraform init -backend=false && terraform validate` (D15).
 - **`deploy.yml`** (on push to `main`): runs the tests, `wrangler d1 migrations apply DB --remote` and `vite build`, deploys `demo-service`, then deploys main, then runs a smoke test.
   - Deploys use `cloudflare/wrangler-action`.
-  - The smoke test calls `GET /api/health`, then `GET /api/session`, then `POST /api/demo/mode healthy`, then `POST /api/incidents "diagnose demo"`. It polls the snapshot until `activeRunId` is null and expects `category = healthy`. Run it with `LLM_MODE` live but only once per deploy, or skip the LLM with a `?smoke=rule` flag that forces `rule_based`.
+  - The smoke test calls `GET /api/health`, then `GET /api/session`, then `POST /api/demo/mode {modes:["healthy"]}`, then `POST /api/incidents "diagnose demo"`. It polls the snapshot until `activeRunId` is null and expects `category = healthy`. Run it with `LLM_MODE` live but only once per deploy, or skip the LLM with a `?smoke=rule` flag that forces `rule_based`.
 - **Secrets:** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` live in GitHub. `WEBHOOK_KEY` is set once with `wrangler secret put`.
 - **Terraform (`infra/`, local state, gitignored):** Cloudflare provider v5 with `cloudflare_d1_database`, plus the AI Gateway resource if the provider supports it. Otherwise the gateway is created in the dashboard and the README says so (R1). The `database_id` output is copied into `wrangler.jsonc` once. Wrangler owns everything else (§5.1).
 

@@ -197,3 +197,5 @@ Answers to Claude's questions:
 
 - Combos → "One problem + slow": pick one main problem (500 errors, redirect loop or bad caching) and optionally make it slow.
 - Diagnosis → "Main problem, slowness as evidence": one category per diagnosis, no changes to the diagnosis code.
+
+(Done in `e891c6c`: the demo now takes one main problem plus an optional slow-down; clashing sets are refused with `invalid_modes`. 466 tests green. Local mock runs: slow + errors → `origin_5xx`, slow + redirect loop → `redirect_loop`, slow + bad caching → `high_latency`. The panel was browser-checked in light, dark and at 390 px.)
