@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { DemoModeSchema } from "../../demo-service/src/modes";
+import { DemoModesSchema } from "../../demo-service/src/modes";
 import type { AppEnv } from "../env";
 import { demoTarget } from "./session";
 
@@ -9,14 +9,14 @@ export const demo = new Hono<AppEnv>()
     const ws = c.get("workspaceId");
     const url = demoTarget(c.env.DEMO_BASE_URL, ws);
     if (!url) return c.json({ error: "demo_unavailable" }, 503);
-    return c.json({ mode: await c.env.DEMO.getMode(ws), url });
+    return c.json({ modes: await c.env.DEMO.getModes(ws), url });
   })
   .post("/mode", async (c) => {
     const ws = c.get("workspaceId");
     const url = demoTarget(c.env.DEMO_BASE_URL, ws);
     if (!url) return c.json({ error: "demo_unavailable" }, 503);
-    const body = await c.req.json<{ mode?: unknown }>().catch(() => ({}) as { mode?: unknown });
-    const parsed = DemoModeSchema.safeParse(body.mode);
-    if (!parsed.success) return c.json({ error: "invalid_mode" }, 400);
-    return c.json({ mode: await c.env.DEMO.setMode(ws, parsed.data), url });
+    const body = await c.req.json<{ modes?: unknown }>().catch(() => ({}) as { modes?: unknown });
+    const parsed = DemoModesSchema.safeParse(body.modes);
+    if (!parsed.success) return c.json({ error: "invalid_modes" }, 400);
+    return c.json({ modes: await c.env.DEMO.setModes(ws, parsed.data), url });
   });

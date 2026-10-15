@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createIncident, getDemo, listIncidents, setDemoMode } from "../../../web/lib/api";
+import { createIncident, getDemo, listIncidents, setDemoModes } from "../../../web/lib/api";
 import { otherHost, runNote } from "../../../web/lib/incident";
 import { parseInline, parseMarkdown } from "../../../web/lib/markdown";
 import type { TimelineView } from "../../../worker/agent/state";
@@ -89,18 +89,18 @@ describe("api", () => {
     expect(await listIncidents(offline)).toEqual([]);
   });
 
-  it("reads and sets the demo mode", async () => {
-    const demo = { mode: "errors", url: "http://localhost:5173/w/x/" };
+  it("reads and sets the demo modes", async () => {
+    const demo = { modes: ["slow", "errors"], url: "http://localhost:5173/w/x/" };
     let sent: RequestInit | undefined;
     const capture = (async (_: string, init?: RequestInit) => {
       sent = init;
       return new Response(JSON.stringify(demo));
     }) as unknown as typeof fetch;
-    expect(await setDemoMode("errors", capture)).toEqual({ ok: true, demo });
-    expect(sent).toMatchObject({ method: "POST", body: '{"mode":"errors"}' });
+    expect(await setDemoModes(["slow", "errors"], capture)).toEqual({ ok: true, demo });
+    expect(sent).toMatchObject({ method: "POST", body: '{"modes":["slow","errors"]}' });
     expect(await getDemo(fake(200, demo))).toEqual({ ok: true, demo });
     expect(await getDemo(fake(503, { error: "demo_unavailable" }))).toEqual({ ok: false, error: "demo_unavailable" });
-    expect(await setDemoMode("slow", fake(400, { error: "invalid_mode" }))).toEqual({ ok: false, error: "server" });
+    expect(await setDemoModes(["slow"], fake(400, { error: "invalid_modes" }))).toEqual({ ok: false, error: "server" });
     const offline = (async () => {
       throw new TypeError("Failed to fetch");
     }) as unknown as typeof fetch;

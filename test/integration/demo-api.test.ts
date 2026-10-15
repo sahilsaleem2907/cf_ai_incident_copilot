@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 const BASE = "https://copilot.example.com";
 
 /** The inline demo stub (vitest.config.ts) also records every setMode. */
-const demoStub = env.DEMO as unknown as { calls(ws: string): Promise<{ ws: string; mode: string }[]> };
+const demoStub = env.DEMO as unknown as { calls(ws: string): Promise<{ ws: string; modes: string[] }[]> };
 
 async function workspace(): Promise<{ cookie: string; ws: string }> {
   const res = await exports.default.fetch(`${BASE}/api/session`);
@@ -25,26 +25,26 @@ describe("/api/demo", () => {
     const { cookie, ws } = await workspace();
     const res = await getDemo(cookie);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ mode: "healthy", url: `${env.DEMO_BASE_URL}/w/${ws}/` });
+    expect(await res.json()).toEqual({ modes: ["healthy"], url: `${env.DEMO_BASE_URL}/w/${ws}/` });
   });
 
   it("sets the mode through the DEMO binding, for the caller's workspace only", async () => {
     const mine = await workspace();
     const other = await workspace();
-    const res = await setMode(mine.cookie, { mode: "errors" });
+    const res = await setMode(mine.cookie, { modes: ["errors", "slow"] });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ mode: "errors", url: `${env.DEMO_BASE_URL}/w/${mine.ws}/` });
-    expect(await demoStub.calls(mine.ws)).toEqual([{ ws: mine.ws, mode: "errors" }]);
-    expect(await (await getDemo(mine.cookie)).json()).toMatchObject({ mode: "errors" });
-    expect(await (await getDemo(other.cookie)).json()).toMatchObject({ mode: "healthy" });
+    expect(await res.json()).toEqual({ modes: ["slow", "errors"], url: `${env.DEMO_BASE_URL}/w/${mine.ws}/` });
+    expect(await demoStub.calls(mine.ws)).toEqual([{ ws: mine.ws, modes: ["slow", "errors"] }]);
+    expect(await (await getDemo(mine.cookie)).json()).toMatchObject({ modes: ["slow", "errors"] });
+    expect(await (await getDemo(other.cookie)).json()).toMatchObject({ modes: ["healthy"] });
   });
 
-  it("rejects an unknown or missing mode without calling the demo", async () => {
+  it("rejects unknown, missing or clashing modes without calling the demo", async () => {
     const { cookie, ws } = await workspace();
-    for (const body of [{ mode: "on_fire" }, {}, { mode: 3 }]) {
+    for (const body of [{ modes: ["on_fire"] }, {}, { modes: "errors" }, { modes: [] }, { modes: ["healthy", "errors"] }, { modes: ["errors", "redirect_loop"] }]) {
       const res = await setMode(cookie, body);
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: "invalid_mode" });
+      expect(await res.json()).toEqual({ error: "invalid_modes" });
     }
     expect(await demoStub.calls(ws)).toEqual([]);
   });

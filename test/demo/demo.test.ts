@@ -2,6 +2,7 @@ import { exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { newId } from "../../worker/lib/ids";
 import type { DemoAdmin } from "../../demo-service/src/index";
+import type { DemoMode } from "../../demo-service/src/modes";
 import { SLOW_DELAY_MS } from "../../demo-service/src/pages";
 
 // `exports` is typed for the main Worker; this project runs the demo Worker.
@@ -20,9 +21,9 @@ async function errorOf(p: PromiseLike<unknown>): Promise<string> {
   throw new Error("expected the call to fail");
 }
 
-async function workspace(mode?: Parameters<typeof admin.setMode>[1]): Promise<string> {
+async function workspace(...modes: DemoMode[]): Promise<string> {
   const ws = newId();
-  if (mode) await admin.setMode(ws, mode);
+  if (modes.length) await admin.setModes(ws, modes);
   return ws;
 }
 
@@ -45,28 +46,37 @@ describe("demo service: routes", () => {
     for (const path of ["/admin", `/w/${ws}/mode`, "/api/demo/mode"]) {
       expect((await demo.default.fetch(`${BASE}${path}`, { method: "POST", body: '{"mode":"errors"}' })).status).toBe(404);
     }
-    expect(await admin.getMode(ws)).toBe("healthy");
+    expect(await admin.getModes(ws)).toEqual(["healthy"]);
   });
 });
 
 describe("demo service: DemoAdmin RPC", () => {
-  it("defaults to healthy and remembers the mode per workspace", async () => {
+  it("defaults to healthy and remembers the modes per workspace", async () => {
     const a = await workspace();
     const b = await workspace();
-    expect(await admin.getMode(a)).toBe("healthy");
-    expect(await admin.setMode(a, "errors")).toBe("errors");
-    expect(await admin.getMode(a)).toBe("errors");
-    expect(await admin.getMode(b)).toBe("healthy");
+    expect(await admin.getModes(a)).toEqual(["healthy"]);
+    expect(await admin.setModes(a, ["errors"])).toEqual(["errors"]);
+    expect(await admin.getModes(a)).toEqual(["errors"]);
+    expect(await admin.getModes(b)).toEqual(["healthy"]);
     expect((await get(`/w/${a}/`)).status).toBe(500);
     expect((await get(`/w/${b}/`)).status).toBe(200);
   });
 
-  it("rejects an unknown mode or a malformed workspace", async () => {
+  it("stores a problem plus slow in canonical order", async () => {
     const ws = await workspace();
-    expect(await errorOf(admin.setMode(ws, "on_fire" as never))).toContain("invalid_mode");
-    expect(await errorOf(admin.setMode("not-an-id", "errors"))).toContain("invalid_workspace");
-    expect(await errorOf(admin.getMode("../x"))).toContain("invalid_workspace");
-    expect(await admin.getMode(ws)).toBe("healthy");
+    expect(await admin.setModes(ws, ["bad_cache", "slow", "slow"])).toEqual(["slow", "bad_cache"]);
+    expect(await admin.getModes(ws)).toEqual(["slow", "bad_cache"]);
+  });
+
+  it("rejects unknown modes, clashing combinations and malformed workspaces", async () => {
+    const ws = await workspace();
+    for (const modes of [["on_fire"], [], ["healthy", "errors"], ["healthy", "slow"], ["errors", "redirect_loop"], ["slow", "errors", "bad_cache"]]) {
+      expect(await errorOf(admin.setModes(ws, modes)), modes.join("+")).toContain("invalid_modes");
+    }
+    expect(await errorOf(admin.setModes(ws, "errors" as never))).toContain("invalid_modes");
+    expect(await errorOf(admin.setModes("not-an-id", ["errors"]))).toContain("invalid_workspace");
+    expect(await errorOf(admin.getModes("../x"))).toContain("invalid_workspace");
+    expect(await admin.getModes(ws)).toEqual(["healthy"]);
   });
 
   it("serves the same pages through the binding entrypoint", async () => {
@@ -132,6 +142,15 @@ describe("demo service: modes (TDD §7.5)", () => {
     expect(page.headers.get("set-cookie")).toMatch(new RegExp(`^demo_session=[0-9a-f-]{36}; Path=/w/${ws}/$`));
 
     const asset = await get(`/w/${ws}/static/app.js`);
+    expect(asset.headers.get("cache-control")).toBe("no-store");
+    expect(asset.headers.get("set-cookie")).toMatch(/^demo_session=/);
+  });
+
+  it("slow + a problem: waits, then answers with that problem", async () => {
+    const ws = await workspace("slow", "bad_cache");
+    const start = Date.now();
+    const asset = await get(`/w/${ws}/static/app.css`);
+    expect(Date.now() - start).toBeGreaterThanOrEqual(SLOW_DELAY_MS);
     expect(asset.headers.get("cache-control")).toBe("no-store");
     expect(asset.headers.get("set-cookie")).toMatch(/^demo_session=/);
   });

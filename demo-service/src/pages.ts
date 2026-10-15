@@ -1,7 +1,7 @@
 import { isId } from "../../worker/lib/ids";
-import type { DemoMode } from "./modes";
+import { DEMO_PROBLEMS, type DemoMode, type DemoProblem } from "./modes";
 
-/** `/w/<ws>/…` pages per mode (TDD §7.5). The mode is looked up only for a well-formed workspace path. */
+/** `/w/<ws>/…` pages per mode (TDD §7.5). The modes are looked up only for a well-formed workspace path. */
 export const SLOW_DELAY_MS = 3000;
 
 const PAGE_CACHE = "public, max-age=0, must-revalidate";
@@ -39,7 +39,7 @@ function page(ws: string): string {
 const text = (body: string, status: number) => new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
 const redirect = (location: string) => new Response(null, { status: 302, headers: { location, "cache-control": "no-store" } });
 
-export async function handle(request: Request, getMode: (ws: string) => Promise<DemoMode>): Promise<Response> {
+export async function handle(request: Request, getModes: (ws: string) => Promise<DemoMode[]>): Promise<Response> {
   const { pathname } = new URL(request.url);
   if (pathname === "/") return text("Incident Copilot demo service. Pages live at /w/<workspace>/.", 200);
 
@@ -50,25 +50,27 @@ export async function handle(request: Request, getMode: (ws: string) => Promise<
   if (r.kind === "missing") return text("Not found", 404);
   if (request.method !== "GET" && request.method !== "HEAD") return text("Method not allowed", 405);
 
-  const mode = await getMode(ws);
-  if (mode === "slow") await scheduler.wait(SLOW_DELAY_MS);
-  const res = respond(r, ws, mode);
-  if (mode === "bad_cache") res.headers.append("set-cookie", `demo_session=${crypto.randomUUID()}; Path=/w/${ws}/`);
+  // `slow` delays whatever the main problem (if any) answers; there's at most one main problem.
+  const modes = await getModes(ws);
+  if (modes.includes("slow")) await scheduler.wait(SLOW_DELAY_MS);
+  const problem = DEMO_PROBLEMS.find((p) => modes.includes(p)) ?? null;
+  const res = respond(r, ws, problem);
+  if (problem === "bad_cache") res.headers.append("set-cookie", `demo_session=${crypto.randomUUID()}; Path=/w/${ws}/`);
   return res;
 }
 
-function respond(r: Exclude<Route, { kind: "missing" }>, ws: string, mode: DemoMode): Response {
-  if (mode === "errors") {
+function respond(r: Exclude<Route, { kind: "missing" }>, ws: string, problem: DemoProblem | null): Response {
+  if (problem === "errors") {
     return new Response("Internal Server Error", { status: 500, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
   }
   const home = `/w/${ws}/`;
   if (r.kind === "bounce") return redirect(home);
   if (r.kind === "page") {
-    if (mode === "redirect_loop") return redirect(`${home}r`);
+    if (problem === "redirect_loop") return redirect(`${home}r`);
     return new Response(page(ws), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": PAGE_CACHE } });
   }
   const file = STATIC_FILES[r.file]!;
   return new Response(file.body, {
-    headers: { "content-type": file.type, "cache-control": mode === "bad_cache" ? "no-store" : STATIC_CACHE },
+    headers: { "content-type": file.type, "cache-control": problem === "bad_cache" ? "no-store" : STATIC_CACHE },
   });
 }

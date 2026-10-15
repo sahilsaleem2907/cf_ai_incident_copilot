@@ -190,3 +190,10 @@ Answers to Claude's questions:
 (Plan approved: the five modes on a `DemoState` Durable Object, `DemoAdmin` RPC, `/api/demo`, and a `DemoPanel` that collapses below `lg`. Locally, the main Worker passes `/w/*` through to the demo service only when `DEMO_BASE_URL` is its own origin, because an auxiliary Worker under Vite has no port of its own.)
 
 (WP-11 done in `09398c0`; 460 tests green. Locally, all five demo modes were diagnosed with the right category through a real Workflow. A headless browser check covered: the mode stays set after a reload, the demo page answers in the chosen mode, arrow keys switch modes, the URL copies, and the panel works on a phone in light and dark. The local `.dev.vars` had `LLM_MODE=live`, so those 12 runs used the live model.)
+
+### 17:26 · WP-11 addition: combined demo modes
+
+> One small addition, we should be able to choose multiple modes in demo at the same time. But in only logical combo. eg: healthy and 500 cant exsist together.
+
+- Combos → "One problem + slow": pick one main problem (500 errors, redirect loop or bad caching) and optionally make it slow.
+- Diagnosis → "Main problem, slowness as evidence": one category per diagnosis, no changes to the diagnosis code.

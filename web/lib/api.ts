@@ -51,7 +51,7 @@ export async function getSession(f: Fetch = fetch): Promise<Session | null> {
   }
 }
 
-export type Demo = { mode: DemoMode; url: string };
+export type Demo = { modes: DemoMode[]; url: string };
 export type DemoResult = { ok: true; demo: Demo } | { ok: false; error: "demo_unavailable" | "network" | "server" };
 
 async function demoCall(f: Fetch, init?: RequestInit): Promise<DemoResult> {
@@ -67,10 +67,10 @@ async function demoCall(f: Fetch, init?: RequestInit): Promise<DemoResult> {
 
 export const getDemo = (f: Fetch = fetch) => demoCall(f);
 
-export const setDemoMode = (mode: DemoMode, f: Fetch = fetch) =>
-  demoCall(f, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode }) });
+export const setDemoModes = (modes: DemoMode[], f: Fetch = fetch) =>
+  demoCall(f, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ modes }) });
 
-/** Tells the DemoPanel to reload its mode, e.g. after an approved restore (WP-12). */
+/** Tells the DemoPanel to reload its modes, e.g. after an approved restore (WP-12). */
 export const DEMO_CHANGED = "demo:changed";
 
 /** Tells the sidebar to reload after something changed (creation, a status change). Polling is WP-19. */

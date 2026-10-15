@@ -1,6 +1,6 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { isId } from "../../worker/lib/ids";
-import { DemoModeSchema, type DemoMode } from "./modes";
+import { DemoModesSchema, type DemoMode } from "./modes";
 import { handle } from "./pages";
 import type { DemoState } from "./state";
 
@@ -14,7 +14,7 @@ function stateFor(env: DemoEnv, ws: string) {
   return env.DEMO_STATE.get(env.DEMO_STATE.idFromName(ws));
 }
 
-const modeOf = (env: DemoEnv) => (ws: string) => stateFor(env, ws).getMode();
+const modesOf = (env: DemoEnv) => (ws: string) => stateFor(env, ws).getModes();
 
 /**
  * Admin RPC for the main Worker, reachable only through the DEMO service binding (TDD §7.5). There's no
@@ -26,24 +26,25 @@ export class DemoAdmin extends WorkerEntrypoint<DemoEnv> {
     return "pong";
   }
 
-  async getMode(ws: string): Promise<DemoMode> {
-    return stateFor(this.env, ws).getMode();
+  async getModes(ws: string): Promise<DemoMode[]> {
+    return stateFor(this.env, ws).getModes();
   }
 
-  async setMode(ws: string, mode: string): Promise<DemoMode> {
+  /** `["healthy"]`, or one main problem plus an optional `slow` (`normalizeModes`). */
+  async setModes(ws: string, modes: string[]): Promise<DemoMode[]> {
     // A ZodError loses its message over RPC, so callers get a plain code instead.
-    const parsed = DemoModeSchema.safeParse(mode);
-    if (!parsed.success) throw new Error("invalid_mode");
-    return stateFor(this.env, ws).setMode(parsed.data);
+    const parsed = DemoModesSchema.safeParse(modes);
+    if (!parsed.success) throw new Error("invalid_modes");
+    return stateFor(this.env, ws).setModes(parsed.data);
   }
 
   override fetch(request: Request): Promise<Response> {
-    return handle(request, modeOf(this.env));
+    return handle(request, modesOf(this.env));
   }
 }
 
 export default {
   fetch(request, env) {
-    return handle(request, modeOf(env));
+    return handle(request, modesOf(env));
   },
 } satisfies ExportedHandler<DemoEnv>;

@@ -1,12 +1,17 @@
-import { Banner, ClipboardText, Radio } from "@cloudflare/kumo";
+import { Banner, Checkbox, ClipboardText, Radio } from "@cloudflare/kumo";
 import { ArrowSquareOutIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import { DEMO_MODE_LABELS, DEMO_MODES, type DemoMode } from "../../demo-service/src/modes";
-import { DEMO_CHANGED, ERROR_TEXT, getDemo, setDemoMode, type Demo } from "../lib/api";
+import { DEMO_MODE_LABELS, DEMO_PROBLEMS, modesFrom, type DemoProblem } from "../../demo-service/src/modes";
+import { DEMO_CHANGED, ERROR_TEXT, getDemo, setDemoModes, type Demo } from "../lib/api";
 
 const SAVE_FAILED = "Couldn't change the mode. Try again.";
+const NONE = "none";
+type Choice = DemoProblem | typeof NONE;
 
-/** "Break the demo service" panel (FR-33, TDD §12.1): pick a mode for this workspace's demo and copy its URL. */
+/**
+ * "Break the demo service" panel (FR-33, TDD §12.1). One main problem at a time (they change how the page
+ * answers), plus an optional slow-down on top, so every combination stays visible to the diagnosis.
+ */
 export function DemoPanel() {
   const [demo, setDemo] = useState<Demo | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,12 +35,16 @@ export function DemoPanel() {
     };
   }, []);
 
-  const change = async (mode: DemoMode) => {
-    if (!demo || mode === demo.mode) return;
+  const problem = DEMO_PROBLEMS.find((p) => demo?.modes.includes(p)) ?? null;
+  const slow = demo?.modes.includes("slow") ?? false;
+
+  const change = async (nextProblem: DemoProblem | null, nextSlow: boolean) => {
+    if (!demo) return;
     const before = demo;
-    setDemo({ ...demo, mode });
+    const modes = modesFrom(nextProblem, nextSlow);
+    setDemo({ ...demo, modes });
     setSaving(true);
-    const r = await setDemoMode(mode);
+    const r = await setDemoModes(modes);
     setSaving(false);
     if (r.ok) {
       setDemo(r.demo);
@@ -57,11 +66,24 @@ export function DemoPanel() {
 
       {demo && (
         <>
-          <Radio.Group<DemoMode> legend="Mode" value={demo.mode} onValueChange={(m) => void change(m)} disabled={saving}>
-            {DEMO_MODES.map((m) => (
-              <Radio.Item<DemoMode> key={m} value={m} label={DEMO_MODE_LABELS[m]} />
+          <p className="text-sm" aria-live="polite">
+            <span className="text-(--cf-fg-muted)">Now: </span>
+            <span className="font-medium">{demo.modes.map((m) => DEMO_MODE_LABELS[m]).join(" + ")}</span>
+          </p>
+
+          <Radio.Group<Choice>
+            legend="Problem"
+            value={problem ?? NONE}
+            onValueChange={(c) => void change(c === NONE ? null : c, slow)}
+            disabled={saving}
+          >
+            <Radio.Item<Choice> value={NONE} label="None" />
+            {DEMO_PROBLEMS.map((p) => (
+              <Radio.Item<Choice> key={p} value={p} label={DEMO_MODE_LABELS[p]} />
             ))}
           </Radio.Group>
+
+          <Checkbox label="Also slow (+3 s per response)" checked={slow} disabled={saving} onCheckedChange={(c) => void change(problem, c === true)} />
 
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">Demo URL</span>

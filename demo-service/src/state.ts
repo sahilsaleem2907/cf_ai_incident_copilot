@@ -1,14 +1,14 @@
 import { DurableObject } from "cloudflare:workers";
 import type { DemoMode } from "./modes";
 
-/** One per workspace (`idFromName(ws)`): holds that workspace's demo mode. */
+/** One per workspace (`idFromName(ws)`): holds that workspace's demo modes, already validated by DemoAdmin. */
 export class DemoState extends DurableObject {
-  getMode(): DemoMode {
-    return this.ctx.storage.kv.get<DemoMode>("mode") ?? "healthy";
+  getModes(): DemoMode[] {
+    return this.ctx.storage.kv.get<DemoMode[]>("modes") ?? ["healthy"];
   }
 
-  setMode(mode: DemoMode): DemoMode {
-    this.ctx.storage.kv.put("mode", mode);
-    return mode;
+  setModes(modes: DemoMode[]): DemoMode[] {
+    this.ctx.storage.kv.put("modes", modes);
+    return modes;
   }
 }
