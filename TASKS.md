@@ -31,7 +31,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
   - PR #1 was closed unmerged; `master` (`867d8d6`) is unused.
   - **PR #3** `dev` → `main` ("WP-06 to WP-10 …") opened 16:47: https://github.com/sahilsaleem2907/cf_ai_incident_copilot/pull/3. Waiting for Sift review.
 - **Blockers / risks:**
-  - **WP-15 waits on the user:** (1) ✅ secrets set 2026-10-15 22:10 (the token was rolled after it was first saved as a secret *name*). (1, as planned) create a Cloudflare API token ("Edit Cloudflare Workers" template + Account › D1 › Edit) and run `gh secret set CLOUDFLARE_API_TOKEN`; `CLOUDFLARE_ACCOUNT_ID` too. (2) Open a `dev` → `main` PR, so `ci.yml` runs. (3) Merge it: `deploy.yml` deploys and runs the smoke test. **Set the secrets before merging**, or the first deploy fails. PR #3 is already merged, so there's no open PR.
+  - **WP-15 waits on the user:** (1) ✅ secrets set 2026-10-15 22:10 (the first try saved the token as a secret *name*, so it should be rolled; not confirmed here). (1, as planned) create a Cloudflare API token ("Edit Cloudflare Workers" template + Account › D1 › Edit) and run `gh secret set CLOUDFLARE_API_TOKEN`; `CLOUDFLARE_ACCOUNT_ID` too. (2) Open a `dev` → `main` PR, so `ci.yml` runs. (3) Merge it: `deploy.yml` deploys and runs the smoke test. **Set the secrets before merging**, or the first deploy fails. PR #3 is already merged, so there's no open PR.
   - Watch gpt latency: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
   - **Live walkthrough timing (after WP-13b):** about 10 s to the first card, then about 31 s from Approve to Resolved (2 monitor ticks × 15 s). With a person clicking, steps 1–5 take about 55–60 s, right at the PRD's 60 s. A shorter monitor tick would add slack.
 
