@@ -213,3 +213,5 @@ Answers to Claude's questions:
 ### 18:54 · WP-12 follow-up: flaky test + live AI check
 
 > lets verify the flaky test again and lets run the real AI checkl, I have updated the env from mock to live.
+
+(Flaky test: caught in 1 of 5 full runs (`approval.test.ts:51`). It was a race in the test: the card is proposed one step before the run finishes. Polling every 1 ms reproduced it in 4 of 5 runs; the fix (wait for card + finished run) passed 8 of 8 there, then the full suite. Fixed in `7787ac5`. Live AI check: the real model proposed the restore itself; card at 23.5 s, resolved at 53 s after Approve; 199 neurons. The run used 3 turns because of a refused DNS lookup of localhost (local only).)
