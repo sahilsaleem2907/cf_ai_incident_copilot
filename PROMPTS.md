@@ -118,3 +118,9 @@ Answers to Claude's questions:
 > reply to the comments, why its not a bug for feedback with /helpful or /not-helpful. In this case all /not-helpful.
 
 (Replied `/not-helpful` with the reason on all 5 Sift inline comments on PR #2.)
+
+### 13:44 · WP-06 Rules
+
+> Use /var/folders/…/incident-copilot-handoff.md for context. Lets then continue to WP-06.
+
+(Read the handoff. Found PR #2 already merged into `main` (`0073839`) and refreshed the TASKS review status. Plan for WP-06 approved: `diagnosis/categories.ts`, `classify.ts` (11 rules), `template.ts`, plus keeping the TLS error text in `http_probe` samples so rule 2 can see it.)

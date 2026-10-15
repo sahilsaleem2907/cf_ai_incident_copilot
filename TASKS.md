@@ -21,14 +21,15 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** none (WP-05 ✅ 01:44). Setting up code review (below).
-- **Next:** WP-06 Rules
+- **Current:** WP-06 Rules (started 13:44)
+- **Next:** WP-07 LLM layer
 - **Hours today:** 1.4 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
-  - Branches: `dev` = all work (`5041859`); `main` = WP-05 + `sift-workflows.zip` upload (`6cfd23c`); `master` = WP-01 scaffold (`867d8d6`, the first review base, now unused).
-  - PR #1 `dev` → `main` was opened and then **closed unmerged** (2026-10-15 01:57), with no Sift comments yet.
-  - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are committed on local `main` as `61b5aef` in a separate worktree. **Not pushed: waiting for the user's OK.** Once pushed, reopen or raise a `dev` → `main` PR for Sift to review.
-- **Blockers / risks:** Sift review hasn't run yet (needs the workflows on `main`). `main` and `dev` have diverged (the upload commit and the Sift workflows are only on `main`), so merge `main` into `dev` or rebase before the next PR. Watch gpt latency in WP-09: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
+  - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
+  - PR #2 `dev` → `main` ("WP-01 to WP-05") was reviewed by Sift: 5 findings, all false alarms, each answered `/not-helpful` with the reason. **Merged** 2026-10-15 13:40 (`0073839`).
+  - PR #1 was closed unmerged; `master` (`867d8d6`) is unused.
+  - Next review: a new `dev` → `main` PR for WP-06 onward.
+- **Blockers / risks:** none blocking. Watch gpt latency in WP-09: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
 
 ---
 
@@ -41,7 +42,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 03 | D1 + workspace cookie + session/health + target parser | 0.75 | 01 | ✅ | 01:16 | 01:18 | `9d691c6`. 0.25 h vs 0.75 est |
 | 04 | Safety core: SSRF, reader, origin pin, budget | 1.0 | 01 | ✅ | 01:26 | 01:30 | `4dbe27d`. 0.25 h vs 1.0 est |
 | 05 | Tools: `dns_lookup`, `http_probe`, `quickCheck`, registry | 1.5 | 04 | ✅ | 01:38 | 01:44 | `307d342`. 0.25 h vs 1.5 est |
-| 06 | Rules: `classify.ts`, `template.ts` | 0.5 | 05 | ⬜ | | | |
+| 06 | Rules: `classify.ts`, `template.ts` | 0.5 | 05 | 🔄 | 13:44 | | |
 | 07 | LLM layer: adapter, fallback, usage, prompts, mock, citations, streaming | 1.5 | 02 | ⬜ | | | |
 | 08 | IncidentAgent: schema, state, roles, RPC, transitions, narrate | 1.5 | 03, 07 | ⬜ | | | |
 | 09 | DiagnosisWorkflow: planning loop, bounds, rule path | 1.5 | 05, 06, 08 | ⬜ | | | |
