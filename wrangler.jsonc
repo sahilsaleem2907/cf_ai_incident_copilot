@@ -18,7 +18,12 @@
   ],
   "durable_objects": { "bindings": [{ "name": "IncidentAgent", "class_name": "IncidentAgent" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["IncidentAgent"] }],
-  "workflows": [{ "name": "diagnosis", "binding": "DIAGNOSIS_WORKFLOW", "class_name": "DiagnosisWorkflow" }],
+  "workflows": [
+    { "name": "diagnosis", "binding": "DIAGNOSIS_WORKFLOW", "class_name": "DiagnosisWorkflow" },
+    { "name": "watch", "binding": "WATCH_WORKFLOW", "class_name": "WatchWorkflow" }
+  ],
+  // Due watches are checked every minute (TDD §8.5, D12).
+  "triggers": { "crons": ["* * * * *"] },
   "services": [{ "binding": "DEMO", "service": "incident-copilot-demo", "entrypoint": "DemoAdmin" }],
   // TDD §11: probes per hostname, runs per workspace and per visitor IP (bursts; the hourly quotas are in D1), voice.
   "ratelimits": [

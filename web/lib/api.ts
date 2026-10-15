@@ -1,5 +1,6 @@
 import type { DemoMode } from "../../demo-service/src/modes";
 import type { IncidentStatus, Origin } from "../../worker/agent/state";
+import type { WatchView } from "../../worker/watch/types";
 
 /** Errors the UI explains in words (TDD §7.1). */
 export type ApiError = "need_target" | "empty_message" | "demo_unavailable" | "rate_limited" | "network" | "server";
@@ -100,6 +101,51 @@ export const getDemo = (f: Fetch = fetch) => demoCall(f);
 
 export const setDemoModes = (modes: DemoMode[], f: Fetch = fetch) =>
   demoCall(f, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ modes }) });
+
+export type Watch = WatchView;
+export type WatchError = "invalid_url" | "already_watched" | "watch_limit" | "watch_capacity" | "demo_unavailable" | "network" | "server";
+
+export const WATCH_ERROR_TEXT: Record<WatchError, string> = {
+  invalid_url: "Give a URL or a hostname, like api.example.com.",
+  already_watched: "That URL is already on your watchlist.",
+  watch_limit: "Your watchlist is full (3 at most). Remove one first.",
+  watch_capacity: "The app is watching as many sites as it can (30). Try again later.",
+  demo_unavailable: ERROR_TEXT.demo_unavailable,
+  network: ERROR_TEXT.network,
+  server: ERROR_TEXT.server,
+};
+
+/** The workspace's watches, or null if they couldn't be loaded. */
+export async function listWatches(f: Fetch = fetch): Promise<Watch[] | null> {
+  try {
+    const res = await f("/api/watches");
+    return res.ok ? ((await res.json()) as Watch[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `message` is the server's reason for a refused URL (an IP literal, a private host, …). */
+export async function addWatch(url: string, f: Fetch = fetch): Promise<{ ok: true; watch: Watch } | { ok: false; error: WatchError; message?: string }> {
+  let res: Response;
+  try {
+    res = await f("/api/watches", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
+  } catch {
+    return { ok: false, error: "network" };
+  }
+  if (res.ok) return { ok: true, watch: (await res.json()) as Watch };
+  const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+  const error = (Object.keys(WATCH_ERROR_TEXT) as WatchError[]).find((k) => k === body.error) ?? "server";
+  return { ok: false, error, ...(typeof body.message === "string" ? { message: body.message } : {}) };
+}
+
+export async function deleteWatch(id: string, f: Fetch = fetch): Promise<boolean> {
+  try {
+    return (await f(`/api/watches/${id}`, { method: "DELETE" })).ok;
+  } catch {
+    return false;
+  }
+}
 
 /** Tells the DemoPanel to reload its modes, e.g. after an approved restore (WP-12). */
 export const DEMO_CHANGED = "demo:changed";

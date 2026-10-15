@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { AppShell } from "./components/AppShell";
 import { DemoPanel } from "./components/DemoPanel";
 import { IncidentSidebar } from "./components/IncidentSidebar";
+import { WatchlistPanel } from "./components/WatchlistPanel";
 import { firstSession, getSession, INCIDENTS_CHANGED, type Session } from "./lib/api";
 import { AppRoutes } from "./routes";
 
@@ -34,7 +35,18 @@ export function App() {
   return (
     <LinkProvider component={AppLink}>
       <Toasty>
-        <AppShell sidebar={ready && <IncidentSidebar />} aside={ready && <DemoPanel />} budgetMode={session?.budgetMode}>
+        <AppShell
+          sidebar={
+            ready && (
+              <>
+                <IncidentSidebar />
+                <WatchlistPanel demoUrl={session?.demoUrl} />
+              </>
+            )
+          }
+          aside={ready && <DemoPanel />}
+          budgetMode={session?.budgetMode}
+        >
           {ready ? (
             <AppRoutes />
           ) : (

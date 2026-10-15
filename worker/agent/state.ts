@@ -37,7 +37,8 @@ export type ApprovalView = {
   cause: string;
   evidence: string[];
   /** What happened after the decision. `verified` is set once the re-check after the action has run. */
-  outcome?: { ok: boolean; text: string; verified?: boolean };
+  /** `verified`: the re-check after a fix. `done`: an action with nothing to re-check (add_to_watchlist). */
+  outcome?: { ok: boolean; text: string; verified?: boolean; done?: boolean };
   createdAt: number;
   decidedAt?: number;
 };

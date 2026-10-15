@@ -11,6 +11,8 @@ import { newId } from "../../worker/lib/ids";
  */
 async function diagnoseRun(message: string, target: string, mode?: RunMode) {
   const introspector = await introspectWorkflow(env.DIAGNOSIS_WORKFLOW);
+  // A broken real site gets an "Add to watchlist" card (WP-18); it expires at once, so the Workflow completes.
+  await introspector.modifyAll((m) => m.forceEventTimeout({ name: "wait-for-approval" }));
   try {
     const id = newId();
     const agent = await incidentAgent(env, id);
@@ -36,6 +38,7 @@ describe("DiagnosisWorkflow (mock LLM, fake internet)", () => {
       ["http-1", "fail"],
     ]);
     expect(s).toMatchObject({ category: "origin_5xx", status: "investigating", activeRunId: null, mode: "ai" });
+    expect(s.approvals.map((a) => [a.actionId, a.status])).toEqual([["add_to_watchlist", "expired"]]);
     const narration = s.messages.find((m) => m.id === `narr-${runId}`)!;
     expect(narration.content).toContain("[http-1]");
     expect(finished(s)).toEqual(["done"]);
@@ -82,6 +85,7 @@ describe("DiagnosisWorkflow (mock LLM, fake internet)", () => {
   it("runs a follow-up as a second Workflow that sees the earlier evidence", async () => {
     const first = await diagnoseRun("why is broken.example.com down?", "https://broken.example.com/");
     const introspector = await introspectWorkflow(env.DIAGNOSIS_WORKFLOW);
+    await introspector.modifyAll((m) => m.forceEventTimeout({ name: "wait-for-approval" }));
     try {
       const runId = await first.agent.startRun("still broken?", "followup");
       expect(runId).toBe("run-2");

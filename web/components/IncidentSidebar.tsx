@@ -1,10 +1,11 @@
 import { Sidebar } from "@cloudflare/kumo";
+import { EyeIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { INCIDENTS_CHANGED, listIncidents, type IncidentRow } from "../lib/api";
 import { STATUS_TEXT } from "../lib/incident";
 
-/** The workspace's incidents. Reloads on navigation and on changes; polling and unread dots are WP-19. */
+/** The workspace's incidents; watch-opened ones say so. Reloads on navigation and on changes; polling and unread dots are WP-19. */
 export function IncidentSidebar() {
   const [location] = useLocation();
   const [rows, setRows] = useState<IncidentRow[] | null>(null);
@@ -34,7 +35,15 @@ export function IncidentSidebar() {
               <Sidebar.MenuButton href={`/i/${r.id}`} active={location === `/i/${r.id}`} className="h-auto py-1.5">
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate font-mono text-xs">{host}</span>
-                  <span className="text-xs text-(--cf-fg-muted)">{STATUS_TEXT[r.status]}</span>
+                  <span className="flex items-center gap-1 text-xs text-(--cf-fg-muted)">
+                    {STATUS_TEXT[r.status]}
+                    {r.origin === "watch" && (
+                      <>
+                        {" · "}
+                        <EyeIcon aria-hidden size={12} /> Watch
+                      </>
+                    )}
+                  </span>
                 </span>
               </Sidebar.MenuButton>
             </Sidebar.MenuItem>

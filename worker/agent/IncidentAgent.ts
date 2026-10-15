@@ -17,6 +17,7 @@ import { devAllowOrigin } from "../safety/ssrf";
 import type { DnsRaw } from "../tools/dns";
 import { quickCheck, type QuickCheckResult } from "../tools/quickcheck";
 import { evidenceId, toolLabel } from "../tools/registry";
+import { canWatch, releaseIncident } from "../watch/store";
 import type { ToolName, ToolResult } from "../tools/types";
 import { MONITOR_MAX_TICKS, MONITOR_TICK_S, tick } from "./monitor";
 import { SCHEMA } from "./schema.sql";
@@ -339,6 +340,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       demoBaseUrl: this.env.DEMO_BASE_URL,
       category: findings.category,
       status: incident.status,
+      watchable: await this.watchable(incident),
     });
     if (!actionId) return { approvalId: null, actionId: null };
 
@@ -387,8 +389,11 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
   async executeAction(approvalId: string): Promise<ActionOutcome> {
     const a = this.mustApproval(approvalId);
     if (a.status !== "approved") throw new Error(`approval ${approvalId} is ${a.status}`);
-    const out = await execute(a.action_id, this.env, this.mustIncident().workspace_id);
-    this.setOutcome(a.id, out);
+    const incident = this.mustIncident();
+    const out = await execute(a.action_id, { env: this.env, workspaceId: incident.workspace_id, incidentId: incident.id, target: incident.target });
+    // The watch now reports to this incident (cron → reportWatchCheck), and resolving it frees the watch.
+    if (out.watchId) this.sql`UPDATE incident SET watch_id = ${out.watchId} WHERE id = ${incident.id}`;
+    this.setOutcome(a.id, { ok: out.ok, text: out.text });
     this.event("action_executed", { approvalId, actionId: a.action_id, ok: out.ok });
     this.touch();
     this.syncState();
@@ -402,8 +407,17 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
   async afterAction(runId: string, approvalId: string): Promise<VerifyResult> {
     this.mustRun(runId);
     const a = this.mustApproval(approvalId);
-    const prior = a.outcome_json ? (JSON.parse(a.outcome_json) as ActionOutcome & { verified?: boolean }) : null;
+    const prior = a.outcome_json ? (JSON.parse(a.outcome_json) as ActionOutcome & { verified?: boolean; done?: boolean }) : null;
     if (prior?.verified !== undefined) return { pass: prior.verified, text: prior.text };
+    if (prior?.done) return { pass: true, text: prior.text };
+    // Watching fixes nothing, so there's nothing to re-check: the incident goes back to investigating, and the
+    // watch's passing checks resolve it later (reportWatchCheck).
+    if (a.action_id === "add_to_watchlist") {
+      const text = prior?.text ?? "Added to the watchlist.";
+      this.sql`UPDATE approvals SET outcome_json = ${JSON.stringify({ ok: true, text, done: true })} WHERE id = ${a.id}`;
+      await this.leaveAwaitingApproval("added to the watchlist");
+      return { pass: true, text };
+    }
 
     const v = await this.quickCheck();
     const text = `${prior?.text ? `${prior.text} ` : ""}${verifyText(v)}`;
@@ -435,6 +449,24 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       if (r.to !== "resolved") this.event("monitor_ended", { reason: "out of ticks" });
     }
     if (r.to) await this.transition(r.to, r.to === "resolved" ? "3 passing checks in a row" : v.pass ? "recovered" : "failing again");
+    else {
+      this.touch();
+      this.syncState();
+    }
+  }
+
+  /**
+   * A cron check of this incident's watch (TDD §8.4–§8.5). Passes feed the same rules as the monitor: a pass while
+   * investigating → mitigated (recovered without an action), 3 in a row → resolved, a failure reopens a mitigated
+   * incident. While the post-action monitor runs it decides, since it checks every 15 s; a pending card is left alone.
+   */
+  async reportWatchCheck(pass: boolean, consecutivePasses: number, summary: string): Promise<void> {
+    const incident = this.incident();
+    if (!incident || incident.status === "resolved") return;
+    this.event("watch_check", { pass, passes: consecutivePasses, summary });
+    const monitorRunning = this.sql`SELECT 1 FROM monitor WHERE id = 1`.length > 0;
+    const r = monitorRunning ? { to: null } : tick({ ticksLeft: 2, passes: Math.max(0, consecutivePasses - 1) }, incident.status, pass);
+    if (r.to) await this.transition(r.to, r.to === "resolved" ? "3 passing watch checks in a row" : pass ? "watch check passed" : "watch check failing again");
     else {
       this.touch();
       this.syncState();
@@ -543,7 +575,30 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     this.touch();
     this.syncState();
     await this.upsertIndex();
+    if (to === "resolved") await this.releaseWatch();
     // WP-19: NotifyWorkflow for watch incidents on mitigated/resolved (D18).
+  }
+
+  /** Frees the incident's watch so its next failure can open a new incident. Logged, never thrown. */
+  private async releaseWatch() {
+    const { watch_id: watchId } = this.mustIncident();
+    if (!watchId) return;
+    try {
+      await releaseIncident(this.env.DB, watchId, this.name);
+    } catch (e) {
+      console.error("could not release the watch", watchId, (e as Error).message);
+    }
+  }
+
+  /** For the add_to_watchlist card: not watched yet, and the workspace can add this URL. False on a D1 error. */
+  private async watchable(incident: IncidentRow): Promise<boolean> {
+    if (incident.watch_id) return false;
+    try {
+      return await canWatch(this.env.DB, incident.workspace_id, incident.target);
+    } catch (e) {
+      console.error("watchlist check failed", (e as Error).message);
+      return false;
+    }
   }
 
   private mustApproval(id: unknown): ApprovalRow {
@@ -683,7 +738,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       messages: messages.map((m) => ({ id: m.id, runId: m.run_id, role: m.role, content: m.content, createdAt: m.created_at })),
       approvals: approvals.map((a) => {
         const why = a.findings_json ? (JSON.parse(a.findings_json) as Findings) : null;
-        const outcome = a.outcome_json ? (JSON.parse(a.outcome_json) as ActionOutcome & { verified?: boolean }) : null;
+        const outcome = a.outcome_json ? (JSON.parse(a.outcome_json) as ActionOutcome & { verified?: boolean; done?: boolean }) : null;
         return {
           id: a.id,
           runId: a.run_id,
@@ -692,7 +747,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
           status: a.status,
           cause: why?.cause ?? "",
           evidence: why?.evidence ?? [],
-          ...(outcome ? { outcome: { ok: outcome.ok, text: outcome.text, ...(outcome.verified !== undefined ? { verified: outcome.verified } : {}) } } : {}),
+          ...(outcome ? { outcome: { ok: outcome.ok, text: outcome.text, ...(outcome.verified !== undefined ? { verified: outcome.verified } : {}), ...(outcome.done ? { done: true } : {}) } } : {}),
           createdAt: a.created_at,
           ...(a.decided_at ? { decidedAt: a.decided_at } : {}),
         };

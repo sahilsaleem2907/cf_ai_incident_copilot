@@ -25,11 +25,11 @@ A link to an incident opened by someone else is **view-only**: you can watch it 
 | Requirement | Implementation |
 |---|---|
 | **LLM** | Workers AI `@cf/openai/gpt-oss-120b`, falling back to `@cf/zai-org/glm-4.7-flash`, both routed through **AI Gateway** (`incident-copilot`) for logs and fallback. A deterministic rule engine takes over when both are unavailable. |
-| **Workflow / coordination** | **Workflows**: `DiagnosisWorkflow` (extends the Agents SDK's `AgentWorkflow`) runs each LLM turn and each check as its own durable, retryable step, then waits for human approval with `waitForApproval`. |
+| **Workflow / coordination** | **Workflows**: `DiagnosisWorkflow` (extends the Agents SDK's `AgentWorkflow`) runs each LLM turn and each check as its own durable, retryable step, then waits for human approval with `waitForApproval`. `WatchWorkflow` confirms a watched endpoint's failure (2 of 3 checks) before opening an incident on its own. |
 | **User input** | A React chat UI (Cloudflare's Kumo design system) served by **Workers Static Assets**, with live updates over a WebSocket straight to the incident's Durable Object. |
-| **Memory / state** | **Durable Objects** via the Agents SDK: one `IncidentAgent` per incident with its own SQLite (checks, evidence, messages, approvals, timeline). **D1** holds the workspaces, the incident index per workspace (for the sidebar) and the daily neuron count. |
+| **Memory / state** | **Durable Objects** via the Agents SDK: one `IncidentAgent` per incident with its own SQLite (checks, evidence, messages, approvals, timeline). **D1** holds the workspaces, the incident index per workspace (for the sidebar), the watchlist and the daily neuron count. |
 
-Also used: Service Bindings with RPC (main Worker → demo Worker), Workers Logs, and the `global_fetch_strictly_public` flag.
+Also used: Cron Triggers (the watchlist), Rate Limiting bindings, Service Bindings with RPC (main Worker → demo Worker), Workers Logs, and the `global_fetch_strictly_public` flag.
 
 ## Architecture
 
@@ -38,7 +38,10 @@ flowchart LR
   B["Browser<br/>React + Kumo"] -- "HTTPS /api/*" --> W["Main Worker<br/>Hono router"]
   B -- "WebSocket /agents/incident-agent/:id" --> A["IncidentAgent<br/>Durable Object + SQLite"]
   W -- "init / snapshot" --> A
-  W --> D1[("D1<br/>incident index")]
+  W --> D1[("D1<br/>incident index · watches")]
+  C["Cron Trigger<br/>every minute"] -- "due watches: quick check" --> W
+  W -- "failure" --> WW["WatchWorkflow<br/>confirm 2 of 3"]
+  WW -- "init (origin: watch)" --> A
   A -- "runWorkflow · approve / reject" --> F["DiagnosisWorkflow<br/>AgentWorkflow"]
   F -- "RPC: record checks, findings, narrate" --> A
   F --> AI["Workers AI<br/>via AI Gateway"]
@@ -56,6 +59,8 @@ flowchart LR
 3. The Workflow runs the baseline checks (DNS + HTTP) right away, so the first card shows in about a second. It then gives the model the evidence digests and lets it either call more tools or call `submit_findings` (category, confidence, evidence IDs, actions), which is validated with zod.
 4. The agent streams a narration of those fixed findings over the WebSocket. A citation check removes any sentence that cites an unknown ID, or makes a factual claim without a citation.
 5. If an action is proposable, an approval card appears and the Workflow waits for it. On approve, the agent runs the action and re-checks it. It then checks again every 15 s, and resolves the incident once 3 checks in a row have passed (the re-check plus two more).
+
+**Watching (WP-18):** a workspace can watch up to 3 URLs for 24 hours (30 across the app). A Cron Trigger runs every minute and quick-checks the watches that are due (every 5 minutes, or every minute for your own demo), with no LLM. When a check fails, a `WatchWorkflow` re-checks 30 s later. If it fails again (2 of 3), the Workflow opens an incident on its own, and the diagnosis is waiting when the user looks. Later passing checks move it to mitigated and then resolve it after 3 in a row. A broken real site also gets an "Add to watchlist" card, which links the new watch to that incident.
 
 ## How the Agents SDK is used
 
@@ -161,7 +166,6 @@ The full design for each of these is in the TDD. Day 2 of the build is still in 
 
 | WP | Feature | Design |
 |---|---|---|
-| 18 | Watchlist: a cron every minute checks due watches; on failure, `WatchWorkflow` confirms 2 of 3 and opens an incident on its own | TDD §8.5 |
 | 19 | Notifications: unread badges, browser notifications, and Slack/Discord webhooks (AES-GCM encrypted, sent once per state change by `NotifyWorkflow`) | TDD §8.5, §11 |
 | 20 | LLM eval suite: break the demo each way and score category, citation and proposed action (target ≥ 4/5) | TDD §16 |
 | 21 | `cert_info` (crt.sh) and `provider_status` (status pages) tools | TDD §7.3 |

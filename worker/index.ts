@@ -1,9 +1,11 @@
 import { routeAgentRequest } from "agents";
 import { api } from "./api/router";
 import { isId } from "./lib/ids";
+import { runWatchTick } from "./watch/cron";
 
 export { IncidentAgent } from "./agent/IncidentAgent";
 export { DiagnosisWorkflow } from "./workflows/diagnosis";
+export { WatchWorkflow } from "./workflows/watch";
 
 const notFound = () => new Response("Not found", { status: 404 });
 
@@ -36,5 +38,14 @@ export default {
       return routed ?? notFound();
     }
     return api.fetch(request, env, ctx);
+  },
+  /** Cron, every minute: check due watches (TDD §8.5). */
+  async scheduled(_controller, env, ctx) {
+    ctx.waitUntil(
+      runWatchTick(env).then(
+        (s) => (s.checked || s.expired) && console.log("watch tick", JSON.stringify(s)),
+        (e) => console.error("watch tick failed", (e as Error).message),
+      ),
+    );
   },
 } satisfies ExportedHandler<Env>;

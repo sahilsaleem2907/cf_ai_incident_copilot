@@ -12,6 +12,7 @@ describe("cardState", () => {
     ["approved, re-check failed", { status: "approved", outcome: { ok: false, text: "x", verified: false } }, "Approved, but still failing", "bad"],
     ["approved, re-check pending", { status: "approved", outcome: { ok: true, text: "x" } }, "Approved, checking it…", "working"],
     ["approved, verified", { status: "approved", outcome: { ok: true, text: "x", verified: true } }, "Approved and verified", "good"],
+    ["approved, nothing to re-check", { status: "approved", outcome: { ok: true, text: "x", done: true } }, "Approved and done", "good"],
     ["rejected", { status: "rejected" }, "Rejected", "closed"],
     ["expired", { status: "expired" }, "Expired, no action taken", "closed"],
     ["superseded", { status: "superseded" }, "Replaced by a newer proposal", "closed"],

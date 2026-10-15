@@ -340,3 +340,15 @@ Answers to Claude's questions:
 (Plan: the app makes one session call and waits for it before anything else, so a first visit creates one workspace; and a second run limit per visitor IP (hashed), 6 a minute and 20 an hour, so dropping the cookie doesn't skip the limit.)
 
 (WP-17b done: a first visit now creates one workspace (the app waits for one session call before anything else), and runs are also limited per visitor IP, 6 a minute and 20 an hour, stored only as a hash. 540 tests pass; checked in the browser.)
+
+### 22:57 · WP-18 plan
+
+> Great Lets build WP-18 now
+
+**Claude asked:** watches are checked at most every 5 minutes, but the done-when wants a broken watched demo to open an incident in about 2 minutes. Should the demo get a faster check?
+**Answer:** yes, the own demo every 1 minute; real sites stay at 5 minutes or more.
+
+**Claude asked:** when should the "Add to watchlist" approval card appear?
+**Answer:** for broken real (non-demo) sites; approving it links the watch to the incident so it resolves itself once the site passes 3 checks in a row.
+
+(Plan approved: watch API with caps, `WatchlistPanel`, a cron every minute, `WatchWorkflow` confirming 2 of 3 failures and opening an incident, `reportWatchCheck` resolving it.)

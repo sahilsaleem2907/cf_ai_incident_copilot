@@ -1,4 +1,4 @@
-/** User-facing limits returned by /api/session; enforcement lands in WP-17 (runs, voice) and WP-18 (watches). */
+/** User-facing limits returned by /api/session (TDD §5.2, §11). Voice is enforced in WP-23. */
 export const LIMITS = {
   runsPerMinute: 3,
   runsPerHour: 10,
@@ -7,4 +7,10 @@ export const LIMITS = {
   runsPerHourPerIp: 20,
   voicePerHour: 20,
   watchesPerWorkspace: 3,
+  watchesGlobal: 30,
+  /** Real sites: at least 5 minutes apart (FR-40). Our own demo Worker every minute (user decision, WP-18). */
+  watchMinIntervalSec: 300,
+  watchMaxIntervalSec: 3600,
+  demoWatchIntervalSec: 60,
+  watchTtlHours: 24,
 } as const;

@@ -18,6 +18,7 @@
     "worker/safety/target.ts",
     "worker/lib/ids.ts",
     "demo-service/src/modes.ts",
-    "worker/agent/monitor.ts"
+    "worker/agent/monitor.ts",
+    "worker/watch/types.ts"
   ]
 }

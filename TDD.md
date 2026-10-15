@@ -162,11 +162,11 @@ test/         unit/*.test.ts integration/*.test.ts demo/*.test.ts fixtures/
 | `LLM_TIMEOUT_MS` | 25 000 per LLM call. A timeout counts as a failure, so the fast fallback answers (*WP-07*) |
 | `MONITOR_TICK_S` | 15 (on-demand), max 10 ticks |
 | `BURST_TICK_S` | 60 × 15 |
-| `WATCH_MIN_INTERVAL_S` | 300 |
+| `WATCH_MIN_INTERVAL_S` | 300 (at most 3600). *WP-18:* the workspace's own demo is checked every 60 s (user decision) |
 | `WATCH_TTL` | 24 h |
 | `WATCHES_PER_WS` | 3 |
 | `WATCHES_GLOBAL` | 30 |
-| `CRON_BATCH` | 6 |
+| `CRON_BATCH` | 6, within a 45-subrequest budget per tick (`CRON_SUBREQUESTS`); a watch needs 12 left |
 | `RUNS_PER_HOUR` | 10 |
 | `VOICE_PER_HOUR` | 20 |
 | `VOICE_MAX_BYTES` | 160 KB (30 s at 24 kbps Opus) |
@@ -267,7 +267,7 @@ Incident, workspace and approval IDs are 128-bit random hex values (`crypto.getR
 | `GET /api/incidents/:id` | | Snapshot (`IncidentState` + findings) | Owner only. Used by eval and smoke tests. |
 | `POST /api/incidents/:id/read` | | 204 | Clears `unread` |
 | `GET /api/demo` · `POST /api/demo/mode` | `{modes}` | `{modes, url}` / 400 `{error:"invalid_modes"}` / 503 `{error:"demo_unavailable"}` | Calls `env.DEMO.getModes` / `setModes(ws, modes)`. `modes` is `["healthy"]` or one problem plus an optional `"slow"` (§7.5). 503 while `DEMO_BASE_URL` holds `<sub>` |
-| `GET/POST /api/watches` · `DELETE /api/watches/:id` | `{url, intervalSec}` | Watch list | Per-workspace and global caps |
+| `GET/POST /api/watches` · `DELETE /api/watches/:id` | `{url, intervalSec}` | Watch list · 201 watch · 400 `{error:"invalid_url", message}` · 409 `already_watched` / `watch_limit` / `watch_capacity` · 204 / 404 | Per-workspace and global caps. *WP-18:* the URL goes through `parseTarget` ("demo" works) and `checkUrlShape`; the caps are part of the INSERT |
 | `GET/PUT/DELETE /api/webhook` | `{url}` | `{kind, hint}` | Allowlist, then encryption |
 | `POST /api/voice` | `audio/webm` body | `{text}` | Size cap, then limit, then whisper, then normalization |
 | `GET /api/health` | | `{ok, version}` | Smoke test |
@@ -287,7 +287,7 @@ recordApprovalOutcome(approvalId, "rejected"|"expired"|"failed", detail?): Promi
 executeAction(approvalId): Promise<{ ok, text }>                   // WP-12: idempotent
 afterAction(runId, approvalId): Promise<{ pass, text }>            // WP-12: runs quickCheck itself → mitigated + monitor
 monitorTick(): Promise<void>                                       // WP-12: agent schedule callback (also RPC for tests)
-reportWatchCheck(pass: boolean, digest): Promise<void>             // from cron
+reportWatchCheck(pass, consecutivePasses, summary): Promise<void> // from cron (WP-18)
 // @callable (WebSocket). Every method except getEvidence requires role=owner (D8)
 sendMessage(text) · approve(approvalId) · reject(approvalId) · resolve() · generatePostmortem()
 markRead() · getEvidence(evidenceId)
@@ -406,6 +406,8 @@ The canonical order is `DEMO_MODES` order, for example `["slow", "errors"]`. The
 |---|---|---|---|---|
 | `restore_demo_service` | `{}` | Target host = demo host, path starts with `/w/<incident.workspaceId>/`, category ≠ `healthy` | `env.DEMO.setModes(ws, ["healthy"])` (clears every mode) | `quickCheck` pass, then `afterAction` |
 | `add_to_watchlist` | `{intervalSec: 300}` | Not already watched and under caps | Insert into `watches` | None; outcome goes on the timeline |
+
+*As built (WP-18), user decision:* `add_to_watchlist` is also a **rule action** for a broken real (non-demo) site, so the card appears even when the model leaves it out. `pickAction` always prefers `restore_demo_service` when it fits (a fix beats watching), then the model's actions, then the rule actions. `proposable` needs `watchable`: the incident has no watch yet, and `canWatch` says the workspace can add this URL. Approving creates a watch **linked to the incident** (`open_incident_id`, `incident.watch_id`), so cron's passing checks resolve it. There's nothing to re-check, so `afterAction` skips the verify check, stores `outcome.done`, and the incident goes back to `investigating`; the card says "Approved and done".
 | `recheck_burst` | `{}` | No monitor active | Agent `monitor(kind:"burst")` | Ticks |
 | `generate_postmortem` | `{}` | status = `resolved` | `generatePostmortem()` | None |
 
@@ -525,6 +527,7 @@ Tool steps retry with `{limit: 2}` because each retry spends subrequest budget. 
 3. When the ticks run out, the incident stays `mitigated`.
 4. Bursts work the same way at 60 s × 15.
 5. For watch incidents, `reportWatchCheck` from cron feeds the same counter. In that case a pass while `investigating` moves to `mitigated` (recovered without action).
+   - *As built (WP-18):* cron passes the watch's `consecutive_passes`, and the agent reuses `tick()`. While the post-action monitor runs, it decides (it checks every 15 s), and the watch check is only recorded (`watch_check` event). A pending card is left alone. Any move to `resolved` releases the watch (`open_incident_id = NULL`), so its next failure can open a new incident.
 
 *As built (WP-12):*
 - **The pure reducer.** `monitor.ts` `tick(state, status, pass)` holds the logic, with `MONITOR_TICK_S` 15, `MONITOR_MAX_TICKS` 10 and `MONITOR_PASSES` 3.
@@ -547,6 +550,15 @@ Tool steps retry with `{limit: 2}` because each retry spends subrequest budget. 
 4. `step.do("notify")` creates `NOTIFY_WORKFLOW` with `notify-<id>-opened`.
 
 The Agent creates a NotifyWorkflow for watch incidents when they transition to mitigated or resolved (D18). When an incident resolves, the watch's `open_incident_id` is cleared.
+
+*As built (WP-18):*
+- **Files:** `watch/store.ts` (D1), `watch/cron.ts` (`runWatchTick`), `workflows/watch.ts`, `api/watches.ts`, `WatchlistPanel`.
+- **Cron:** one 45-subrequest budget per tick; a watch is checked only if 12 are left (a worst-case quick check plus the RPC or create), and the rest wait for the next tick. Each watch has its own try/catch. A duplicate Workflow ID (`instance.already_exists`) is ignored.
+- **WatchWorkflow confirms early:** the first failed re-check confirms (cron's failure + 1 = 2 of 3), saving 30 s. Two passing re-checks end it.
+- **One incident per failure:** the incident ID is its own step, and `open` claims the watch (`UPDATE … WHERE open_incident_id IS NULL`) **before** `init`. A second Workflow from an overlapping failure loses the claim; a retry of our own step recognises its ID.
+- **Watch incidents start with the system message** "Scheduled check failed for <url>". They aren't charged to the run quota, but the budget guard still applies. A watch incident whose first diagnosis says healthy stays open until passes resolve it (the healthy-first-check rule is chat-only).
+- **UI:** the WatchlistPanel polls every 15 s while visible and fires `INCIDENTS_CHANGED` when a watch's open incident changes, so an auto-opened incident shows in the sidebar without WP-19's polling. Watch incidents show an eye icon and "Watch".
+- **Local check (WP-18):** cron triggered through the Vite plugin's `POST /cdn-cgi/local/explorer/api/local/scheduled?worker=incident-copilot`. A watch on a 500 site → the Workflow confirmed on the first re-check → an incident opened 34 s later with `origin_5xx`. With the watch pointed at a healthy site: mitigated after 1 pass, resolved after 3, and the watch was released.
 
 ### 8.6 Follow-up
 
@@ -783,7 +795,8 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | | `diagnosis.test.ts` | Real Workflow, mock LLM, fake internet: tools → findings → narrate; healthy → resolved; `#llm-down` → rules; `#llm-invalid` ×2 → rules; NXDOMAIN; follow-up run; a `rule_based` (smoke) run on the healthy demo with 0 LLM turns |
 | Unit | `plan.test.ts` | The driver with a fake `io`: happy path, invalid once/twice, origin pin, LLM down, tool cap, turn cap, budget, deadline, throwing check, unexpected failure, rule-based mode |
 | | `approval.test.ts` | Propose → approve → `setModes(["healthy"])` called → verify → `mitigated` → 2 ticks → `resolved`. Reject → `investigating`. Timeout (`forceEventTimeout("wait-for-approval")`) → expired. Approve twice, a viewer, resolving by hand, a duplicate follow-up, a retried proposal. The demo stub's default `fetch` serves `/w/<ws>/` by mode, and the fake internet routes the test demo host to it. Supersede itself is covered at the agent level: with one proposable action, it can't happen end to end yet. |
-| | `cron.test.ts` | Due-watch query with LIMIT and caps; failure starts WatchWorkflow; duplicate ID ignored. *WP-14: `it.todo` stubs until WP-18 builds the cron.* |
+| | `cron.test.ts` | Due-watch query (oldest first, LIMIT 6, unexpired); the tick's subrequest budget defers the rest; failure starts WatchWorkflow `watch-<id>-<minute>`; duplicate ID ignored; an open incident gets `reportWatchCheck`; expired watches deleted |
+| | `watch-workflow.test.ts`, `watches-api.test.ts`, `watch-agent.test.ts` | Confirm → open a linked watch incident; a blip opens nothing; no second incident; a deleted watch. The API: validation (IP literal, localhost, port), demo every 60 s, 5–60 min otherwise, 3 per workspace, 30 global, one per URL, own deletes only. The agent: watch passes → mitigated → resolved and release; a failure reopens; a pending card is untouched; the `add_to_watchlist` card end to end (approve → linked watch → passes resolve); no card at the cap |
 | Demo (`@cloudflare/vitest-plugin`, demo Worker) | `demo.test.ts` | Every mode's status, headers and timing, through `exports.default` and the `DemoAdmin` RPC; per-workspace state; bad input; no admin route |
 
 - **Projects** (`vitest.config.ts`): `unit` runs in node. `integration` loads `wrangler.jsonc` with `LLM_MODE=mock` and a valid test `DEMO_BASE_URL`, and with `remoteBindings: false`, so the AI binding never goes remote: tests need no login and spend no neurons. `demo` loads `demo-service/wrangler.jsonc`.
