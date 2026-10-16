@@ -16,11 +16,13 @@ function utf16be(text: string): Uint8Array {
   }
   return out;
 }
-const awsEvent = (region: string) =>
-  `{"date":"1772369485","arn":"arn:aws:health:x","region_name":"${region}","status":"3","service":"multipleservices-x","service_name":"Multiple services","summary":"Region Availability","event_log":[{"summary":"Increased Error Rates","message":"${"We are investigating. ".repeat(40)}"}]}`;
+const NOW = Date.parse("2026-10-16T12:00:00Z");
+const hoursAgo = (h: number) => String(Math.floor((NOW - h * 3_600_000) / 1000));
+const awsEvent = (region: string, date = hoursAgo(2)) =>
+  `{"date":"${date}","arn":"arn:aws:health:x","region_name":"${region}","status":"3","service":"multipleservices-x","service_name":"Multiple services","summary":"Region Availability","event_log":[{"summary":"Increased Error Rates","message":"${"We are investigating. ".repeat(40)}"}]}`;
 
 const run = (providers: ("cloudflare" | "github" | "aws")[], hosts: Parameters<typeof byHost>[0]) =>
-  runProviderStatus({ providers }, { fetch: fakeFetch(byHost(hosts)), evidenceId: "status-1" });
+  runProviderStatus({ providers }, { fetch: fakeFetch(byHost(hosts)), evidenceId: "status-1", now: () => NOW });
 
 describe("provider_status parsing", () => {
   it("decodes UTF-16 (both byte orders) and plain UTF-8", () => {
@@ -37,14 +39,15 @@ describe("provider_status parsing", () => {
     expect(parseStatuspage("<html>")).toBeNull();
   });
 
-  it("reads AWS events from a whole feed, or from the part that fit the read cap", () => {
-    const feed = `[${awsEvent("UAE")},${awsEvent("Bahrain")}]`;
-    expect(parseAws(feed, false)).toEqual([
-      { name: "Multiple services: Region Availability (UAE)", status: "3" },
+  it("reads AWS events from a whole feed, or from the part that fit the read cap; events older than a day are 'ongoing'", () => {
+    const feed = `[${awsEvent("UAE", hoursAgo(5000))},${awsEvent("Bahrain")}]`;
+    const want = [
+      { name: "Multiple services: Region Availability (UAE)", status: "3", impact: "ongoing" },
       { name: "Multiple services: Region Availability (Bahrain)", status: "3" },
-    ]);
-    expect(parseAws(feed.slice(0, feed.length - 400), true)?.map((e) => e.name)).toEqual(["Multiple services: Region Availability (UAE)", "Multiple services: Region Availability (Bahrain)"]);
-    expect(parseAws("[]", false)).toEqual([]);
+    ];
+    expect(parseAws(feed, false, NOW)).toEqual(want);
+    expect(parseAws(feed.slice(0, feed.length - 400), true, NOW)).toEqual(want);
+    expect(parseAws("[]", false, NOW)).toEqual([]);
   });
 });
 
@@ -55,7 +58,7 @@ describe("provider_status", () => {
       "www.githubstatus.com": statuspage([]),
     });
     expect(r).toMatchObject({ ok: true, status: "pass", tool: "provider_status" });
-    expect(r.summary).toBe("Cloudflare: no outage (1 minor incident(s)) · GitHub: no active incidents.");
+    expect(r.summary).toBe("Cloudflare: no outage (1 minor or long-running incident(s)) · GitHub: no active incidents.");
     expect(r.raw.providers.cloudflare?.active[0]).toMatchObject({ impact: "minor" });
   });
 
@@ -67,10 +70,15 @@ describe("provider_status", () => {
   it("reads the AWS feed (UTF-16), and a provider that doesn't answer leaves the others counted", async () => {
     const r = await run(["github", "aws"], {
       "www.githubstatus.com": () => new Response("down", { status: 503 }),
-      "health.aws.amazon.com": () => new Response(utf16be(`[${awsEvent("UAE")}]`)),
+      "health.aws.amazon.com": () => new Response(utf16be(`[${awsEvent("UAE")},${awsEvent("Bahrain", hoursAgo(5000))}]`)),
     });
     expect(r).toMatchObject({ ok: true, status: "fail", raw: { unavailable: ["github"] } });
     expect(r.summary).toBe('AWS: 1 active incident(s), "Multiple services: Region Availability (UAE)" · GitHub: no answer.');
+  });
+
+  it("only long-running AWS events (WP-26: months-old regional events made healthy sites look failing) → no outage", async () => {
+    const r = await run(["aws"], { "health.aws.amazon.com": () => new Response(utf16be(`[${awsEvent("UAE", hoursAgo(5000))},${awsEvent("Bahrain", hoursAgo(25))}]`)) });
+    expect(r).toMatchObject({ ok: true, status: "pass", summary: "AWS: no outage (2 minor or long-running incident(s))." });
   });
 
   it("is unavailable when no status page answers", async () => {

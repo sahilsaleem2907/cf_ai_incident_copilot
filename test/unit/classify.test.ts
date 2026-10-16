@@ -184,6 +184,10 @@ describe("classify: precedence (first match wins)", () => {
     expect(cat([dns(), http({ statuses: [500, 500, 500], server: "cloudflare" }), withImpact("minor")])).toBe("origin_5xx");
     expect(cat([dns(), http({ statuses: [500, 500, 500], server: "cloudflare" }), withImpact("major")])).toBe("provider_outage");
     expect(cat([dns(), http({ statuses: [500, 500, 500], server: "cloudflare" }), withImpact("critical")])).toBe("provider_outage");
+    // AWS events older than a day are marked "ongoing" (provider.ts) and don't count either.
+    const aws = provider({ aws: ["Region Availability (UAE)"] });
+    aws.raw.providers.aws!.active[0]!.impact = "ongoing";
+    expect(cat([dns({ cname: ["x.s3.amazonaws.com"] }), http({ statuses: [500, 500, 500] }), aws])).toBe("origin_5xx");
   });
   it("provider incident with healthy HTTP is still healthy", () => {
     expect(cat([dns(), http({ server: "cloudflare" }), provider({ cloudflare: ["Outage"] })])).toBe("healthy");

@@ -22,8 +22,8 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** none. WP-21 (`33b8467`), WP-22 (`944a87c`) and WP-23 (`3289689`) are done (below the cut line), not deployed yet. WP-27c (scroll and evidence bugs, dashed loader) is done (`0a225a0`). WP-27 UI polish and WP-27b follow-ups are done (`f21232b`, `a2f4461`). **Everything above the cut line is done** (WP-01 to WP-20). WP-20's eval passed 5/5 locally. WP-17 to WP-19 are done (not deployed yet); the user tested the demo watch walkthrough and it worked. **Before webhooks work live:** the user sets `WEBHOOK_KEY` (`openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`) **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
-- **Next:** WP-24 `recheck_burst` (below the cut line)
+- **Current:** WP-26 demo GIF + live URL (🔄 since 17:33). WP-24 (`0d1be49`) and WP-25 (`d14953b`, apply pending: user) are done. WP-21 to WP-23 are done and deployed (PR #8); the user checked them live. WP-27c (scroll and evidence bugs, dashed loader) is done (`0a225a0`). WP-27 UI polish and WP-27b follow-ups are done (`f21232b`, `a2f4461`). **Everything above the cut line is done** (WP-01 to WP-20). WP-20's eval passed 5/5 locally. WP-17 to WP-19 are done (not deployed yet); the user tested the demo watch walkthrough and it worked. **Before webhooks work live:** the user sets `WEBHOOK_KEY` (`openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`) **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
+- **Next:** nothing left in the plan; the user runs the Terraform apply
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
@@ -31,6 +31,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
   - PR #1 was closed unmerged; `master` (`867d8d6`) is unused.
   - **PR #3** `dev` → `main` ("WP-06 to WP-10 …") opened 16:47: https://github.com/sahilsaleem2907/cf_ai_incident_copilot/pull/3. Waiting for Sift review.
 - **Blockers / risks:**
+  - **WP-26 waits for a `dev` → `main` merge:** the first recording take showed a red AWS provider card on a healthy site (fixed in `a25ba58`); the GIF is recorded on the live site once the fix is deployed. Conversion is tuned (900 px, 8 fps, waits sped up 10×).
   - none blocking. WP-15's first automatic deploy passed (merge of PR #4, 2026-10-15).
   - Watch gpt latency: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
   - **Live walkthrough timing (after WP-13b):** about 10 s to the first card, then about 31 s from Approve to Resolved (2 monitor ticks × 15 s). With a person clicking, steps 1–5 take about 55–60 s, right at the PRD's 60 s. A shorter monitor tick would add slack.
@@ -77,9 +78,9 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 21 | `cert_info` + `provider_status` | 1.0 | 09 | ✅ | 16:11 | 16:29 | `33b8467`. 0.3 h vs 1.0 est. 644 tests pass (+40), 3 runs in a row. Real crt.sh in the local browser: cert card on a refused HTTPS host; Cache API hit on repeat |
 | 22 | Postmortem | 0.5 | 12 | ✅ | 16:30 | 16:38 | `944a87c`. 665 tests pass (+21), 3 runs in a row. Local browser walkthrough step 6: stored, copied, survives a reload |
 | 23 | Voice | 0.75 | 17 | ✅ | 16:38 | 16:44 | `3289689`. 684 tests pass (+19), 3 runs in a row. Headless Chrome with a fake mic: the done-when phrase fills the box, nothing sent |
-| 24 | `recheck_burst` | 0.25 | 12 | ⬜ | | | |
-| 25 | Terraform (local apply) | 0.5 | — | ⬜ | | | |
-| 26 | Demo GIF | 0.25 | 13 | ⬜ | | | |
+| 24 | `recheck_burst` | 0.25 | 12 | ✅ | 17:23 | 17:31 | `0d1be49`. 687 tests pass (+3), 3 runs in a row. Local: burst ticks 60 s apart on a real 404 page |
+| 25 | Terraform (local apply) | 0.5 | — | ✅ | 17:31 | 17:33 | `d14953b`. Files done; `validate` passes locally. **Apply: user, pending** (README steps) |
+| 26 | Demo GIF | 0.25 | 13 | 🔄 | 17:33 | | |
 
 > WP-16 is protected: start it no later than about 1 h before the end of Day 2, whatever else is still in progress.
 
@@ -389,16 +390,16 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-24</b> recheck_burst</summary>
 
-- [ ] Monitor kind `burst` (60 s × 15)
-- [ ] **Done when:** timeline shows ticks once a minute
+- [x] Monitor kind `burst` (60 s × 15)
+- [x] **Done when:** timeline shows ticks once a minute (local, real 404 page: 60.3 / 60.0 / 60.1 s apart)
 </details>
 
 <details>
 <summary><b>WP-25</b> Terraform</summary>
 
-- [ ] `infra/` with D1 (+ AI Gateway if the provider supports it)
-- [ ] One local `apply`
-- [ ] **Done when:** `terraform validate` passes in CI and apply has run once
+- [x] `infra/` with D1 + AI Gateway (provider ≥ 5.19 supports it), both imported, `prevent_destroy`
+- [ ] One local `apply` (**user**, steps in the README)
+- [ ] **Done when:** `terraform validate` passes in CI (next PR; passes locally) and apply has run once
 </details>
 
 <details>
@@ -416,6 +417,9 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
+| 2026-10-16 17:39 | 26→21 | **Fix found while recording the demo (live, real AI):** on a healthy `diagnose cloudflare.com`, the model called `provider_status` for Cloudflare and AWS itself, and the card came back red **Fail** because AWS's feed lists two Middle East regional events open since March, and every AWS event counted as an outage. The extra AI turn also made the run take 82 s. Fixed: AWS events older than 24 h are listed as "ongoing" and don't count; the tool description says to call it only when the site is failing. That take wasn't used; the GIF is recorded after this fix is deployed. **Folded into TDD §7.3.** | Seen in the first recording take |
+| 2026-10-16 17:33 | 25 | **Terraform as built.** (1) The provider manages AI Gateway since v5.19 (`cloudflare_ai_gateway`), so PRD R1 is settled: both D1 and the gateway are in `infra/`. (2) Both already exist, so they're **imported** (`import` blocks, `<account_id>/<id>`) and protected with `prevent_destroy`; the gateway's settings match the dashboard's so the plan should show only imports. (3) The token comes from `CLOUDFLARE_API_TOKEN` and the account ID from a gitignored `terraform.tfvars` (the account ID stays out of the repo, as for the transcripts). (4) **The user runs plan/apply** (user decision); a Terraform binary in the session scratchpad ran `fmt -check` and `validate` (1.16.6, provider 5.28.0). **Folded into TDD §15 and the README.** | User decision in the WP-24 to WP-26 plan |
+| 2026-10-16 17:31 | 24 | **recheck_burst as built.** (1) **Rule action for inconclusive results** (user decision): an inconclusive real site gets "Re-check every minute for 15 minutes" ahead of the watch; the model can name it for any failure; the demo keeps its restore. (2) Only one monitor at a time: a running monitor blocks the burst card (the watch is offered instead), and a later restore replaces a burst. (3) Run by the agent like the postmortem; a retried step keeps the running burst. (4) The header says "Re-checking every minute: n of 3 …" for a burst. **Local check (mock AI, real network):** `github.com/this-page-does-not-exist-xyz` (404) → inconclusive → burst card → Approve → ticks 60.3, 60.0, 60.1 s apart, no console errors. **Folded into TDD §7.6, §8.4, §12.2, §14.** | User decision in the WP-24 to WP-26 plan |
 | 2026-10-16 16:44 | 23 | **Voice as built.** (1) **Click to start, click to stop** (user decision), auto-stop at 30 s, mic released on stop. (2) Any `audio/*` type is accepted, since Safari records `audio/mp4` (Chrome and Firefox WebM/Opus). (3) The voice quota is **per workspace and per visitor IP** (5 a minute, 20 an hour), like the run quota, so dropping the cookie doesn't skip it. (4) Voice is off while the budget guard is on (503, before any quota is used). (5) Normalisation keeps the sentence's own words and case; only spoken "dot"/"slash" and hostnames change. (6) A second take is appended to what's in the box. **Local check (headless Chrome, fake mic, mock Whisper):** clock "0:01 / 0:30" while recording, the box reads "is demo.example.com down", focus moves there, the only request is `POST /api/voice` (nothing sent, still on the New incident page); light, dark and 390 px, no sideways scroll, no console errors. **Not done:** a live Whisper call (it costs neurons; can be run with the user's OK). **Folded into TDD §7.1, §8.7, §12.2, §14 and the README.** | User decision in the WP-21 to WP-23 plan |
 | 2026-10-16 16:38 | 22 | **Postmortem as built.** (1) **Facts by code, story by AI** (user decision): impact window, detection and a UTC timeline come from the full timeline table; the AI writes Summary, Root cause, Resolution, Follow-ups as `##` sections, any missing one comes from the template, and the root cause always cites its evidence. (2) A stored postmortem is free; a new AI one is charged to the run quota (D14); the budget guard gives the template, free. (3) `generate_postmortem` is the one card a resolved incident can get, when the model names it on a follow-up and none is stored; no status change. (4) Category display names moved to `categories.ts` (`CATEGORY_LABEL`), shared by the UI pill and the postmortem. (5) Viewers can read a stored postmortem (`getPostmortem`) but not write one. **Local walkthrough (mock LLM):** break → Approve → resolved 30 s later → Postmortem → markdown shown, copied (clipboard matched), still there after a reload; dark at 390 px, no sideways scroll, no console errors; Escape closes it. Found and fixed during the check: a site healthy at its first check was described as "recovered after 3 checks". **Folded into TDD §7.2, §7.6, §8.7, §12.2, §14 and the README walkthrough (step 6).** | User decision in the WP-21 to WP-23 plan |
 | 2026-10-16 16:29 | 21 | **cert_info + provider_status as built.** (1) **Spike:** an exact-host crt.sh query misses wildcard certificates, so `cert_info` also asks for `*.parent` (2 fetches; the TDD said 1). crt.sh took 2–12 s and timed out at 30 s for cloudflare.com. `expired.badssl.com` is covered by a **valid** `*.badssl.com` wildcard in the CT logs, so CT can't catch that kind of expiry; the card says "valid until …" and the diagnosis stays inconclusive (honest, best effort). AWS's health feed is 231 KB of UTF-16: read up to 128 KB, events picked out leniently. (2) **"Only when useful"** (user decision): `cert_info` runs after the baseline when HTTPS fails to connect, `provider_status` when a site fingerprinted to Cloudflare/GitHub/AWS is failing; never on the user's own demo. (3) **Only major/critical Statuspage incidents count as an outage:** Cloudflare had a minor dashboard incident open during the spike, and the demo answers `server: cloudflare`, so every broken demo would otherwise have read as a Cloudflare outage. (4) Rule 2: an expired CT certificate counts only when HTTP isn't healthy; HTTPS refusing every connection with no unexpired certificate covering the host → `tls_expiry` medium. (5) The mock model reads cert and status cards. Local check (real network, mock LLM): `expired.badssl.com` → DNS pass, HTTP connection failed, Certificate card in about 1 s; a repeat lookup came from the Cache API in 0.0 s; light, dark, 390 px, no console errors. Known limit: AWS events aren't filtered by region. **Folded into TDD §5.2, §7.3, §8.2, §9.3, §14 and the README.** | User decisions in the WP-21 to WP-23 plan; spike findings |

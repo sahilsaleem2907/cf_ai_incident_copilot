@@ -92,7 +92,7 @@ export const TOOLS: Record<ToolName, RegisteredTool> = {
     name: "provider_status",
     label: "Provider status",
     description:
-      "Check the public status pages of hosting providers (cloudflare, github, aws) for active incidents, to tell whether a failure is the site's or its provider's. Only major or critical incidents count as an outage.",
+      "Check the public status pages of hosting providers (cloudflare, github, aws) for active incidents, to tell whether a failure is the site's or its provider's. Only call it when the site is failing; a healthy site needs no status check. Only major or critical incidents count as an outage.",
     input: providerInput,
     maxSubrequests: (i) => i.providers.length,
     run: runProviderStatus,
