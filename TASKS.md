@@ -31,6 +31,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
   - PR #1 was closed unmerged; `master` (`867d8d6`) is unused.
   - **PR #3** `dev` → `main` ("WP-06 to WP-10 …") opened 16:47: https://github.com/sahilsaleem2907/cf_ai_incident_copilot/pull/3. Waiting for Sift review.
 - **Blockers / risks:**
+  - **WP-26 waits for a `dev` → `main` merge:** the first recording take showed a red AWS provider card on a healthy site (fixed in `a25ba58`); the GIF is recorded on the live site once the fix is deployed. Conversion is tuned (900 px, 8 fps, waits sped up 10×).
   - none blocking. WP-15's first automatic deploy passed (merge of PR #4, 2026-10-15).
   - Watch gpt latency: a forced `submit_findings` turn took 19 s once (TDD §7.4.1).
   - **Live walkthrough timing (after WP-13b):** about 10 s to the first card, then about 31 s from Approve to Resolved (2 monitor ticks × 15 s). With a person clicking, steps 1–5 take about 55–60 s, right at the PRD's 60 s. A shorter monitor tick would add slack.
