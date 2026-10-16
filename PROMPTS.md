@@ -519,3 +519,7 @@ Answers to Claude's questions:
 > - if i dont run the terraform plan locally its fine right, this is just to test correct?
 
 (Explained: the Terraform files describe the D1 database and the AI Gateway and adopt the existing ones through imports; `prevent_destroy` makes any plan that would delete or replace them fail; `plan` changes nothing. Not running it doesn't affect the app; it only means the "applied once" part of WP-25 isn't done.)
+
+> what are the exact terraform steps
+
+(Gave the exact steps: install Terraform, create a D1 + AI Gateway edit token, set the account ID in a gitignored tfvars, init, plan (expect 2 to import, nothing else), apply, check the outputs.)
