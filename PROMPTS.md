@@ -535,3 +535,7 @@ Answers to Claude's questions:
 > looks good now.
 
 (The plan ran clean; no `terraform.tfstate` yet, so apply hasn't run. Board updated.)
+
+> all done.
+
+(Checked: Terraform state holds both resources and its outputs match `wrangler.jsonc`; CI validated `infra/` on PR #9; the AWS fix is live. Recorded the walkthrough on the live site and made `docs/demo.gif` (34 s, 6.7 MB); the README now has the GIF and the live URL. WP-25 and WP-26 marked done: every WP in the plan is built.)

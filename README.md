@@ -4,13 +4,17 @@ An AI on-call assistant that runs entirely on Cloudflare. You describe a symptom
 
 It comes with a **demo service** you can break on purpose (500 errors, slowness, a redirect loop, bad caching), so the whole loop of break → diagnose → approve → verified → resolved can be tried in about a minute.
 
-> **Live URL:** not published yet. The rate limits and the neuron budget guard (WP-17) are built and go live with the next deploy; the URL is shared after that (decision D2, see [Security](#security)).
+> **Try it live:** [incident-copilot.sahilcs1111.workers.dev](https://incident-copilot.sahilcs1111.workers.dev). No sign-up; each browser gets its own workspace and its own demo service. Runs are rate limited, and the app switches to rule-based diagnoses if the day's AI budget runs low ([Security](#security)).
 
 - **Docs:** [`PRD.md`](PRD.md) (what and why), [`TDD.md`](TDD.md) (how, and every decision), [`TASKS.md`](TASKS.md) (the build board), [`PROMPTS.md`](PROMPTS.md) (how AI was used).
 
 ---
 
 ## 60-second walkthrough
+
+![The walkthrough on the live site: a healthy check of cloudflare.com, then the demo is broken, diagnosed, fixed after approval, resolved, and written up as a postmortem](docs/demo.gif)
+
+_Recorded on the live site with the real model; the waits are sped up._
 
 1. Open the app. A workspace is created for you (an anonymous cookie, no sign-up).
 2. Type `diagnose cloudflare.com`. Check cards fill in (DNS, then HTTP), and a healthy diagnosis streams in with evidence.
@@ -105,7 +109,7 @@ The app fetches URLs that users type in, so it's built so that it can't be used 
 - **The smoke flag:** `POST /api/incidents?smoke=rule` runs a diagnosis without the LLM, for the deploy check. It's public, but it can only make a run cheaper.
 
 **Accepted risks:**
-- **D2: the URL wasn't protected on Day 1.** Rate limits, quotas and the budget guard came in WP-17, so the `workers.dev` URL wasn't shared until they shipped. If it's ever abused, `LLM_MODE` can be set to `mock` on the deployed Worker. The Rate Limiting binding counts per Cloudflare location and is approximate; the D1 hourly quota is exact.
+- **D2: the URL wasn't protected on Day 1.** Rate limits, quotas and the budget guard came in WP-17, so the `workers.dev` URL wasn't shared until they shipped; it's published now that they're live. If it's ever abused, `LLM_MODE` can be set to `mock` on the deployed Worker. The Rate Limiting binding counts per Cloudflare location and is approximate; the D1 hourly quota is exact.
 - **D7: the workspace ID is visible.** The demo lives at `/w/<workspaceId>/`, and that ID is also the session credential. It shows up in a public URL, in prompts and in logs. Someone who learns it can act as that anonymous workspace, which only holds that person's own incidents and demo.
 - **One location.** Probes run from whichever Cloudflare location runs the Workflow, so the app doesn't claim anything about regional reachability.
 - **DNS rebinding.** The guard checks DNS, then fetches, and the name could resolve differently in between. `global_fetch_strictly_public` narrows this, but it can't be closed completely from inside a Worker.
@@ -175,13 +179,9 @@ D1 was first created with `wrangler d1 create` and the AI Gateway in the dashboa
 4. `terraform init`, then `terraform plan`. Expect **2 to import, 0 to add, 0 to change, 0 to destroy**. If it wants to change or replace anything, stop and adjust `main.tf` to match the live settings first.
 5. `terraform apply`.
 
-## Designed, not built (yet)
+## Build status
 
-The full design for each of these is in the TDD. Day 2 of the build is still in progress, so items leave this list as they ship ([`TASKS.md`](TASKS.md) has live status).
-
-| WP | Feature | Design |
-|---|---|---|
-| 26 | Demo GIF of the walkthrough | — |
+Everything in the build plan (TDD §17, WP-01 to WP-26) shipped, including the items below the original cut line: the certificate and provider status checks, postmortems, voice input, `recheck_burst`, Terraform and this GIF. Terraform's `apply` is run by hand (D15); it adopted the existing D1 database and AI Gateway. [`TASKS.md`](TASKS.md) has the full log.
 
 ## Repository layout
 
