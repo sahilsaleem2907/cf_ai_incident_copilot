@@ -523,3 +523,7 @@ Answers to Claude's questions:
 > what are the exact terraform steps
 
 (Gave the exact steps: install Terraform, create a D1 + AI Gateway edit token, set the account ID in a gitignored tfvars, init, plan (expect 2 to import, nothing else), apply, check the outputs.)
+
+> can i reuse the old token we generated?
+
+(Answered: yes if the value was saved somewhere, after adding AI Gateway permission to it in the dashboard; GitHub won't show the secret back.)
