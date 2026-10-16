@@ -22,8 +22,8 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-25 Terraform (🔄 since 17:31; plan: WP-24, 25, 26 in a row, one commit each). WP-24 is done (`0d1be49`). WP-21 to WP-23 are done and deployed (PR #8); the user checked them live. WP-27c (scroll and evidence bugs, dashed loader) is done (`0a225a0`). WP-27 UI polish and WP-27b follow-ups are done (`f21232b`, `a2f4461`). **Everything above the cut line is done** (WP-01 to WP-20). WP-20's eval passed 5/5 locally. WP-17 to WP-19 are done (not deployed yet); the user tested the demo watch walkthrough and it worked. **Before webhooks work live:** the user sets `WEBHOOK_KEY` (`openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`) **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
-- **Next:** WP-26 demo GIF + live URL
+- **Current:** WP-26 demo GIF + live URL (🔄 since 17:33). WP-24 (`0d1be49`) and WP-25 (`d14953b`, apply pending: user) are done. WP-21 to WP-23 are done and deployed (PR #8); the user checked them live. WP-27c (scroll and evidence bugs, dashed loader) is done (`0a225a0`). WP-27 UI polish and WP-27b follow-ups are done (`f21232b`, `a2f4461`). **Everything above the cut line is done** (WP-01 to WP-20). WP-20's eval passed 5/5 locally. WP-17 to WP-19 are done (not deployed yet); the user tested the demo watch walkthrough and it worked. **Before webhooks work live:** the user sets `WEBHOOK_KEY` (`openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`) **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
+- **Next:** nothing left in the plan; the user runs the Terraform apply
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
@@ -78,8 +78,8 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 22 | Postmortem | 0.5 | 12 | ✅ | 16:30 | 16:38 | `944a87c`. 665 tests pass (+21), 3 runs in a row. Local browser walkthrough step 6: stored, copied, survives a reload |
 | 23 | Voice | 0.75 | 17 | ✅ | 16:38 | 16:44 | `3289689`. 684 tests pass (+19), 3 runs in a row. Headless Chrome with a fake mic: the done-when phrase fills the box, nothing sent |
 | 24 | `recheck_burst` | 0.25 | 12 | ✅ | 17:23 | 17:31 | `0d1be49`. 687 tests pass (+3), 3 runs in a row. Local: burst ticks 60 s apart on a real 404 page |
-| 25 | Terraform (local apply) | 0.5 | — | 🔄 | 17:31 | | |
-| 26 | Demo GIF | 0.25 | 13 | ⬜ | | | |
+| 25 | Terraform (local apply) | 0.5 | — | ✅ | 17:31 | 17:33 | `d14953b`. Files done; `validate` passes locally. **Apply: user, pending** (README steps) |
+| 26 | Demo GIF | 0.25 | 13 | 🔄 | 17:33 | | |
 
 > WP-16 is protected: start it no later than about 1 h before the end of Day 2, whatever else is still in progress.
 
