@@ -527,3 +527,7 @@ Answers to Claude's questions:
 > can i reuse the old token we generated?
 
 (Answered: yes if the value was saved somewhere, after adding AI Gateway permission to it in the dashboard; GitHub won't show the secret back.)
+
+> (pasted `terraform plan` output: a 404 from the Cloudflare API, with the tfvars placeholder used as the account ID)
+
+(Fixed: the account ID was filled into the local, gitignored `terraform.tfvars` from `wrangler whoami`; `variables.tf` now rejects anything that isn't a 32-character account ID with a clear message.)
