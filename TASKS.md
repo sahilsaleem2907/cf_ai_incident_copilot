@@ -22,7 +22,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-23 Voice (🔄 since 16:38; plan: WP-21, 22, 23 in a row, one commit each). WP-21 (`33b8467`) and WP-22 (`944a87c`) are done. WP-27c (scroll and evidence bugs, dashed loader) is done (`0a225a0`). WP-27 UI polish and WP-27b follow-ups are done (`f21232b`, `a2f4461`). **Everything above the cut line is done** (WP-01 to WP-20). WP-20's eval passed 5/5 locally. WP-17 to WP-19 are done (not deployed yet); the user tested the demo watch walkthrough and it worked. **Before webhooks work live:** the user sets `WEBHOOK_KEY` (`openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`) **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
+- **Current:** none. WP-21 (`33b8467`), WP-22 (`944a87c`) and WP-23 (`3289689`) are done (below the cut line), not deployed yet. WP-27c (scroll and evidence bugs, dashed loader) is done (`0a225a0`). WP-27 UI polish and WP-27b follow-ups are done (`f21232b`, `a2f4461`). **Everything above the cut line is done** (WP-01 to WP-20). WP-20's eval passed 5/5 locally. WP-17 to WP-19 are done (not deployed yet); the user tested the demo watch walkthrough and it worked. **Before webhooks work live:** the user sets `WEBHOOK_KEY` (`openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`) **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
 - **Next:** WP-24 `recheck_burst` (below the cut line)
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
@@ -76,7 +76,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | — | **✂️ CUT LINE**: anything below that isn't built goes into the README "designed, not built" list | | | | | | |
 | 21 | `cert_info` + `provider_status` | 1.0 | 09 | ✅ | 16:11 | 16:29 | `33b8467`. 0.3 h vs 1.0 est. 644 tests pass (+40), 3 runs in a row. Real crt.sh in the local browser: cert card on a refused HTTPS host; Cache API hit on repeat |
 | 22 | Postmortem | 0.5 | 12 | ✅ | 16:30 | 16:38 | `944a87c`. 665 tests pass (+21), 3 runs in a row. Local browser walkthrough step 6: stored, copied, survives a reload |
-| 23 | Voice | 0.75 | 17 | 🔄 | 16:38 | | |
+| 23 | Voice | 0.75 | 17 | ✅ | 16:38 | 16:44 | `3289689`. 684 tests pass (+19), 3 runs in a row. Headless Chrome with a fake mic: the done-when phrase fills the box, nothing sent |
 | 24 | `recheck_burst` | 0.25 | 12 | ⬜ | | | |
 | 25 | Terraform (local apply) | 0.5 | — | ⬜ | | | |
 | 26 | Demo GIF | 0.25 | 13 | ⬜ | | | |
