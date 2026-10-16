@@ -543,3 +543,7 @@ Answers to Claude's questions:
 > Great make sure everything is pushed and @TASKS.md ARE COMPLETED.
 
 (Everything was already pushed. The one open item, the Day 2 transcript export, is done: 6 sessions plus the last Day 1 session re-exported in full, secrets redacted (the token found as an upper-case GitHub secret name, the account ID in any case) and checked. TASKS.md has no open items left.)
+
+> All merged.
+
+(Checked: PR #10 is on `main`, its deploy passed (CI, deploy, smoke) and the live site is healthy.)
