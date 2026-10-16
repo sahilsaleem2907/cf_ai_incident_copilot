@@ -23,7 +23,7 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 ## Now
 
 - **Current:** none. **Every WP in the plan is done (WP-01 to WP-26).** WP-24 (`0d1be49`), WP-25 (`d14953b`, applied by the user) and WP-26 (`8efa323`) are the last three. WP-21 to WP-23 are done and deployed (PR #8); the user checked them live. WP-27c (scroll and evidence bugs, dashed loader) is done (`0a225a0`). WP-27 UI polish and WP-27b follow-ups are done (`f21232b`, `a2f4461`). **Everything above the cut line is done** (WP-01 to WP-20). WP-20's eval passed 5/5 locally. WP-17 to WP-19 are done (not deployed yet); the user tested the demo watch walkthrough and it worked. **Before webhooks work live:** the user sets `WEBHOOK_KEY` (`openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`) **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
-- **Next:** nothing left in the build plan. Open: export the Day 2 transcript to `prompts/` (see the wrap-up)
+- **Next:** nothing. Every WP and the Day 2 transcript export are done; `dev` → `main` is the user's merge
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
@@ -480,4 +480,4 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 - **Done:** WP-14 to WP-20 (all Musts and the Shoulds above the cut line), then everything below it: WP-21 to WP-26. Added: WP-17b, WP-27/27b/27c (UI polish and bugs, user requests), the AWS provider fix found while recording. Deployed through PRs #4 to #9; Terraform applied by the user
 - **Cut (→ README "designed, not built"):** nothing
 - **Hours:** not totalled for Day 2
-- **Transcript exported to `prompts/`:** ⬜ **When exporting:** this session shows a Cloudflare API token (in upper case, as a GitHub secret name in `gh secret list` output, 2026-10-15 evening). Redact it as `<TOKEN>`, matching case-insensitively, and the account ID as `<ACCOUNT_ID>`, even after the token is rolled.
+- **Transcript exported to `prompts/`:** ✅ 6 Day 2 sessions, plus the last Day 1 session re-exported in full; see [`prompts/README.md`](prompts/README.md). The token (upper case, a GitHub secret name in `gh secret list` output, 2026-10-15 evening) is redacted as `<TOKEN>` case-insensitively and the account ID as `<ACCOUNT_ID>` in any case; a search of every exported file for both found nothing left. The current session was still running when exported.

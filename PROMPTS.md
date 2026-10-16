@@ -539,3 +539,7 @@ Answers to Claude's questions:
 > all done.
 
 (Checked: Terraform state holds both resources and its outputs match `wrangler.jsonc`; CI validated `infra/` on PR #9; the AWS fix is live. Recorded the walkthrough on the live site and made `docs/demo.gif` (34 s, 6.7 MB); the README now has the GIF and the live URL. WP-25 and WP-26 marked done: every WP in the plan is built.)
+
+> Great make sure everything is pushed and @TASKS.md ARE COMPLETED.
+
+(Everything was already pushed. The one open item, the Day 2 transcript export, is done: 6 sessions plus the last Day 1 session re-exported in full, secrets redacted (the token found as an upper-case GitHub secret name, the account ID in any case) and checked. TASKS.md has no open items left.)
