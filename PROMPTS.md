@@ -513,3 +513,9 @@ Answers to Claude's questions:
 
 **Claude asked:** add the live URL to the README now?
 **Answer:** yes.
+
+> couple of questions:
+> - what does the terraform do and will it not recreate or delete existsing infra?
+> - if i dont run the terraform plan locally its fine right, this is just to test correct?
+
+(Explained: the Terraform files describe the D1 database and the AI Gateway and adopt the existing ones through imports; `prevent_destroy` makes any plan that would delete or replace them fail; `plan` changes nothing. Not running it doesn't affect the app; it only means the "applied once" part of WP-25 isn't done.)
