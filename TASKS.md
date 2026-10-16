@@ -22,8 +22,8 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** none. WP-27c (scroll and evidence bugs, dashed loader) is done (`0a225a0`). WP-27 UI polish and WP-27b follow-ups are done (`f21232b`, `a2f4461`). **Everything above the cut line is done** (WP-01 to WP-20). WP-20's eval passed 5/5 locally. WP-17 to WP-19 are done (not deployed yet); the user tested the demo watch walkthrough and it worked. **Before webhooks work live:** the user sets `WEBHOOK_KEY` (`openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`) **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
-- **Next:** WP-21 `cert_info` + `provider_status` (below the cut line)
+- **Current:** none. WP-21 (`33b8467`), WP-22 (`944a87c`) and WP-23 (`3289689`) are done (below the cut line), not deployed yet. WP-27c (scroll and evidence bugs, dashed loader) is done (`0a225a0`). WP-27 UI polish and WP-27b follow-ups are done (`f21232b`, `a2f4461`). **Everything above the cut line is done** (WP-01 to WP-20). WP-20's eval passed 5/5 locally. WP-17 to WP-19 are done (not deployed yet); the user tested the demo watch walkthrough and it worked. **Before webhooks work live:** the user sets `WEBHOOK_KEY` (`openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`) **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
+- **Next:** WP-24 `recheck_burst` (below the cut line)
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
@@ -74,9 +74,9 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 27b | UI follow-ups (user review): centred CTA, alignment, matching headings, demo/diagnosis pills, tooltip, dashed empty state, footer | — | 27 | ✅ | 02:39 | 02:43 | `a2f4461`. 601 tests pass (+2). Local browser: every column's text lines up with its heading to the pixel (left 26 px, right 1137 px, light and dark); headings 13 px uppercase on both sides; CTA label centred; tooltip shows; no nested buttons; no console errors |
 | 27c | Bugs: page scroll past footer, evidence overflow; dashed loader everywhere + chat working row | — | 27b | ✅ | 03:21 | 03:29 | `0a225a0`. 604 tests pass (+3). The scroll bug didn't reproduce in headless Chrome (page never taller than the window, wheel included), so the fix is structural: no `scrollIntoView`, page locked, `overscroll-contain`. Evidence capped at 320 px and wraps (400-char line stays inside the card at 390 px). Working row seen: Running checks… → Writing the diagnosis… → text |
 | — | **✂️ CUT LINE**: anything below that isn't built goes into the README "designed, not built" list | | | | | | |
-| 21 | `cert_info` + `provider_status` | 1.0 | 09 | ⬜ | | | |
-| 22 | Postmortem | 0.5 | 12 | ⬜ | | | |
-| 23 | Voice | 0.75 | 17 | ⬜ | | | |
+| 21 | `cert_info` + `provider_status` | 1.0 | 09 | ✅ | 16:11 | 16:29 | `33b8467`. 0.3 h vs 1.0 est. 644 tests pass (+40), 3 runs in a row. Real crt.sh in the local browser: cert card on a refused HTTPS host; Cache API hit on repeat |
+| 22 | Postmortem | 0.5 | 12 | ✅ | 16:30 | 16:38 | `944a87c`. 665 tests pass (+21), 3 runs in a row. Local browser walkthrough step 6: stored, copied, survives a reload |
+| 23 | Voice | 0.75 | 17 | ✅ | 16:38 | 16:44 | `3289689`. 684 tests pass (+19), 3 runs in a row. Headless Chrome with a fake mic: the done-when phrase fills the box, nothing sent |
 | 24 | `recheck_burst` | 0.25 | 12 | ⬜ | | | |
 | 25 | Terraform (local apply) | 0.5 | — | ⬜ | | | |
 | 26 | Demo GIF | 0.25 | 13 | ⬜ | | | |
@@ -361,29 +361,29 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <details>
 <summary><b>WP-21</b> cert_info and provider_status</summary>
 
-- [ ] `cert.ts` (crt.sh, Cache API, `unavailable` on error)
-- [ ] `provider.ts` (Statuspage + AWS best effort)
-- [ ] Add both to the rule path
-- [ ] **Done when:** both cards render; crt.sh failure shows `unavailable`
+- [x] `cert.ts` (crt.sh, Cache API, `unavailable` on error; host + `*.parent` queries)
+- [x] `provider.ts` (Statuspage + AWS best effort; only major/critical incidents count)
+- [x] Add both to the rule path (and after the baseline, "only when useful": `loop/extras.ts`)
+- [x] **Done when:** both cards render; crt.sh failure shows `unavailable` (integration tests with a fake crt.sh; real crt.sh in the local browser)
 </details>
 
 <details>
 <summary><b>WP-22</b> Postmortem</summary>
 
-- [ ] `generatePostmortem` (streamed + rule-based template)
-- [ ] `PostmortemDialog` (`Dialog` with copy)
-- [ ] Postmortem button in the incident header, enabled when `resolved`
-- [ ] `generate_postmortem` action
-- [ ] **Done when:** walkthrough step 6 produces stored, copyable markdown
+- [x] `generatePostmortem` (streamed + rule-based template; facts by code, story by AI)
+- [x] `PostmortemDialog` (`Dialog` with copy)
+- [x] Postmortem button in the incident header, enabled when `resolved`
+- [x] `generate_postmortem` action
+- [x] **Done when:** walkthrough step 6 produces stored, copyable markdown (local browser, mock LLM)
 </details>
 
 <details>
 <summary><b>WP-23</b> Voice</summary>
 
-- [ ] `useRecorder` + `VoiceButton`
-- [ ] `/api/voice` (size cap, limit, whisper)
-- [ ] Normalization (" dot ", " slash ", hostname lowercasing)
-- [ ] **Done when:** "is demo dot example dot com down" fills the input and isn't sent
+- [x] `useRecorder` + `VoiceButton`
+- [x] `/api/voice` (size cap, limit, whisper)
+- [x] Normalization (" dot ", " slash ", hostname lowercasing)
+- [x] **Done when:** "is demo dot example dot com down" fills the input and isn't sent (headless Chrome, fake mic, mock Whisper; a live Whisper call wasn't made)
 </details>
 
 <details>
@@ -416,6 +416,9 @@ Newest first. Record spike findings, anything moved or cut, and estimate overrun
 
 | Date / time | WP | Change | Why |
 |---|---|---|---|
+| 2026-10-16 16:44 | 23 | **Voice as built.** (1) **Click to start, click to stop** (user decision), auto-stop at 30 s, mic released on stop. (2) Any `audio/*` type is accepted, since Safari records `audio/mp4` (Chrome and Firefox WebM/Opus). (3) The voice quota is **per workspace and per visitor IP** (5 a minute, 20 an hour), like the run quota, so dropping the cookie doesn't skip it. (4) Voice is off while the budget guard is on (503, before any quota is used). (5) Normalisation keeps the sentence's own words and case; only spoken "dot"/"slash" and hostnames change. (6) A second take is appended to what's in the box. **Local check (headless Chrome, fake mic, mock Whisper):** clock "0:01 / 0:30" while recording, the box reads "is demo.example.com down", focus moves there, the only request is `POST /api/voice` (nothing sent, still on the New incident page); light, dark and 390 px, no sideways scroll, no console errors. **Not done:** a live Whisper call (it costs neurons; can be run with the user's OK). **Folded into TDD §7.1, §8.7, §12.2, §14 and the README.** | User decision in the WP-21 to WP-23 plan |
+| 2026-10-16 16:38 | 22 | **Postmortem as built.** (1) **Facts by code, story by AI** (user decision): impact window, detection and a UTC timeline come from the full timeline table; the AI writes Summary, Root cause, Resolution, Follow-ups as `##` sections, any missing one comes from the template, and the root cause always cites its evidence. (2) A stored postmortem is free; a new AI one is charged to the run quota (D14); the budget guard gives the template, free. (3) `generate_postmortem` is the one card a resolved incident can get, when the model names it on a follow-up and none is stored; no status change. (4) Category display names moved to `categories.ts` (`CATEGORY_LABEL`), shared by the UI pill and the postmortem. (5) Viewers can read a stored postmortem (`getPostmortem`) but not write one. **Local walkthrough (mock LLM):** break → Approve → resolved 30 s later → Postmortem → markdown shown, copied (clipboard matched), still there after a reload; dark at 390 px, no sideways scroll, no console errors; Escape closes it. Found and fixed during the check: a site healthy at its first check was described as "recovered after 3 checks". **Folded into TDD §7.2, §7.6, §8.7, §12.2, §14 and the README walkthrough (step 6).** | User decision in the WP-21 to WP-23 plan |
+| 2026-10-16 16:29 | 21 | **cert_info + provider_status as built.** (1) **Spike:** an exact-host crt.sh query misses wildcard certificates, so `cert_info` also asks for `*.parent` (2 fetches; the TDD said 1). crt.sh took 2–12 s and timed out at 30 s for cloudflare.com. `expired.badssl.com` is covered by a **valid** `*.badssl.com` wildcard in the CT logs, so CT can't catch that kind of expiry; the card says "valid until …" and the diagnosis stays inconclusive (honest, best effort). AWS's health feed is 231 KB of UTF-16: read up to 128 KB, events picked out leniently. (2) **"Only when useful"** (user decision): `cert_info` runs after the baseline when HTTPS fails to connect, `provider_status` when a site fingerprinted to Cloudflare/GitHub/AWS is failing; never on the user's own demo. (3) **Only major/critical Statuspage incidents count as an outage:** Cloudflare had a minor dashboard incident open during the spike, and the demo answers `server: cloudflare`, so every broken demo would otherwise have read as a Cloudflare outage. (4) Rule 2: an expired CT certificate counts only when HTTP isn't healthy; HTTPS refusing every connection with no unexpired certificate covering the host → `tls_expiry` medium. (5) The mock model reads cert and status cards. Local check (real network, mock LLM): `expired.badssl.com` → DNS pass, HTTP connection failed, Certificate card in about 1 s; a repeat lookup came from the Cache API in 0.0 s; light, dark, 390 px, no console errors. Known limit: AWS events aren't filtered by region. **Folded into TDD §5.2, §7.3, §8.2, §9.3, §14 and the README.** | User decisions in the WP-21 to WP-23 plan; spike findings |
 | 2026-10-16 03:29 | 27c | **Scroll + loader (user bugs).** Cause found in code: `ChatPane` used `scrollIntoView`, which scrolls every ancestor (Kumo's `overflow-hidden` wrappers, the page), not just `<main>`. Not reproduced headless, so fixed structurally: scroll `<main>` directly and only while pinned to the bottom (user decision), lock `html, body`, `overscroll-contain` on `<main>`. One `DashedLoader` replaces Kumo's spinner, including inside buttons; the chat names its step while a run is active (user decision). **Folded into TDD §12.2, §12.3, §12.4.** | User saw the page scroll past the footer while text streamed |
 | 2026-10-16 02:43 | 27b | **UI follow-ups as built (user decisions).** Demo "Now:" and the diagnosis are status pills (healthy green, problems red, slow yellow, inconclusive grey); one heading style on both sidebars (UPPERCASE 13 px); footer "Built on Cloudflare, with ♥ from Sahil" (not "built by", so it doesn't read as an official Cloudflare app). Found and fixed: Kumo's `Tooltip` without `render` wraps its trigger in a `<button>`, so the blocked notifications switch (WP-27) was a button inside a button. **Folded into TDD §12.1, §12.2.** | User review of WP-27 |
 | 2026-10-16 02:28 | 27 | **UI polish as built (user decisions).** (1) **Header uses the Cloudflare cloud** (Kumo `CloudflareLogo` glyph) + "× Incident Copilot"; the footer stays. Overrides TDD §12.1 "no Cloudflare logo". (2) **Orange widened** beyond CTAs: in-progress statuses, unread markers, the notifications switch. One colour map for all statuses (`web/lib/status.ts`): investigating orange, awaiting approval purple, mitigated grey, resolved green; pending approval cards now have a purple border. (3) **Browser notifications are a header switch** with an app-level on/off in `localStorage`, because a site can't revoke a granted permission; people who allowed them before stay on. (4) Watchlist moved to the right column under the demo panel; the webhook stays in the left sidebar (`NotificationSettings` renamed `WebhookSettings`, the TDD's name). (5) Kumo's `Switch` hard-codes blue, so `styles.css` overrides it. **Folded into TDD §12.1, §12.2, §12.3, §12.4.** | User asked for a cleaner Cloudflare look and one status colour language |

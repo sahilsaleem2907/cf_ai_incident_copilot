@@ -7,7 +7,7 @@ import { workspaceFromCookieHeader } from "../lib/cookie";
 import { newId } from "../lib/ids";
 import { llmDeps } from "../llm/client";
 import { LlmUnavailable } from "../llm/models";
-import { narrationSystem, narrationUser, type EvidenceLine } from "../llm/prompts";
+import { narrationSystem, narrationUser, postmortemSystem, postmortemUser, type EvidenceLine } from "../llm/prompts";
 import { streamLlm } from "../llm/stream";
 import { budgetMode, d1Usage } from "../llm/usage";
 import { salvageFindings } from "../loop/findings";
@@ -22,6 +22,7 @@ import { canWatch, releaseIncident } from "../watch/store";
 import { startNotify } from "../workflows/notify";
 import type { ToolName, ToolResult } from "../tools/types";
 import { MONITOR_MAX_TICKS, MONITOR_TICK_S, tick } from "./monitor";
+import { citeRootCause, factsText, parseProse, postmortemFacts, renderPostmortem, templateProse, type PostmortemInput, type Prose } from "./postmortem";
 import { SCHEMA } from "./schema.sql";
 import {
   EMPTY_STATE,
@@ -100,6 +101,10 @@ export type Proposal = { approvalId: string | null; actionId: ActionId | null };
 export type Decision = "rejected" | "expired" | "failed";
 export type VerifyResult = { pass: boolean; text: string };
 
+/** The four postmortem sections are short; narration-sized headroom. */
+const POSTMORTEM_MAX_TOKENS = 1200;
+export const POSTMORTEM_WRITTEN_TEXT = "Postmortem written. Open it with the Postmortem button.";
+
 /** How long a card waits for a decision (FR-21). */
 export const APPROVAL_TIMEOUT = "24 hours";
 
@@ -114,6 +119,8 @@ const MAX_MESSAGE = 2000;
  */
 export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
   override initialState = EMPTY_STATE;
+  /** A postmortem being written: a second click waits for it instead of paying again. */
+  private postmortemInFlight: Promise<string> | null = null;
 
   override async onStart() {
     for (const statement of SCHEMA) this.ctx.storage.sql.exec(statement);
@@ -343,6 +350,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       category: findings.category,
       status: incident.status,
       watchable: await this.watchable(incident),
+      hasPostmortem: this.storedPostmortem() !== null,
     });
     if (!actionId) return { approvalId: null, actionId: null };
 
@@ -392,7 +400,11 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     const a = this.mustApproval(approvalId);
     if (a.status !== "approved") throw new Error(`approval ${approvalId} is ${a.status}`);
     const incident = this.mustIncident();
-    const out = await execute(a.action_id, { env: this.env, workspaceId: incident.workspace_id, incidentId: incident.id, target: incident.target });
+    // A postmortem is written here, by the agent; the card was approved, so it isn't charged to the run quota.
+    const out =
+      a.action_id === "generate_postmortem"
+        ? (await this.writePostmortem((await budgetMode(d1Usage(this.env.DB))) === "ai"), { ok: true, text: POSTMORTEM_WRITTEN_TEXT })
+        : await execute(a.action_id, { env: this.env, workspaceId: incident.workspace_id, incidentId: incident.id, target: incident.target });
     // The watch now reports to this incident (cron → reportWatchCheck), and resolving it frees the watch.
     if (out.watchId) this.sql`UPDATE incident SET watch_id = ${out.watchId} WHERE id = ${incident.id}`;
     this.setOutcome(a.id, { ok: out.ok, text: out.text });
@@ -413,11 +425,11 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     if (prior?.verified !== undefined) return { pass: prior.verified, text: prior.text };
     if (prior?.done) return { pass: true, text: prior.text };
     // Watching fixes nothing, so there's nothing to re-check: the incident goes back to investigating, and the
-    // watch's passing checks resolve it later (reportWatchCheck).
-    if (a.action_id === "add_to_watchlist") {
-      const text = prior?.text ?? "Added to the watchlist.";
+    // watch's passing checks resolve it later (reportWatchCheck). A postmortem has nothing to re-check either.
+    if (a.action_id === "add_to_watchlist" || a.action_id === "generate_postmortem") {
+      const text = prior?.text ?? (a.action_id === "add_to_watchlist" ? "Added to the watchlist." : POSTMORTEM_WRITTEN_TEXT);
       this.sql`UPDATE approvals SET outcome_json = ${JSON.stringify({ ok: true, text, done: true })} WHERE id = ${a.id}`;
-      await this.leaveAwaitingApproval("added to the watchlist");
+      await this.leaveAwaitingApproval(a.action_id === "add_to_watchlist" ? "added to the watchlist" : "postmortem written");
       return { pass: true, text };
     }
 
@@ -555,6 +567,35 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     return { status: "rejected" };
   }
 
+  /**
+   * Writes the postmortem of a resolved incident (FR-70, TDD §8.7), streaming under messageId `postmortem`, and
+   * stores it (FR-71). Owner only. A stored one is returned for free; a new one that uses the AI counts against the
+   * run quota (D14), and the budget guard switches it to the template.
+   */
+  async generatePostmortem(): Promise<{ markdown: string }> {
+    this.requireOwner();
+    if (this.mustIncident().status !== "resolved") throw new Error("not_resolved");
+    const stored = this.storedPostmortem();
+    if (stored) return { markdown: stored.markdown };
+    const ip = (getCurrentAgent().connection?.state as ConnectionInfo | null)?.ip ?? null;
+    this.postmortemInFlight ??= (async () => {
+      const ai = (await budgetMode(d1Usage(this.env.DB))) === "ai";
+      if (ai) {
+        const quota = await takeRun(this.env, { workspaceId: this.mustIncident().workspace_id, ip });
+        if (!quota.ok) throw new Error(`rate_limited:${quota.retryAfter}`);
+      }
+      return this.writePostmortem(ai);
+    })().finally(() => {
+      this.postmortemInFlight = null;
+    });
+    return { markdown: await this.postmortemInFlight };
+  }
+
+  /** The stored postmortem, for owners and viewers alike (it's part of what the incident shows). */
+  getPostmortem(): { markdown: string; generatedAt: number } | null {
+    return this.storedPostmortem();
+  }
+
   async markRead(): Promise<void> {
     this.requireOwner();
     this.sql`UPDATE incident SET unread = 0 WHERE id = ${this.name}`;
@@ -610,6 +651,78 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       console.error("watchlist check failed", (e as Error).message);
       return false;
     }
+  }
+
+  private storedPostmortem(): { markdown: string; generatedAt: number } | null {
+    const row = this.sql<{ markdown: string; generated_at: number }>`SELECT markdown, generated_at FROM postmortem WHERE id = 1`[0];
+    return row ? { markdown: row.markdown, generatedAt: row.generated_at } : null;
+  }
+
+  /**
+   * Writes and stores the postmortem once (user decision "facts by code, story by AI"): the facts come from the
+   * records, the AI writes the four story sections, and any section it misses comes from the template. A cut-off or
+   * failed stream keeps what it got; nothing at all → the template.
+   */
+  private async writePostmortem(useAi: boolean): Promise<string> {
+    const stored = this.storedPostmortem();
+    if (stored) return stored.markdown;
+    const input = this.postmortemInput();
+    const facts = postmortemFacts(input);
+    const fallback = templateProse(input, facts);
+    let prose: Prose = fallback;
+    let source: "llm" | "partial" | "template" = "template";
+    const knownIds = this.sql<{ evidence_id: string }>`SELECT evidence_id FROM checks`.map((r) => r.evidence_id);
+    if (useAi) {
+      const messageId = "postmortem";
+      const evidence = this.resultsFor(input.findings?.evidence ?? [], "").map(toLine);
+      this.frame({ type: "stream_start", messageId });
+      let text: string | undefined;
+      try {
+        const r = await streamLlm(
+          llmDeps(this.env),
+          { system: postmortemSystem(), messages: postmortemUser({ target: input.target, facts: factsText(facts), findings: input.findings, evidence, resolution: fallback.resolution }), maxTokens: POSTMORTEM_MAX_TOKENS },
+          (delta) => this.frame({ type: "delta", messageId, text: delta }),
+        );
+        text = r.text;
+        source = r.truncated ? "partial" : "llm";
+      } catch (e) {
+        console.warn("postmortem failed", (e as Error).message);
+        text = e instanceof LlmUnavailable ? e.partial : undefined;
+        source = "partial";
+      }
+      this.frame({ type: "stream_end", messageId });
+      const parsed = parseProse(text ?? "", knownIds, fallback);
+      prose = parsed.prose;
+      if (parsed.fromAi === 0) source = "template";
+    }
+    prose = citeRootCause(prose, input.findings?.evidence ?? [], knownIds);
+    this.sql`INSERT OR IGNORE INTO postmortem (id, markdown, generated_at) VALUES (1, ${renderPostmortem(facts, prose)}, ${Date.now()})`;
+    this.event("postmortem", { source });
+    this.touch();
+    this.syncState();
+    return this.storedPostmortem()!.markdown;
+  }
+
+  /** Everything the postmortem needs, from SQL: the full timeline (state keeps only the last 100 rows). */
+  private postmortemInput(): PostmortemInput {
+    const incident = this.mustIncident();
+    const first = this.sql<{ question: string }>`SELECT question FROM runs ORDER BY seq LIMIT 1`[0];
+    const latest = this.sql<{ findings_json: string }>`SELECT findings_json FROM runs WHERE findings_json IS NOT NULL ORDER BY seq DESC LIMIT 1`[0];
+    const timeline = this.sql<{ ts: number; event_type: string; detail_json: string }>`SELECT ts, event_type, detail_json FROM timeline ORDER BY id`;
+    const approvals = this.sql<ApprovalRow>`SELECT * FROM approvals ORDER BY created_at`;
+    return {
+      target: incident.target,
+      origin: incident.origin,
+      question: first?.question ?? `Scheduled check failed for ${incident.target}`,
+      timeline: timeline.map((t) => ({ ts: t.ts, type: t.event_type, detail: JSON.parse(t.detail_json) as Record<string, Scalar> })),
+      findings: latest ? (JSON.parse(latest.findings_json) as Findings) : null,
+      approvals: approvals.map((a) => ({
+        id: a.id,
+        title: ACTION_TITLES[a.action_id] ?? a.action_id,
+        status: a.status,
+        outcome: a.outcome_json ? ((JSON.parse(a.outcome_json) as ActionOutcome).text ?? null) : null,
+      })),
+    };
   }
 
   private mustApproval(id: unknown): ApprovalRow {
@@ -791,7 +904,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
  * WebSocket callables. `@callable()` only records the method in the SDK's registry (its decorator context
  * is unused), so registering by hand avoids a Babel decorator transform in Vite and Vitest.
  */
-for (const name of ["sendMessage", "resolve", "markRead", "getEvidence", "whoami", "approve", "reject"] as const) {
+for (const name of ["sendMessage", "resolve", "markRead", "getEvidence", "whoami", "approve", "reject", "generatePostmortem", "getPostmortem"] as const) {
   callable()(IncidentAgent.prototype[name] as (...args: unknown[]) => unknown, undefined as unknown as ClassMethodDecoratorContext);
 }
 

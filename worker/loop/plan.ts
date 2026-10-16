@@ -6,9 +6,11 @@ import { LlmUnavailable, type LlmRequest, type LlmResult, type ToolCall } from "
 import { planningSystem, planningUser, type EvidenceLine } from "../llm/prompts";
 import { assertInScope, OutOfScopeError, type Scope } from "../safety/origin";
 import type { DnsRaw } from "../tools/dns";
+import type { HttpRaw } from "../tools/http";
 import { llmTools, TOOLS } from "../tools/registry";
 import type { ToolName, ToolResult } from "../tools/types";
 import { MAX_PLAN_TURNS, MAX_TOOL_CALLS, RUN_DEADLINE_MS, SUBREQUEST_BUDGET, SubrequestBudget } from "./budget";
+import { extraCalls, httpSignals, type HttpSignals } from "./extras";
 import { parseFindings, SUBMIT_FINDINGS } from "./findings";
 
 /**
@@ -40,7 +42,9 @@ const TURN_COST = 3;
 const CHEAPEST_TOOL = 4;
 /** Planning-turn indexes for checks the run makes itself, so their evidence IDs are retry-safe too. */
 const BASELINE_TURN = 0;
+const EXTRAS_TURN = 98;
 const RULES_TURN = 99;
+const RULES_EXTRAS_TURN = 100;
 
 /** The agent methods a run calls (TDD §7.2). */
 export type RunAgent = {
@@ -112,7 +116,7 @@ export function validateCalls(calls: ToolCall[], scope: Scope, knownIds: readonl
       out.findings = { ...parsed.findings, evidence };
       continue;
     }
-    const tool = TOOLS[call.name as ToolName];
+    const tool = Object.hasOwn(TOOLS, call.name) ? TOOLS[call.name as ToolName] : undefined;
     if (!tool) {
       out.invalid.push(`Unknown tool ${call.name}.`);
       continue;
@@ -138,7 +142,7 @@ type TurnResult =
   | { kind: "unavailable"; reason: string; attempts: number; at: number }
   | ({ kind: "turn"; attempts: number; at: number } & Validated);
 
-type CheckOut = { line: EvidenceLine; tool: ToolName; cnameTargets: string[]; subrequests: number; at: number };
+type CheckOut = { line: EvidenceLine; tool: ToolName; cnameTargets: string[]; signals?: HttpSignals | null; subrequests: number; at: number };
 
 export type ActionSummary = { approvalId: string; decision: ApprovalDecision | "error"; verified?: boolean };
 export type RunSummary = {
@@ -178,6 +182,8 @@ async function investigate(io: RunIO, runId: string, limits: DiagnoseLimits): Pr
     const cnameTargets = [...ctx.scope.cnameTargets];
     const scope: Scope = { host: ctx.scope.host, cnameTargets };
     const ranThisRun = new Set<ToolName>();
+    // The latest http_probe's signals this run, for the automatic cert/provider checks (WP-21).
+    let signals: HttpSignals | null = null;
     mode = ctx.mode;
 
     let findings: Findings | null = null;
@@ -206,7 +212,8 @@ async function investigate(io: RunIO, runId: string, limits: DiagnoseLimits): Pr
           }
           await io.agent.recordCheck(id, result);
           const cnameTargets = result.tool === "dns_lookup" && result.ok ? ((result.raw as DnsRaw).cnameTargets ?? []) : [];
-          return { line: toLine(result), tool: call.tool, cnameTargets, subrequests, at: io.now() };
+          const signals = result.tool === "http_probe" && result.raw ? httpSignals(result.raw as HttpRaw) : null;
+          return { line: toLine(result), tool: call.tool, cnameTargets, signals, subrequests, at: io.now() };
         });
       } catch {
         // The step failed even after retries (e.g. the agent RPC): count the worst case and move on.
@@ -217,6 +224,7 @@ async function investigate(io: RunIO, runId: string, limits: DiagnoseLimits): Pr
       lastAt = out.at;
       evidence.push(out.line);
       ranThisRun.add(out.tool);
+      if (out.signals) signals = out.signals;
       for (const t of out.cnameTargets) if (!cnameTargets.includes(t)) cnameTargets.push(t);
     };
 
@@ -230,11 +238,20 @@ async function investigate(io: RunIO, runId: string, limits: DiagnoseLimits): Pr
       )
         .filter(([tool]) => !ranThisRun.has(tool))
         .flatMap(([tool, args]) => {
-          const prepared = TOOLS[tool]?.prepare(args);
-          return prepared?.ok ? [{ tool, args: prepared.args, cap: prepared.cap }] : [];
+          const prepared = TOOLS[tool].prepare(args);
+          return prepared.ok ? [{ tool, args: prepared.args, cap: prepared.cap }] : [];
         });
-    const runBaseline = async (turn: number, stepName: string) => {
-      const calls = baselineCalls();
+    /** WP-21 "only when useful": cert_info when HTTPS fails to connect, provider_status when a hosted site fails. */
+    const extrasCalls = (): ValidCall[] =>
+      extraCalls({ host: scope.host, signals, cnames: cnameTargets, ran: ranThisRun, isDemo: ctx.isDemo })
+        .slice(0, Math.max(0, limits.maxTools - stats.toolCalls))
+        .flatMap(({ tool, args }) => {
+          const prepared = TOOLS[tool].prepare(args);
+          return prepared.ok ? [{ tool, args: prepared.args, cap: prepared.cap }] : [];
+        });
+    const runBaseline = (turn: number, stepName: string) => runFixed(baselineCalls(), turn, stepName);
+    const runExtras = (turn: number, stepName: string) => runFixed(extrasCalls(), turn, stepName);
+    const runFixed = async (calls: ValidCall[], turn: number, stepName: string) => {
       if (!calls.length || lastAt >= deadline || budget.remaining() < 1 + Math.min(...calls.map((c) => c.cap))) return;
       const ids = await io.step(stepName, () => io.agent.addPendingChecks(runId, turn, calls.map(({ tool, args }) => ({ tool, args }))));
       budget.settle(0, 1);
@@ -247,7 +264,10 @@ async function investigate(io: RunIO, runId: string, limits: DiagnoseLimits): Pr
     // WP-13b: live models planned one check per turn, so every run spent a turn per check and hit the
     // turn cap. A new incident always needs DNS + HTTP, so they run first (the first card shows in about
     // a second), and the model usually submits findings on its first turn.
-    if (limits.baseline && ctx.kind === "initial") await runBaseline(BASELINE_TURN, "pending-baseline");
+    if (limits.baseline && ctx.kind === "initial") {
+      await runBaseline(BASELINE_TURN, "pending-baseline");
+      await runExtras(EXTRAS_TURN, "pending-extras");
+    }
 
     if (mode === "ai") {
       for (let turn = 1; turn <= limits.maxTurns; turn++) {
@@ -325,6 +345,7 @@ async function investigate(io: RunIO, runId: string, limits: DiagnoseLimits): Pr
     if (!findings) {
       // Rule path / gap fill (TDD §8.2): the baseline checks this run hasn't done, if budget and time allow.
       await runBaseline(RULES_TURN, "pending-rules");
+      await runExtras(RULES_EXTRAS_TURN, "pending-rules-extras");
       const args = lastFindingsArgs;
       findings = await io.step("rules", () => io.agent.ruleFindings(runId, args));
     }

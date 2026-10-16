@@ -22,6 +22,8 @@ export type ProposeContext = {
   status: IncidentStatus;
   /** The incident isn't watched yet, its URL isn't on the workspace's watchlist, and the caps allow one more. */
   watchable: boolean;
+  /** A postmortem is already stored (WP-22). */
+  hasPostmortem: boolean;
 };
 
 /** True when the target is this workspace's own demo page: someone else's demo, or any other site, is off limits. */
@@ -32,6 +34,8 @@ export function isOwnDemo(target: string, workspaceId: string, demoBaseUrl: stri
 }
 
 export function proposable(action: ActionId, ctx: ProposeContext): boolean {
+  // WP-22: a postmortem is the one card for a resolved incident (a follow-up asks for it); no status change.
+  if (action === "generate_postmortem") return ctx.status === "resolved" && !ctx.hasPostmortem;
   // A new card only fits these statuses (TDD §10): mitigated and resolved have no edge to awaiting_approval.
   if (ctx.status !== "investigating" && ctx.status !== "awaiting_approval") return false;
   switch (action) {
@@ -40,9 +44,8 @@ export function proposable(action: ActionId, ctx: ProposeContext): boolean {
     case "add_to_watchlist":
       // A real site that's broken: watching it tells the user when it recovers. The demo gets a restore instead.
       return ctx.category !== "healthy" && ctx.watchable && !isOwnDemo(ctx.target, ctx.workspaceId, ctx.demoBaseUrl);
-    // Switched on by their WPs: generate_postmortem (WP-22), recheck_burst (WP-24).
+    // Switched on by its WP: recheck_burst (WP-24).
     case "recheck_burst":
-    case "generate_postmortem":
       return false;
   }
 }
@@ -81,6 +84,7 @@ export async function execute(action: ActionId, ctx: ExecuteContext): Promise<Ac
       const why = { already_watched: "this URL is already on the watchlist", watch_limit: "the watchlist is full (3 per workspace)", watch_capacity: "the app is at its limit of 30 watches" }[r.error];
       return { ok: false, text: `Couldn't add the watch: ${why}.` };
     }
+    // generate_postmortem is run by the agent itself (it owns the incident's records).
     default:
       return { ok: false, text: `${ACTION_TITLES[action]} isn't available yet.` };
   }

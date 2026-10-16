@@ -11,6 +11,7 @@ const ctx = (over: Partial<ProposeContext> = {}): ProposeContext => ({
   category: "origin_5xx",
   status: "investigating",
   watchable: true,
+  hasPostmortem: false,
   ...over,
 });
 
@@ -45,7 +46,13 @@ describe("proposable", () => {
   });
 
   it("keeps the actions of later WPs switched off", () => {
-    for (const a of ["recheck_burst", "generate_postmortem"] as const) expect(proposable(a, ctx())).toBe(false);
+    expect(proposable("recheck_burst", ctx())).toBe(false);
+  });
+
+  it("generate_postmortem: only on a resolved incident without one yet (WP-22)", () => {
+    expect(proposable("generate_postmortem", ctx({ status: "resolved" }))).toBe(true);
+    expect(proposable("generate_postmortem", ctx({ status: "resolved", hasPostmortem: true }))).toBe(false);
+    for (const status of ["investigating", "awaiting_approval", "mitigated"] as const) expect(proposable("generate_postmortem", ctx({ status }))).toBe(false);
   });
 });
 
@@ -65,6 +72,13 @@ describe("pickAction", () => {
     expect(pickAction({ category: "healthy", actions: ["restore_demo_service"] }, ctx({ category: "healthy" }))).toBeNull();
     expect(pickAction({ category: "healthy", actions: [] }, ctx({ category: "healthy", target: "https://shop.example.com/" }))).toBeNull();
     expect(pickAction({ category: "origin_5xx", actions: [] }, ctx({ target: "https://shop.example.com/", watchable: false }))).toBeNull();
+  });
+
+  it("a resolved incident gets the postmortem card only when the model names it", () => {
+    const resolved = ctx({ status: "resolved", category: "healthy", target: "https://shop.example.com/" });
+    expect(pickAction({ category: "healthy", actions: ["generate_postmortem"] }, resolved)).toBe("generate_postmortem");
+    expect(pickAction({ category: "healthy", actions: [] }, resolved)).toBeNull();
+    expect(pickAction({ category: "origin_5xx", actions: ["generate_postmortem"] }, ctx({ status: "resolved" }))).toBe("generate_postmortem");
   });
 
   it("has a title for every action", () => {

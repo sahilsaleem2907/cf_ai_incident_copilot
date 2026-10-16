@@ -17,6 +17,21 @@ export type Category = (typeof CATEGORIES)[number];
 export const CONFIDENCES = ["high", "medium", "low"] as const;
 export type Confidence = (typeof CONFIDENCES)[number];
 
+/** Display names (the UI's diagnosis pill, the postmortem). */
+export const CATEGORY_LABEL: Record<Category, string> = {
+  dns_failure: "DNS failure",
+  dns_mismatch: "DNS mismatch",
+  tls_expiry: "TLS / certificate",
+  origin_5xx: "Origin 5xx",
+  edge_error: "Edge error",
+  high_latency: "High latency",
+  redirect_loop: "Redirect loop",
+  cache_misconfiguration: "Cache misconfiguration",
+  provider_outage: "Provider outage",
+  healthy: "Healthy",
+  inconclusive: "Inconclusive",
+};
+
 /** One-line definitions; the planning prompt lists these (TDD §9.1). */
 export const CATEGORY_INFO: Record<Category, string> = {
   dns_failure: "The name doesn't resolve: NXDOMAIN/SERVFAIL from both resolvers, or no A/AAAA records.",
@@ -54,16 +69,34 @@ export type Findings = {
   actions: ActionId[];
 };
 
-/** `cert_info` raw evidence (built in WP-21). */
+/** `cert_info` raw evidence (WP-21): certificates found in CT logs (crt.sh), best effort. */
 export type CertRaw = {
   hostname: string;
+  /** Matching certificates first (most days left first), at most 3. */
   certs: { issuer: string; notBefore: string; notAfter: string; daysToExpiry: number; sanMatch: boolean }[];
+  /** The crt.sh queries made: the host itself and `*.parent` for wildcard certificates. */
+  queries?: string[];
+  /** Queries crt.sh didn't answer; with any, the check is `unavailable`. */
+  failed?: string[];
 };
 
 export const PROVIDERS = ["cloudflare", "github", "aws"] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
-/** `provider_status` raw evidence (built in WP-21). Providers that weren't checked are absent. */
+/** One unresolved incident. Statuspage reports `impact` (none, minor, major, critical); AWS doesn't. */
+export type ProviderIncident = { name: string; status?: string; impact?: string; url?: string };
+
+/** `provider_status` raw evidence (WP-21). Providers that weren't checked are absent. */
 export type ProviderRaw = {
-  providers: Partial<Record<Provider, { active: { name: string; status?: string }[] }>>;
+  providers: Partial<Record<Provider, { active: ProviderIncident[] }>>;
+  /** Providers whose status page didn't answer. */
+  unavailable?: Provider[];
 };
+
+/**
+ * Whether an incident counts as an outage (WP-21). Cloudflare almost always has a minor incident open (for example
+ * dashboard sign-ups), so only major or critical ones count; incidents without an impact (AWS) always do.
+ */
+export function isSignificant(i: ProviderIncident): boolean {
+  return i.impact === undefined || i.impact === "major" || i.impact === "critical";
+}

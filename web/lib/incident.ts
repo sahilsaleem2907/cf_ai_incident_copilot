@@ -1,5 +1,6 @@
 import type { IncidentStatus, RunStatus, TimelineView } from "../../worker/agent/state";
 import { parseTarget } from "../../worker/safety/target";
+import { CATEGORY_LABEL } from "../../worker/diagnosis/categories";
 
 /**
  * A follow-up that names a different host than the incident's (TDD §8.6). Tools are pinned to the incident's
@@ -38,16 +39,4 @@ export const STATUS_TEXT: Record<IncidentStatus, string> = {
   resolved: "Resolved",
 };
 
-export const CATEGORY_TEXT: Record<string, string> = {
-  dns_failure: "DNS failure",
-  dns_mismatch: "DNS mismatch",
-  tls_expiry: "TLS / certificate",
-  origin_5xx: "Origin 5xx",
-  edge_error: "Edge error",
-  high_latency: "High latency",
-  redirect_loop: "Redirect loop",
-  cache_misconfiguration: "Cache misconfiguration",
-  provider_outage: "Provider outage",
-  healthy: "Healthy",
-  inconclusive: "Inconclusive",
-};
+export const CATEGORY_TEXT: Record<string, string> = CATEGORY_LABEL;

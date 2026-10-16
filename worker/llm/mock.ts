@@ -2,7 +2,7 @@ import { CATEGORY_INFO, type Category, type Findings } from "../diagnosis/catego
 import { renderTemplate } from "../diagnosis/template";
 import type { ToolResult } from "../tools/types";
 import { LlmUnavailable, toResult, type ChatCompletion, type LlmRequest, type LlmResult } from "./models";
-import type { EvidenceLine } from "./prompts";
+import { POSTMORTEM_MARKER, type EvidenceLine } from "./prompts";
 
 /**
  * `LLM_MODE=mock` (TDD §7.4): scripted turns in the recorded chat-completions shape, run through the real
@@ -17,6 +17,7 @@ export function mockCall(req: LlmRequest): LlmResult {
   const user = req.messages.map((m) => m.content).join("\n");
   if (user.includes("#llm-down")) throw new LlmUnavailable("failed", "mock: #llm-down");
   if (req.tools?.length) return toResult(MOCK_MODEL, planningTurn(req.system, user));
+  if (req.system.startsWith(POSTMORTEM_MARKER)) return { text: postmortem(user), toolCalls: [], usage: { in: 0, out: 0, neurons: 0 }, model: MOCK_MODEL, fallback: false };
   return { text: narration(user), toolCalls: [], usage: { in: 0, out: 0, neurons: 0 }, model: MOCK_MODEL, fallback: false };
 }
 
@@ -39,7 +40,8 @@ function planningTurn(system: string, user: string): ChatCompletion {
     ]);
   }
   const category = pickCategory(evidence);
-  const ids = [last(evidence, "http_probe"), last(evidence, "dns_lookup")].flatMap((e) => (e ? [e.evidenceId] : []));
+  const decisive = category === "tls_expiry" ? last(evidence, "cert_info") : category === "provider_outage" ? last(evidence, "provider_status") : undefined;
+  const ids = [last(evidence, "http_probe"), decisive, last(evidence, "dns_lookup")].flatMap((e) => (e ? [e.evidenceId] : []));
   const findings: Findings = {
     category,
     confidence: category === "inconclusive" ? "low" : "high",
@@ -55,6 +57,11 @@ function pickCategory(evidence: EvidenceLine[]): Category {
   const dns = last(evidence, "dns_lookup");
   const http = last(evidence, "http_probe");
   if (dns && /doesn't resolve|No A or AAAA/.test(dns.summary)) return "dns_failure";
+  const cert = last(evidence, "cert_info");
+  const status = last(evidence, "provider_status");
+  const failing = !!http && /^(HTTP 5\d\d|Connection failed|Timed out|TLS error)/.test(http.summary);
+  if (cert?.status === "fail" && failing && !/^HTTP/.test(http!.summary)) return "tls_expiry";
+  if (status?.status === "fail" && failing) return "provider_outage";
   if (http) {
     if (/^(Redirect loop|Too many redirects)/.test(http.summary)) return "redirect_loop";
     if (/^HTTP 5\d\d/.test(http.summary)) return "origin_5xx";
@@ -75,6 +82,23 @@ function narration(user: string): string {
   const cause = /\[[a-z]+-\d+\]/.test(findings.cause) ? findings.cause : `${findings.cause.replace(/\.$/, "")} ${cites}.`;
   const results = parseEvidence(user).map((e) => ({ ...e, ok: true, raw: null }) as ToolResult);
   return renderTemplate({ ...findings, cause }, results);
+}
+
+/** The four postmortem sections, built from the prompt's findings (WP-22). */
+function postmortem(user: string): string {
+  const json = /^Findings: (.*)$/m.exec(user)?.[1];
+  const f = json ? (JSON.parse(json) as Pick<Findings, "cause" | "next_steps"> | null) : null;
+  const ended = /^How it ended: (.*)$/m.exec(user)?.[1] ?? "It was resolved.";
+  return [
+    "## Summary",
+    "Mock postmortem: the endpoint failed, was diagnosed and recovered. Set LLM_MODE=live for a written one.",
+    "## Root cause",
+    f?.cause ?? "Unknown.",
+    "## Resolution",
+    ended,
+    "## Follow-ups",
+    ...(f?.next_steps ?? ["Review the evidence."]).map((s) => `- ${s}`),
+  ].join("\n");
 }
 
 export function parseEvidence(text: string): EvidenceLine[] {

@@ -154,9 +154,9 @@ test/         unit/*.test.ts integration/*.test.ts demo/*.test.ts fixtures/
 | `READ_CAP` | 16 KB |
 | `SNIPPET_TO_LLM` | 500 chars |
 | `FETCH_TIMEOUT` | 10 s |
-| `CRT_READ_CAP` | 256 KB |
+| `CRT_READ_CAP` | 256 KB (crt.sh timeout 10 s; *WP-21:* crt.sh took 2–12 s in the spike) |
 | `CRT_MAX_ENTRIES` | 20 |
-| `CRT_CACHE_TTL` | 1 h (Cache API) |
+| `CRT_CACHE_TTL` | 1 h (Cache API; a hit was seen under `vite dev`, workers.dev to be checked after the next deploy) |
 | `EVIDENCE_DIGEST_MAX` | 1.5 KB per check (this is what moves between steps and goes to the LLM) |
 | `HIGH_LATENCY_MS` | median total ≥ 2000 ms or median TTFB ≥ 1500 ms |
 | `LLM_TIMEOUT_MS` | 25 000 per LLM call. A timeout counts as a failure, so the fast fallback answers (*WP-07*) |
@@ -271,7 +271,7 @@ Incident, workspace and approval IDs are 128-bit random hex values (`crypto.getR
 | `GET/POST /api/watches` · `DELETE /api/watches/:id` | `{url, intervalSec}` | Watch list · 201 watch · 400 `{error:"invalid_url", message}` · 409 `already_watched` / `watch_limit` / `watch_capacity` · 204 / 404 | Per-workspace and global caps. *WP-18:* the URL goes through `parseTarget` ("demo" works) and `checkUrlShape`; the caps are part of the INSERT |
 | `GET/PUT/DELETE /api/webhook` | `{url}` | GET `{available, webhook: {kind, hint} \| null}` · PUT `{kind, hint}` / 400 `{error:"invalid_webhook", message}` / 503 `webhooks_unavailable` · DELETE 204 | Allowlist, then encryption. *WP-19:* PUT records the request's origin (`app_origin`) for incident links |
 | `POST /api/webhook/test` | | `{sent: true}` / 404 / 429 / 502 `send_failed` | *WP-19:* sends one test message right away, 5 an hour per workspace (`usage_counters` kind `webhook_test`) |
-| `POST /api/voice` | `audio/webm` body | `{text}` | Size cap, then limit, then whisper, then normalization |
+| `POST /api/voice` | `audio/webm` body | `{text}` | Size cap, then limit, then whisper, then normalization. *WP-23:* any `audio/*` type (Safari records `audio/mp4`), else 415 `unsupported_type`; 413 `too_large` by `Content-Length` or the real body; 400 `empty_audio`; 503 `voice_unavailable` while the budget guard is on; 429 `{error:"rate_limited", retryAfter}` + `Retry-After`; 502 `transcribe_failed` |
 | `GET /api/health` | | `{ok, version}` | Smoke test |
 
 ### 7.2 IncidentAgent: RPC (Worker and Workflow) and callables (client)
@@ -304,6 +304,7 @@ markRead() · getEvidence(evidenceId)
 - **Callables without decorator syntax:** `@callable()` only records the method in the SDK's registry (the decorator context is unused), so `IncidentAgent.ts` registers `sendMessage`, `resolve`, `markRead` and `getEvidence` with `callable()(fn)` after the class. That avoids the Babel decorator transform and the ES2021 target the SDK otherwise needs in Vite and Vitest.
 - **Typed stub:** `agent/stub.ts` `incidentAgent(env, id)` wraps `getAgentByName`, whose type only accepts agents with `unknown` state.
 - **Deferred to their WPs:** the Workflow launch (WP-09, marked in `startRun`); `proposeAction`, `recordApprovalOutcome`, `afterAction`, approve/reject and the monitor (WP-12); quotas (WP-17); `reportWatchCheck` (WP-18); `generatePostmortem` (WP-22).
+- *WP-22:* `generatePostmortem()` (owner) and `getPostmortem()` (anyone who can open the incident, read-only) are callables.
 
 ### 7.3 Tool contracts (`tools/registry.ts`). Inputs use zod. Outputs are `ToolResult {evidenceId, ok, status, summary, digest, raw}`.
 
@@ -311,11 +312,17 @@ markRead() · getEvidence(evidenceId)
 |---|---|---|---|
 | `dns_lookup` | `{hostname, types?: ("A"\|"AAAA"\|"CNAME"\|"NS"\|"MX"\|"TXT")[] = ["A","AAAA"]}` | For each resolver (1.1.1.1 `cloudflare-dns.com/dns-query`, 8.8.8.8 `dns.google/resolve`, both DoH JSON): status, answers and TTLs, the CNAME chain, a `mismatch` flag (the resolvers disagree on the response code or on whether the name has any address), `addressesDiffer` (different address sets; informational, normal for geo/CDN DNS), and `ssrfBlocked` if any answer is private | 2 × types |
 | `http_probe` | `{url, method?: "GET"\|"HEAD" = "GET"}` | For each of 3 samples: status, TTFB and total ms. Also the hop list (≤ 5, `redirect: "manual"`, each hop SSRF-checked), selected headers (`server`, `cf-ray`, `cf-cache-status`, `cache-control`, `content-type`, `location`, `set-cookie` as present or absent), a `<untrusted>` snippet of ≤ 500 chars, and an `asset` sub-probe (D10) with its URL, status, `cache-control` and whether `set-cookie` was present | Capped at **20** with `countingFetch` (2 guard DoH lookups + 3 × (1 + 5)). The asset sub-probe and extra hosts in a redirect chain only run if room is left, and samples 2–3 are skipped after a loop, hop cap or refusal. Hitting the cap gives a partial result (`partial: "budget"`), not an error. |
-| `cert_info` | `{hostname}` | Up to 3 unexpired certificates: issuer, notBefore, notAfter, daysToExpiry, `sanMatch`. Labeled "CT logs, best effort". On error: `status: "unavailable"`. | 1 |
-| `provider_status` | `{providers: ("cloudflare"\|"github"\|"aws")[]}` | Active incidents per provider. Statuspage `/api/v2/incidents/unresolved.json` for Cloudflare and GitHub (small payloads). AWS health is best effort. | ≤ 3 |
+| `cert_info` | `{hostname}` | Up to 3 unexpired certificates: issuer, notBefore, notAfter, daysToExpiry, `sanMatch`. Labeled "CT logs, best effort". On error: `status: "unavailable"`. | 2 (*WP-21:* the host and `*.parent`) |
+| `provider_status` | `{providers: ("cloudflare"\|"github"\|"aws")[]}` | Active incidents per provider. Statuspage `/api/v2/incidents/unresolved.json` for Cloudflare and GitHub (small payloads). AWS health is best effort. | ≤ 3 (one per provider) |
 | `submit_findings` | `{category, confidence, evidence: string[≥1], cause: string≤300, next_steps: string[≤4], actions: ActionId[≤1]}` | Not a check. It ends planning (D5). | 0 |
 
 **Origin pin (D6):** `safety/origin.ts` `assertInScope(tool, args, incident)`. A failure counts as an invalid call (FR-12).
+
+*As built (WP-21):*
+- **Spike (crt.sh and status pages, 2026-10-16):** an exact-host crt.sh query doesn't find wildcard certificates (the demo's `*.<sub>.workers.dev` came back empty), so `cert_info` also asks for `*.parent` (never `*.tld`), and runs both in parallel. crt.sh took 2–12 s, sometimes 404s, and timed out at 30 s for cloudflare.com. `expired.badssl.com` is covered by a **valid** `*.badssl.com` wildcard in the CT logs: CT shows issued certificates, not the one being served, so it can't catch that kind of expiry. Statuspage answers are a few KB in under a second. AWS's `health.aws.amazon.com/public/currentevents` is 231 KB of UTF-16 (big-endian, with a BOM) JSON; it's read up to 128 KB and the events are picked out of the part that fits.
+- **`cert_info` (`tools/cert.ts`):** `exclude=expired&deduplicate=Y`, 256 KB per answer, at most 20 entries, a cut-off body parsed up to its last complete entry. Matching certificates first (exact SAN or a one-label wildcard), most days left first, at most 3. `pass` when the best one has more than 7 days left; `fail` when it expires within 7 days or no unexpired certificate covers the host; `unavailable` when crt.sh doesn't answer (all queries), or when one query failed and nothing matched. Answers are cached for an hour (`caches.default`, `ToolContext.cache` in tests); any cache error is ignored.
+- **`provider_status` (`tools/provider.ts`):** fixed URLs (`www.cloudflarestatus.com`, `www.githubstatus.com`, AWS's feed), 5 s each, in parallel. Each incident keeps `impact` when Statuspage gives one. **Only major or critical incidents count as an outage** (`isSignificant`): during the spike Cloudflare had a minor "Dashboard sign up issues" incident open, and the demo itself answers with `server: cloudflare`, so every broken demo would have looked like a Cloudflare outage. AWS events have no impact and always count. A provider that doesn't answer is listed in `unavailable`; the check is `unavailable` only if none answered.
+- **Reader:** `readOnce` takes a `decode` option (UTF-8 by default) for AWS's UTF-16.
 
 **`quickCheck(url)`** (cron, monitor ticks and verify): the SSRF guard's DoH A + AAAA lookups (the A answer also serves as the DNS check), plus 1 GET following up to 5 hops. A pass means a final 2xx/3xx under `HIGH_LATENCY_MS`. It costs 3 subrequests for a direct 200 and is capped at 10 (`QUICKCHECK_CAP`). Cron's `countingFetch` stops before 50 (D12).
 
@@ -413,6 +420,8 @@ The canonical order is `DEMO_MODES` order, for example `["slow", "errors"]`. The
 | `recheck_burst` | `{}` | No monitor active | Agent `monitor(kind:"burst")` | Ticks |
 | `generate_postmortem` | `{}` | status = `resolved` | `generatePostmortem()` | None |
 
+*As built (WP-22):* `generate_postmortem` is the one card a resolved incident can get (a follow-up such as "write a postmortem"), only when the model names it and no postmortem is stored yet (`ProposeContext.hasPostmortem`). The status doesn't change. Approving runs the agent's own writer without a quota charge (the card was approved), and `afterAction` takes the same "done, nothing to re-check" path as `add_to_watchlist`.
+
 The Workflow drops any action that isn't proposable. At most one action per run.
 
 *As built (WP-12), `worker/actions/catalog.ts`:*
@@ -486,6 +495,7 @@ Tool steps retry with `{limit: 2}` because each retry spends subrequest budget. 
 - **Launch.** `startRun` → `launchRun(runId)` (idempotent, ID `diag-<incidentId>-<seq>`, stored in `runs.workflow_id`). If the Workflow can't start, the run finishes `failed` with a system message. Test seam: `DIAGNOSIS_AUTOSTART=off` (integration config only) skips the auto-launch so agent tests can drive runs by hand.
 - `PLAN_MAX_TOKENS` = 1500, because gpt's reasoning shares the budget.
 - **Baseline first (WP-13b).** A new incident's run starts with the DNS (host) and HTTP (target) checks, before the first AI turn (step `pending-baseline`, turn 0). They count against the tool cap. Follow-ups skip it, because they reuse earlier evidence. Reason: live models planned one check per turn, so every run hit the 3-turn cap. Now the model usually submits on turn 1, and the first card shows in about a second after the Workflow starts. `DiagnoseLimits.baseline` turns it off in the unit tests about planning turns.
+- **Automatic cert/provider checks (WP-21, user decision "only when useful").** After the baseline (step `pending-extras`, turn 98) and in the rule path (step `pending-rules-extras`, turn 100), `loop/extras.ts` `extraCalls` adds `cert_info` for the host when the target is HTTPS and an `http_probe` sample failed with a network error (how an expired or self-signed certificate looks on workerd), and `provider_status` for the fingerprinted providers when HTTP is failing, **except on the user's own demo** (its 500s are ours). The signals come from the tool step's own result (`httpSignals`), so a replay sees the same; CNAME fingerprints use the run's CNAME targets. They count against the tool cap, and the model can still call either tool itself. `fingerprint()` moved to `diagnosis/fingerprint.ts`, shared with rule 5.
 - **Card before narration (WP-13b).** `propose` now runs right after `findings`, before `narrate`, so the card shows while the narration streams.
 - **Approval tail (WP-12).** The order after `narrate` is:
   - `propose`, then `finish`. The run ends before the wait, so the input is enabled again (D13).
@@ -574,7 +584,18 @@ The Agent creates a NotifyWorkflow for watch incidents when they transition to m
 
 The client puts the text in the input box and never sends it automatically.
 
+*As built (WP-23), user decision "click to start, click to stop":*
+- **Server (`api/voice.ts`):** order is type, size (header, then the body read up to 160 KB), budget guard, quota, Whisper. Quota `takeVoice` (`safety/quota.ts`): `VOICE_LIMIT` 5 a minute and D1 kind `voice` 20 an hour, **per workspace and per visitor IP** (like the run quota, so dropping the cookie doesn't skip it); fails open. Whisper runs through the AI Gateway with a 20 s timeout; its neurons are counted from the reported duration at about 47 a minute (or from the size at 24 kbps). `LLM_MODE=mock` "hears" "is demo dot example dot com down".
+- **Normalisation (`voice/normalize.ts`):** spoken "dot" (also with commas around it) and "slash" between words, then hostnames lowercased. Other words keep their case and punctuation; `parseTarget` already strips a trailing full stop from a host.
+- **Client:** `useRecorder` picks `audio/webm;codecs=opus`, then Ogg, then `audio/mp4` (Safari), at 24 kbps, and stops by itself at 30 s; the mic is released when it stops or the page closes. `VoiceButton` sits next to Send in both composers: a mic (`aria-pressed`, "Start voice input" / "Stop recording"), an orange stop square and a "0:12 / 0:30" clock while recording, the dashed loader while transcribing, hidden where recording isn't supported. The text fills the box (a second take is appended) and focus moves there. Errors (blocked or missing mic, too long, limit, budget, failure) show in words above the box.
+
 **Postmortem:** `generatePostmortem()` checks the role and status `resolved`, then the quota. It streams from the timeline, findings and checks, using sections fixed by the template (summary, impact window, detection, timeline, root cause with `[ids]`, resolution, follow-ups). The result is stored. In rule-based mode the template is filled in deterministically.
+
+*As built (WP-22), user decision "facts by code, story by AI":*
+- **`agent/postmortem.ts` (pure):** `postmortemFacts` builds the impact window (opened → resolved, with its duration), detection (the chat question, or the failed watch check) and a UTC timeline from the **full** timeline table (the synced state keeps only 100 rows): opened, diagnosis, proposals and decisions, the action, verify, status changes; monitor and watch checks in a row collapse into one line with a count. How it ended (`resolvedBy`): an approved action, passing checks, by hand, or healthy at its first check.
+- **The AI writes four `##` sections** (Summary, Root cause, Resolution, Follow-ups; `postmortemSystem`/`postmortemUser` in `llm/prompts.ts`, 1,200 tokens), streamed as `postmortem` frames. `parseProse` takes the sections it finds (heading variants accepted, `【id】` normalised, unknown IDs dropped); any missing one comes from `templateProse`. `citeRootCause` adds the findings' evidence IDs when the root cause cites none. A cut-off or failed stream keeps what it got; junk is all template.
+- **Cost:** a stored postmortem is returned for free. A new one that uses the AI is charged to the run quota (D14) before it starts; with the budget guard on it's the template, free. A second click while one is being written waits for it (one in-flight promise). The timeline gets a `postmortem` event with its source (`llm`, `partial`, `template`).
+- **Mock:** `LLM_MODE=mock` answers the postmortem prompt with canned sections.
 
 ## 9. Agent loop rules
 
@@ -620,10 +641,10 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | # | Category | Rule | Confidence |
 |---|---|---|---|
 | 1 | `dns_failure` | Both resolvers return NXDOMAIN or SERVFAIL, or neither returns an A or AAAA record | high |
-| 2 | `tls_expiry` | Fetch fails with a TLS error, or the best certificate has `daysToExpiry` < 0 (≤ 7 days gives `medium` and only applies if HTTP is otherwise healthy) | high / medium |
+| 2 | `tls_expiry` | Fetch fails with a TLS error, or the best certificate has `daysToExpiry` < 0 (≤ 7 days gives `medium` and only applies if HTTP is otherwise healthy). *WP-21:* an expired best certificate counts only when HTTP isn't fully healthy, and an HTTPS target refusing every connection while no unexpired certificate covers it in the CT logs gives `medium` | high / medium |
 | 3 | `redirect_loop` | The hop list revisits a URL or reaches the 5-hop cap | high |
 | 4 | `edge_error` | Two or more samples return 520–527 or 530 with `server: cloudflare` | high |
-| 5 | `provider_outage` | HTTP is failing **and** the provider whose fingerprint matches (`server`/`cf-ray` for Cloudflare, `*.github.io` CNAME for GitHub, `amazonaws` CNAME for AWS) has an active incident | medium |
+| 5 | `provider_outage` | HTTP is failing **and** the provider whose fingerprint matches (`server`/`cf-ray` for Cloudflare, `*.github.io` CNAME for GitHub, `amazonaws` CNAME for AWS) has an active incident (*WP-21:* major or critical; AWS events always count) | medium |
 | 6 | `origin_5xx` | Two or more samples return a status ≥ 500 | high (3/3) / medium |
 | 7 | `high_latency` | Median total ≥ 2000 ms or median TTFB ≥ 1500 ms | high |
 | 8 | `cache_misconfiguration` | The asset sub-probe shows `no-store` or `private`, or `set-cookie` on a static asset | high |
@@ -737,6 +758,8 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
   | Grey | quiet / done / not yet | Mitigated | Pending, Unavailable | Not checked yet | Rejected, expired, replaced | | Inconclusive |
 
   A pending approval card's border is purple, to match.
+- **`VoiceButton`** (WP-23): see §8.7.
+- **`PostmortemDialog`** (WP-22): a Kumo `Dialog` (`xl`). On first open the owner's click writes it (dashed loader, then the live text), later opens load the stored one. The markdown shows in a wrapped, scrolling `<pre>` (Kumo's code block has no markdown mode) with a **Copy markdown** button ("Copied" for 2 s). Header button (`web/lib/postmortem.ts` `postmortemButton`): the owner always sees **Postmortem**, disabled with the reason in words until the incident is resolved; a viewer sees **View postmortem** once one exists. Escape closes it.
 - **`CtaButton` / `CtaLinkButton`** (WP-27): Kumo's primary button (orange) as a pill; same props as Kumo's. Used for New incident, Send, Approve, Watch and Save webhook. Labels are centred.
 - **Kumo `Tooltip`:** always pass `render` (the element that triggers it). Without it Kumo wraps the children in its own `<button>`, which nests buttons when the child is a button or switch.
 
@@ -819,6 +842,9 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | | `target.test.ts` | URL, then hostname, then "demo", then need_target; "dot" normalization |
 | | `dns.test.ts`, `http.test.ts` | DoH JSON parsing and the mismatch flag; samples, hops, loop detection, header picks, asset extraction, read cap |
 | | `classify.test.ts`, `template.test.ts` | One fixture per category plus precedence between rules; the four template sections, with every evidence bullet cited |
+| | `voice-normalize.test.ts`, `web/voice.test.ts` (WP-23) | "dot"/"slash"/commas, casing, ordinary words left alone, the done-when phrase parses to `demo.example.com`; MIME pick order, mic error text, `transcribe` request and error mapping |
+| | `postmortem.test.ts` (unit, WP-22), `web/postmortem.test.ts` | Facts from a timeline fixture (impact window, detection, UTC lines, collapsed checks, watch incidents, unresolved), durations, the template per ending, AI sections parsed (variants, citations, missing → template), root cause cited, fixed order; the header button per role and status, error text |
+| | `cert.test.ts`, `provider.test.ts`, `extras.test.ts` (WP-21) | crt.sh queries (`*.parent`), SAN matching, cut-off JSON, 20-entry cap, sort/dedupe, ≤ 7 days, no match, crt.sh errors → `unavailable`, cache hit and a broken cache; Statuspage and AWS parsing (UTF-16 both orders, partial feed), minor vs major, one provider down, all down; when the automatic checks run (HTTPS connect failure, fingerprinted failing site, never the demo's provider, nothing twice) |
 | | `citations.test.ts` | Unknown IDs and uncited factual sentences are removed; `【id】`; well-formed check |
 | | `llm-client.test.ts`, `stream.test.ts`, `findings.test.ts`, `mock.test.ts`, `prompts.test.ts` | Mapper on every recorded fixture, fallback rules with a fake `ai`, SSE parsing of both recorded streams, the `submit_findings` schema (rejects the spike's sentence evidence), mock turns, prompt content |
 | | `transitions.test.ts` | Every legal edge, and illegal edges throw |
@@ -831,10 +857,12 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | | `incidents.test.ts` | `need_target`, create, list per workspace, owner-only snapshot, read, `?smoke=rule` → a `rule_based` run (any other value stays `ai`) |
 | | `notify.test.ts` | Webhook API (encrypted at rest, masked, origin stored, refused hosts), test sends limited to 5 an hour; NotifyWorkflow: 3 events → 3 messages, repeats ignored, no webhook → none, a chat incident without a watch → none, 5xx retried, 4xx final; unread set by automatic changes and cleared by `markRead` |
 | | `quota.test.ts`, `budget-guard.test.ts` | 4th incident in a minute → 429 with `retryAfter` and `Retry-After`; other workspaces and target-less messages aren't charged; 10 an hour then a countdown (injected clock); per kind; fail open; follow-ups counted, but not while a run is active; per IP across workspaces (6 a minute over HTTP, 20 an hour with an injected clock), a follow-up counted against the IP from its WebSocket, only a hash stored. 8,999 neurons → `ai`; 9,000 → session and new runs `rule_based` |
-| | `diagnosis.test.ts` | Real Workflow, mock LLM, fake internet: tools → findings → narrate; healthy → resolved; `#llm-down` → rules; `#llm-invalid` ×2 → rules; NXDOMAIN; follow-up run; a `rule_based` (smoke) run on the healthy demo with 0 LLM turns |
+| | `diagnosis.test.ts` | Real Workflow, mock LLM, fake internet: tools → findings → narrate; healthy → resolved; `#llm-down` → rules; `#llm-invalid` ×2 → rules; NXDOMAIN; follow-up run; a `rule_based` (smoke) run on the healthy demo with 0 LLM turns. *WP-21:* a host refusing HTTPS gets a cert card → `tls_expiry` (AI and rules); a crt.sh failure → `unavailable`; a failing site behind Cloudflare with a major incident → `provider_outage`. The fake internet serves crt.sh and the two Statuspage pages |
 | Unit | `plan.test.ts` | The driver with a fake `io`: happy path, invalid once/twice, origin pin, LLM down, tool cap, turn cap, budget, deadline, throwing check, unexpected failure, rule-based mode |
 | | `approval.test.ts` | Propose → approve → `setModes(["healthy"])` called → verify → `mitigated` → 2 ticks → `resolved`. Reject → `investigating`. Timeout (`forceEventTimeout("wait-for-approval")`) → expired. Approve twice, a viewer, resolving by hand, a duplicate follow-up, a retried proposal. The demo stub's default `fetch` serves `/w/<ws>/` by mode, and the fake internet routes the test demo host to it. Supersede itself is covered at the agent level: with one proposable action, it can't happen end to end yet. |
 | | `cron.test.ts` | Due-watch query (oldest first, LIMIT 6, unexpired); the tick's subrequest budget defers the rest; failure starts WatchWorkflow `watch-<id>-<minute>`; duplicate ID ignored; an open incident gets `reportWatchCheck`; expired watches deleted |
+| | `voice.test.ts` (WP-23) | Mock transcript, normalised; counted under kind `voice`; 415 not audio; 413 by size and by a lying `Content-Length`; 400 empty; 6th in a minute → 429 with `Retry-After`, other workspaces unaffected; budget guard → 503 before any quota is used |
+| | `postmortem.test.ts` (WP-22) | Not resolved → refused; the owner gets streamed, stored markdown in the fixed section order, charged once (a second call is free); a viewer can read but not write; the budget guard → template, free, no stream; a `generate_postmortem` card on a resolved incident → approve → written, then not offered again |
 | | `watch-workflow.test.ts`, `watches-api.test.ts`, `watch-agent.test.ts` | Confirm → open a linked watch incident; a blip opens nothing; no second incident; a deleted watch. The API: validation (IP literal, localhost, port), demo every 60 s, 5–60 min otherwise, 3 per workspace, 30 global, one per URL, own deletes only. The agent: watch passes → mitigated → resolved and release; a failure reopens; a pending card is untouched; the `add_to_watchlist` card end to end (approve → linked watch → passes resolve); no card at the cap |
 | Demo (`@cloudflare/vitest-plugin`, demo Worker) | `demo.test.ts` | Every mode's status, headers and timing, through `exports.default` and the `DemoAdmin` RPC; per-workspace state; bad input; no admin route |
 

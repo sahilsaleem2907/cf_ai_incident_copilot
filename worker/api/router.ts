@@ -5,6 +5,7 @@ import { demo } from "./demo";
 import { health } from "./health";
 import { incidents } from "./incidents";
 import { session } from "./session";
+import { voice } from "./voice";
 import { watches } from "./watches";
 import { webhook } from "./webhook";
 
@@ -19,5 +20,6 @@ api.route("/incidents", incidents);
 api.route("/demo", demo);
 api.route("/watches", watches);
 api.route("/webhook", webhook);
+api.route("/voice", voice);
 
 api.notFound((c) => c.json({ error: "not_found" }, 404));
