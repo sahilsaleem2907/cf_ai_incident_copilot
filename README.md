@@ -174,7 +174,6 @@ The full design for each of these is in the TDD. Day 2 of the build is still in 
 
 | WP | Feature | Design |
 |---|---|---|
-| 24 | `recheck_burst`: re-check every minute for 15 minutes | TDD §8.4 |
 | 25 | Terraform for D1 (and the AI Gateway if supported) | TDD §15 |
 | 26 | Demo GIF of the walkthrough | — |
 

@@ -21,7 +21,7 @@ import { evidenceId, toolLabel } from "../tools/registry";
 import { canWatch, releaseIncident } from "../watch/store";
 import { startNotify } from "../workflows/notify";
 import type { ToolName, ToolResult } from "../tools/types";
-import { MONITOR_MAX_TICKS, MONITOR_TICK_S, tick } from "./monitor";
+import { MONITOR_KINDS, tick, type MonitorKind } from "./monitor";
 import { citeRootCause, factsText, parseProse, postmortemFacts, renderPostmortem, templateProse, type PostmortemInput, type Prose } from "./postmortem";
 import { SCHEMA } from "./schema.sql";
 import {
@@ -79,7 +79,7 @@ type ApprovalRow = {
   decided_at: number | null;
   outcome_json: string | null;
 };
-type MonitorRow = { kind: "post_action" | "burst"; ticks_left: number; consecutive_passes: number; schedule_id: string | null };
+type MonitorRow = { kind: MonitorKind; ticks_left: number; consecutive_passes: number; schedule_id: string | null };
 
 /** `mode: "rule_based"` runs the first diagnosis without the LLM (the deploy smoke test, TDD §15). */
 export type InitParams = { workspaceId: string; target: string; origin: Origin; message?: string; watchId?: string; mode?: RunMode };
@@ -104,6 +104,13 @@ export type VerifyResult = { pass: boolean; text: string };
 /** The four postmortem sections are short; narration-sized headroom. */
 const POSTMORTEM_MAX_TOKENS = 1200;
 export const POSTMORTEM_WRITTEN_TEXT = "Postmortem written. Open it with the Postmortem button.";
+export const BURST_STARTED_TEXT = "Re-checking every minute for 15 minutes. 3 passing checks in a row resolve it.";
+/** Actions with nothing to verify afterwards: the card says "done" and the incident leaves awaiting_approval. */
+const NOTHING_TO_VERIFY: Partial<Record<ActionId, string>> = {
+  add_to_watchlist: "Added to the watchlist.",
+  generate_postmortem: POSTMORTEM_WRITTEN_TEXT,
+  recheck_burst: BURST_STARTED_TEXT,
+};
 
 /** How long a card waits for a decision (FR-21). */
 export const APPROVAL_TIMEOUT = "24 hours";
@@ -351,6 +358,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
       status: incident.status,
       watchable: await this.watchable(incident),
       hasPostmortem: this.storedPostmortem() !== null,
+      monitorRunning: this.sql`SELECT 1 FROM monitor WHERE id = 1`.length > 0,
     });
     if (!actionId) return { approvalId: null, actionId: null };
 
@@ -401,10 +409,15 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     if (a.status !== "approved") throw new Error(`approval ${approvalId} is ${a.status}`);
     const incident = this.mustIncident();
     // A postmortem is written here, by the agent; the card was approved, so it isn't charged to the run quota.
-    const out =
-      a.action_id === "generate_postmortem"
-        ? (await this.writePostmortem((await budgetMode(d1Usage(this.env.DB))) === "ai"), { ok: true, text: POSTMORTEM_WRITTEN_TEXT })
-        : await execute(a.action_id, { env: this.env, workspaceId: incident.workspace_id, incidentId: incident.id, target: incident.target });
+    // A burst runs on this agent's scheduler. Both are idempotent: a stored postmortem is kept, a running burst isn't restarted.
+    let out: ActionOutcome;
+    if (a.action_id === "generate_postmortem") {
+      await this.writePostmortem((await budgetMode(d1Usage(this.env.DB))) === "ai");
+      out = { ok: true, text: POSTMORTEM_WRITTEN_TEXT };
+    } else if (a.action_id === "recheck_burst") {
+      if (this.sql<MonitorRow>`SELECT kind FROM monitor WHERE id = 1`[0]?.kind !== "burst") await this.startMonitor("burst", 0);
+      out = { ok: true, text: BURST_STARTED_TEXT };
+    } else out = await execute(a.action_id, { env: this.env, workspaceId: incident.workspace_id, incidentId: incident.id, target: incident.target });
     // The watch now reports to this incident (cron → reportWatchCheck), and resolving it frees the watch.
     if (out.watchId) this.sql`UPDATE incident SET watch_id = ${out.watchId} WHERE id = ${incident.id}`;
     this.setOutcome(a.id, { ok: out.ok, text: out.text });
@@ -426,10 +439,11 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     if (prior?.done) return { pass: true, text: prior.text };
     // Watching fixes nothing, so there's nothing to re-check: the incident goes back to investigating, and the
     // watch's passing checks resolve it later (reportWatchCheck). A postmortem has nothing to re-check either.
-    if (a.action_id === "add_to_watchlist" || a.action_id === "generate_postmortem") {
-      const text = prior?.text ?? (a.action_id === "add_to_watchlist" ? "Added to the watchlist." : POSTMORTEM_WRITTEN_TEXT);
+    const doneText = NOTHING_TO_VERIFY[a.action_id];
+    if (doneText) {
+      const text = prior?.text ?? doneText;
       this.sql`UPDATE approvals SET outcome_json = ${JSON.stringify({ ok: true, text, done: true })} WHERE id = ${a.id}`;
-      await this.leaveAwaitingApproval(a.action_id === "add_to_watchlist" ? "added to the watchlist" : "postmortem written");
+      await this.leaveAwaitingApproval({ add_to_watchlist: "added to the watchlist", generate_postmortem: "postmortem written", recheck_burst: "re-checking every minute" }[a.action_id as string] ?? "action done");
       return { pass: true, text };
     }
 
@@ -441,7 +455,7 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     if (incident.status === "awaiting_approval") {
       if (v.pass) {
         await this.transition("mitigated", "verified after the action");
-        await this.startMonitor(1);
+        await this.startMonitor("post_action", 1);
       } else await this.leaveAwaitingApproval("verify failed after the action");
     } else this.syncState();
     return { pass: v.pass, text };
@@ -454,9 +468,9 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     const incident = this.mustIncident();
     const v = await this.quickCheck();
     const r = tick({ ticksLeft: m.ticks_left, passes: m.consecutive_passes }, incident.status, v.pass);
-    this.event("monitor_tick", { pass: v.pass, passes: v.pass ? m.consecutive_passes + 1 : 0, ticksLeft: m.ticks_left - 1 });
+    this.event("monitor_tick", { kind: m.kind, pass: v.pass, passes: v.pass ? m.consecutive_passes + 1 : 0, ticksLeft: m.ticks_left - 1 });
     if (r.monitor) {
-      const next = await this.schedule(MONITOR_TICK_S, "monitorTick");
+      const next = await this.schedule(MONITOR_KINDS[m.kind].tickS, "monitorTick");
       this.sql`UPDATE monitor SET ticks_left = ${r.monitor.ticksLeft}, consecutive_passes = ${r.monitor.passes}, schedule_id = ${next.id} WHERE id = 1`;
     } else {
       this.sql`DELETE FROM monitor WHERE id = 1`;
@@ -763,11 +777,13 @@ export class IncidentAgent extends Agent<Cloudflare.Env, IncidentState> {
     return quickCheck(this.mustIncident().target, { fetch: (input, init) => fetch(input, init), ...(allowOrigin ? { allowOrigin } : {}) });
   }
 
-  private async startMonitor(passes: number) {
+  /** Starts (or replaces) the one monitor: after a verified action, or a `recheck_burst` (WP-24). */
+  private async startMonitor(kind: MonitorKind, passes: number) {
     await this.stopMonitor();
-    const s = await this.schedule(MONITOR_TICK_S, "monitorTick");
-    this.sql`INSERT INTO monitor (id, kind, ticks_left, consecutive_passes, schedule_id) VALUES (1, 'post_action', ${MONITOR_MAX_TICKS}, ${passes}, ${s.id})`;
-    this.event("monitor_started", { ticks: MONITOR_MAX_TICKS, everySec: MONITOR_TICK_S });
+    const { tickS, maxTicks } = MONITOR_KINDS[kind];
+    const s = await this.schedule(tickS, "monitorTick");
+    this.sql`INSERT INTO monitor (id, kind, ticks_left, consecutive_passes, schedule_id) VALUES (1, ${kind}, ${maxTicks}, ${passes}, ${s.id})`;
+    this.event("monitor_started", { kind, ticks: maxTicks, everySec: tickS });
     this.syncState();
   }
 

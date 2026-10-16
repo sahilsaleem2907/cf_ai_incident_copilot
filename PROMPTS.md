@@ -493,3 +493,23 @@ Answers to Claude's questions:
 **Answer:** click to start, click to stop, auto-stop at 30 s.
 
 (WP-21 to WP-23 built, one commit each: the certificate and provider status checks run on their own only when they help, and only major Cloudflare incidents count as an outage so a broken demo isn't blamed on Cloudflare; the postmortem's timeline comes from the records and the AI writes the story, stored and copyable; the mic button fills the input box and never sends. 684 tests pass; each WP checked in a local browser.)
+
+> merged, how do io check the two checks on the live/
+
+(Explained how to check the crt.sh cache timing through the snapshot API and how to run walkthrough step 6 on the live site; the deploy of the merge passed.)
+
+### 17:23 · WP-24 to WP-26 plan
+
+> Everything looks like its in order, lets plan WP24, 25 and 26 finally.
+
+**Claude asked:** when should the "Re-check every minute for 15 minutes" card show up?
+**Answer:** on its own for flaky (inconclusive) results on a real site, and whenever the AI suggests it.
+
+**Claude asked:** who runs Terraform against the Cloudflare account?
+**Answer:** the user runs plan/apply with their own token; Claude prepares the files.
+
+**Claude asked:** where should the demo GIF be recorded?
+**Answer:** on the live site with the real AI.
+
+**Claude asked:** add the live URL to the README now?
+**Answer:** yes.

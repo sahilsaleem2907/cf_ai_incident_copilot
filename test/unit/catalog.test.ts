@@ -12,6 +12,7 @@ const ctx = (over: Partial<ProposeContext> = {}): ProposeContext => ({
   status: "investigating",
   watchable: true,
   hasPostmortem: false,
+  monitorRunning: false,
   ...over,
 });
 
@@ -45,8 +46,12 @@ describe("proposable", () => {
     expect(proposable("add_to_watchlist", ctx())).toBe(false);
   });
 
-  it("keeps the actions of later WPs switched off", () => {
-    expect(proposable("recheck_burst", ctx())).toBe(false);
+  it("recheck_burst: an unhealthy incident with no monitor running (WP-24)", () => {
+    expect(proposable("recheck_burst", ctx({ category: "inconclusive" }))).toBe(true);
+    expect(proposable("recheck_burst", ctx({ category: "inconclusive", status: "awaiting_approval" }))).toBe(true);
+    expect(proposable("recheck_burst", ctx({ category: "inconclusive", monitorRunning: true }))).toBe(false);
+    expect(proposable("recheck_burst", ctx({ category: "healthy" }))).toBe(false);
+    expect(proposable("recheck_burst", ctx({ category: "inconclusive", status: "mitigated" }))).toBe(false);
   });
 
   it("generate_postmortem: only on a resolved incident without one yet (WP-22)", () => {
@@ -79,6 +84,17 @@ describe("pickAction", () => {
     expect(pickAction({ category: "healthy", actions: ["generate_postmortem"] }, resolved)).toBe("generate_postmortem");
     expect(pickAction({ category: "healthy", actions: [] }, resolved)).toBeNull();
     expect(pickAction({ category: "origin_5xx", actions: ["generate_postmortem"] }, ctx({ status: "resolved" }))).toBe("generate_postmortem");
+  });
+
+  it("an inconclusive real site gets the re-check burst first, then the watch (WP-24, user decision)", () => {
+    const site = { target: "https://shop.example.com/", category: "inconclusive" as const };
+    expect(pickAction({ category: "inconclusive", actions: [] }, ctx(site))).toBe("recheck_burst");
+    expect(pickAction({ category: "inconclusive", actions: [] }, ctx({ ...site, monitorRunning: true }))).toBe("add_to_watchlist");
+    // A clear failure still gets the watch; the model can still name the burst.
+    expect(pickAction({ category: "origin_5xx", actions: [] }, ctx({ target: site.target }))).toBe("add_to_watchlist");
+    expect(pickAction({ category: "origin_5xx", actions: ["recheck_burst"] }, ctx({ target: site.target }))).toBe("recheck_burst");
+    // The demo still gets its restore.
+    expect(pickAction({ category: "inconclusive", actions: ["recheck_burst"] }, ctx({ category: "inconclusive" }))).toBe("restore_demo_service");
   });
 
   it("has a title for every action", () => {

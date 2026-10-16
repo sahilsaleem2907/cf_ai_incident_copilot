@@ -1,10 +1,20 @@
 import type { IncidentStatus } from "./state";
 
-/** Post-action monitor (D11, TDD §8.4): quick checks on agent schedule ticks, never inside a Workflow. */
+/** Monitors (D11, TDD §8.4): quick checks on agent schedule ticks, never inside a Workflow. After an action (15 s) or a `recheck_burst` (60 s). */
 export const MONITOR_TICK_S = 15;
 export const MONITOR_MAX_TICKS = 10;
 /** Passes in a row that resolve a mitigated incident. The verify check after an action counts as the first. */
 export const MONITOR_PASSES = 3;
+/** `recheck_burst` (WP-24, TDD §5.2): once a minute for 15 minutes. */
+export const BURST_TICK_S = 60;
+export const BURST_MAX_TICKS = 15;
+
+export type MonitorKind = "post_action" | "burst";
+/** How often each kind checks, and for how many ticks. Both use the same `tick()` rules. */
+export const MONITOR_KINDS: Record<MonitorKind, { tickS: number; maxTicks: number }> = {
+  post_action: { tickS: MONITOR_TICK_S, maxTicks: MONITOR_MAX_TICKS },
+  burst: { tickS: BURST_TICK_S, maxTicks: BURST_MAX_TICKS },
+};
 
 export type MonitorState = { ticksLeft: number; passes: number };
 export type TickResult = {

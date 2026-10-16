@@ -141,7 +141,7 @@ export function IncidentView({ id }: { id: string }) {
         {state.monitor && (
           <p className="mx-auto mt-1 flex max-w-3xl items-center gap-1.5 text-sm text-(--cf-fg-muted)" aria-live="polite">
             <PulseIcon aria-hidden size={14} />
-            Watching after the fix: {Math.min(state.monitor.passes, MONITOR_PASSES)} of {MONITOR_PASSES} checks passed in a row · {state.monitor.ticksLeft} checks left
+            {state.monitor.kind === "burst" ? "Re-checking every minute" : "Watching after the fix"}: {Math.min(state.monitor.passes, MONITOR_PASSES)} of {MONITOR_PASSES} checks passed in a row · {state.monitor.ticksLeft} checks left
           </p>
         )}
       </div>

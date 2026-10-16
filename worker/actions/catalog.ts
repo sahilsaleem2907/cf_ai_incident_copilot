@@ -24,6 +24,8 @@ export type ProposeContext = {
   watchable: boolean;
   /** A postmortem is already stored (WP-22). */
   hasPostmortem: boolean;
+  /** A monitor (post-action or burst) is already checking this incident (WP-24). */
+  monitorRunning: boolean;
 };
 
 /** True when the target is this workspace's own demo page: someone else's demo, or any other site, is off limits. */
@@ -44,9 +46,9 @@ export function proposable(action: ActionId, ctx: ProposeContext): boolean {
     case "add_to_watchlist":
       // A real site that's broken: watching it tells the user when it recovers. The demo gets a restore instead.
       return ctx.category !== "healthy" && ctx.watchable && !isOwnDemo(ctx.target, ctx.workspaceId, ctx.demoBaseUrl);
-    // Switched on by its WP: recheck_burst (WP-24).
+    // WP-24: checks every minute for 15 minutes; one monitor at a time.
     case "recheck_burst":
-      return false;
+      return ctx.category !== "healthy" && !ctx.monitorRunning;
   }
 }
 
@@ -57,7 +59,8 @@ export function proposable(action: ActionId, ctx: ProposeContext): boolean {
  */
 export function pickAction(findings: Pick<Findings, "category" | "actions">, ctx: ProposeContext): ActionId | null {
   if (proposable("restore_demo_service", ctx)) return "restore_demo_service";
-  const rules: ActionId[] = findings.category === "healthy" ? [] : ["add_to_watchlist"];
+  // WP-24 (user decision): an inconclusive result often means a flaky site, so re-checking every minute comes first.
+  const rules: ActionId[] = findings.category === "healthy" ? [] : findings.category === "inconclusive" ? ["recheck_burst", "add_to_watchlist"] : ["add_to_watchlist"];
   const candidates = [...new Set([...findings.actions, ...rules])].filter((a): a is ActionId => (ACTION_IDS as readonly string[]).includes(a));
   return candidates.find((a) => proposable(a, ctx)) ?? null;
 }
