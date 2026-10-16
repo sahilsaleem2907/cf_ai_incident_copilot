@@ -45,7 +45,7 @@ flowchart LR
   A -- "runWorkflow · approve / reject" --> F["DiagnosisWorkflow<br/>AgentWorkflow"]
   F -- "RPC: record checks, findings, narrate" --> A
   F --> AI["Workers AI<br/>via AI Gateway"]
-  F --> T["Tools<br/>dns_lookup · http_probe"]
+  F --> T["Tools<br/>dns_lookup · http_probe<br/>cert_info · provider_status"]
   T --> G{"SSRF guard<br/>+ origin pin"}
   G --> NET["Public internet"]
   G --> DEMO["Demo Worker<br/>/w/:workspace/"]
@@ -56,7 +56,7 @@ flowchart LR
 **One request, start to finish:**
 1. `POST /api/incidents` parses the target from the message (a URL, then a hostname, then the word "demo"; no LLM involved), creates an `IncidentAgent` and calls `init`.
 2. The agent records the question and starts a `DiagnosisWorkflow` with the ID `diag-<incident>-<run>`.
-3. The Workflow runs the baseline checks (DNS + HTTP) right away, so the first card shows in about a second. It then gives the model the evidence digests and lets it either call more tools or call `submit_findings` (category, confidence, evidence IDs, actions), which is validated with zod.
+3. The Workflow runs the baseline checks (DNS + HTTP) right away, so the first card shows in about a second. Two more run only when they help: a certificate lookup in the CT logs (crt.sh, best effort) when HTTPS fails to connect, and the provider's status page (Cloudflare, GitHub, AWS) when a site hosted there is failing. It then gives the model the evidence digests and lets it either call more tools or call `submit_findings` (category, confidence, evidence IDs, actions), which is validated with zod.
 4. The agent streams a narration of those fixed findings over the WebSocket. A citation check removes any sentence that cites an unknown ID, or makes a factual claim without a citation.
 5. If an action is proposable, an approval card appears and the Workflow waits for it. On approve, the agent runs the action and re-checks it. It then checks again every 15 s, and resolves the incident once 3 checks in a row have passed (the re-check plus two more).
 
@@ -95,7 +95,7 @@ The app fetches URLs that users type in, so it's built so that it can't be used 
   - the host is resolved over DoH first, and refused if **any** A/AAAA answer falls in a private, loopback, link-local, CGNAT, documentation, multicast or reserved range (IPv4 and IPv6, including IPv4-mapped, NAT64 and 6to4 forms);
   - every redirect hop is checked again;
   - `global_fetch_strictly_public` is on as a second layer.
-- **Origin pin:** the tools only reach the incident's own host (and, for DNS, the CNAME targets found in that incident's evidence). A different host needs a new incident.
+- **Origin pin:** the tools only reach the incident's own host (and, for DNS and certificates, the CNAME targets found in that incident's evidence). `provider_status` only reads three fixed status pages. A different host needs a new incident.
 - **Read-only probing:** GET/HEAD only, no user-supplied headers, bodies or cookies, and reads capped at 16 KB.
 - **Prompt injection:** fetched content goes to the model inside `<untrusted>` tags and is truncated. The model's tool calls are checked with zod and against the origin pin. Actions come only from a fixed catalog, and every action needs a human's approval.
 - **Incident links are view-only** for anyone but the workspace that owns them.
@@ -173,7 +173,6 @@ The full design for each of these is in the TDD. Day 2 of the build is still in 
 
 | WP | Feature | Design |
 |---|---|---|
-| 21 | `cert_info` (crt.sh) and `provider_status` (status pages) tools | TDD §7.3 |
 | 22 | Postmortem: streamed markdown summary of a resolved incident | TDD §8.7 |
 | 23 | Push-to-talk voice via Whisper, normalizing "dot" and "slash" | TDD §8.7 |
 | 24 | `recheck_burst`: re-check every minute for 15 minutes | TDD §8.4 |

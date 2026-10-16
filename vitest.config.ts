@@ -30,7 +30,8 @@ export default {
 // demo host, so Workflow runs are offline and deterministic. Slack and Discord webhooks are recorded: a POST
 // is stored and answered by its path (/gone → 404, /flaky → 500 then 204), and GET https://discord.com/__calls
 // returns everything recorded so far. nxdomain.example.com doesn't exist,
-// broken.example.com returns 500, every other *.example.com host serves a small HTML page, and the test demo
+// broken.example.com returns 500 (cf.example.com too, behind "Cloudflare"), tls.example.com and crtdown.example.com
+// refuse connections, every other *.example.com host serves a small HTML page, and the test demo
 // host is served by the demo stub (through its DEMO binding here).
 const DEMO_HOST = "incident-copilot-demo.test.workers.dev";
 const fakeInternet = `
@@ -55,6 +56,18 @@ export default {
       if (url.pathname.endsWith("/flaky") && flaky++ === 0) return new Response("oops", { status: 500 });
       return new Response(null, { status: 204 });
     }
+    // WP-21: crt.sh and the status pages. No certificate covers *.example.com; crt.sh fails for crtdown.example.com.
+    if (url.hostname === "crt.sh") {
+      const q = url.searchParams.get("q") || "";
+      if (q.includes("crtdown")) return new Response("busy", { status: 502 });
+      if (q === "valid.example.com") return Response.json([{ id: 1, serial_number: "s1", issuer_name: "C=US, O=Let's Encrypt, CN=R3", common_name: q, name_value: q, not_before: "2026-09-01T00:00:00", not_after: "2099-01-01T00:00:00" }]);
+      return Response.json([]);
+    }
+    if (url.hostname === "www.cloudflarestatus.com") return Response.json({ incidents: [{ name: "Elevated 5xx errors", status: "investigating", impact: "major" }] });
+    if (url.hostname === "www.githubstatus.com") return Response.json({ incidents: [] });
+    // Hosts whose HTTPS connections fail (an expired certificate looks like this on workerd).
+    if (url.hostname === "tls.example.com" || url.hostname === "crtdown.example.com") throw new Error("connection reset");
+    if (url.hostname === "cf.example.com") return new Response("error", { status: 500, headers: { server: "cloudflare" } });
     if (url.hostname === "broken.example.com") return new Response("upstream exploded", { status: 500 });
     if (url.hostname.endsWith("example.com")) return new Response("<html><body>ok</body></html>", { headers: { "content-type": "text/html" } });
     return new Response("fake internet: unknown host " + url.hostname, { status: 502 });

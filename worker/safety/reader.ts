@@ -23,7 +23,13 @@ export type ReadOk = {
 export type ReadErr = { ok: false; url: string; error: "timeout" | "network"; message: string; totalMs: number };
 export type ReadResult = ReadOk | ReadErr;
 
-type ReadOptions = { timeoutMs?: number; readCap?: number; now?: () => number };
+type ReadOptions = {
+  timeoutMs?: number;
+  readCap?: number;
+  now?: () => number;
+  /** Turns the capped bytes into text; UTF-8 by default. AWS's health feed is UTF-16 (WP-21). */
+  decode?: (bytes: Uint8Array) => string;
+};
 
 export async function readOnce(fetchFn: Fetch, url: string, method: Method = "GET", opts: ReadOptions = {}): Promise<ReadResult> {
   const now = opts.now ?? (() => Date.now());
@@ -36,7 +42,7 @@ export async function readOnce(fetchFn: Fetch, url: string, method: Method = "GE
       signal: AbortSignal.timeout(opts.timeoutMs ?? FETCH_TIMEOUT_MS),
     });
     const ttfbMs = now() - start;
-    const { body, truncated } = await readCapped(res, opts.readCap ?? READ_CAP);
+    const { body, truncated } = await readCapped(res, opts.readCap ?? READ_CAP, opts.decode);
     return {
       ok: true,
       url,
@@ -57,7 +63,7 @@ export async function readOnce(fetchFn: Fetch, url: string, method: Method = "GE
   }
 }
 
-async function readCapped(res: Response, cap: number): Promise<{ body: string; truncated: boolean }> {
+async function readCapped(res: Response, cap: number, decode: (bytes: Uint8Array) => string = (b) => new TextDecoder().decode(b)): Promise<{ body: string; truncated: boolean }> {
   if (!res.body) return { body: "", truncated: false };
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -83,7 +89,7 @@ async function readCapped(res: Response, cap: number): Promise<{ body: string; t
     all.set(c, offset);
     offset += c.byteLength;
   }
-  return { body: new TextDecoder().decode(all), truncated };
+  return { body: decode(all), truncated };
 }
 
 export type Hop = { url: string; status: number; location: string | null; ttfbMs: number; totalMs: number };

@@ -54,16 +54,34 @@ export type Findings = {
   actions: ActionId[];
 };
 
-/** `cert_info` raw evidence (built in WP-21). */
+/** `cert_info` raw evidence (WP-21): certificates found in CT logs (crt.sh), best effort. */
 export type CertRaw = {
   hostname: string;
+  /** Matching certificates first (most days left first), at most 3. */
   certs: { issuer: string; notBefore: string; notAfter: string; daysToExpiry: number; sanMatch: boolean }[];
+  /** The crt.sh queries made: the host itself and `*.parent` for wildcard certificates. */
+  queries?: string[];
+  /** Queries crt.sh didn't answer; with any, the check is `unavailable`. */
+  failed?: string[];
 };
 
 export const PROVIDERS = ["cloudflare", "github", "aws"] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
-/** `provider_status` raw evidence (built in WP-21). Providers that weren't checked are absent. */
+/** One unresolved incident. Statuspage reports `impact` (none, minor, major, critical); AWS doesn't. */
+export type ProviderIncident = { name: string; status?: string; impact?: string; url?: string };
+
+/** `provider_status` raw evidence (WP-21). Providers that weren't checked are absent. */
 export type ProviderRaw = {
-  providers: Partial<Record<Provider, { active: { name: string; status?: string }[] }>>;
+  providers: Partial<Record<Provider, { active: ProviderIncident[] }>>;
+  /** Providers whose status page didn't answer. */
+  unavailable?: Provider[];
 };
+
+/**
+ * Whether an incident counts as an outage (WP-21). Cloudflare almost always has a minor incident open (for example
+ * dashboard sign-ups), so only major or critical ones count; incidents without an impact (AWS) always do.
+ */
+export function isSignificant(i: ProviderIncident): boolean {
+  return i.impact === undefined || i.impact === "major" || i.impact === "critical";
+}

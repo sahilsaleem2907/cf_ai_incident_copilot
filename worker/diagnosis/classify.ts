@@ -2,7 +2,8 @@ import { HIGH_LATENCY_TOTAL_MS, HIGH_LATENCY_TTFB_MS } from "../loop/budget";
 import type { DnsRaw } from "../tools/dns";
 import { isTlsError, type HttpRaw, type Sample } from "../tools/http";
 import type { ToolName, ToolResult } from "../tools/types";
-import type { Category, CertRaw, Confidence, Findings, Provider, ProviderRaw } from "./categories";
+import { isSignificant, type Category, type CertRaw, type Confidence, type Findings, type Provider, type ProviderRaw } from "./categories";
+import { fingerprint } from "./fingerprint";
 
 type Ev<Raw> = { id: string; raw: Raw; summary: string };
 type Evidence = {
@@ -131,13 +132,27 @@ function tlsExpiry({ http, cert }: Evidence): Match | null {
   if (http && tls.length) {
     return match("tls_expiry", "high", [http.id], `The TLS handshake with ${host(http.raw)} fails on ${tls.length}/${http.raw.samples.length} samples`);
   }
-  const certs = cert?.raw.certs.filter((c) => c.sanMatch) ?? [];
-  if (!cert || certs.length === 0) return null;
+  if (!cert) return null;
+  const certs = cert.raw.certs.filter((c) => c.sanMatch);
+  // WP-21: CT logs list issued certificates, not the one being served, so they only back up a failing site.
+  const healthy = !!http && allOk(http.raw.samples);
+  if (certs.length === 0) {
+    // workerd hides the TLS reason, so a site that refuses every connection while no unexpired certificate
+    // covers it in the CT logs is the best signal of an expired or missing certificate.
+    if (!http || !http.raw.url.startsWith("https:")) return null;
+    if (http.raw.samples.length === 0 || !http.raw.samples.every((s) => s.stop === "error")) return null;
+    return match(
+      "tls_expiry",
+      "medium",
+      [http.id, cert.id],
+      `HTTPS connections to ${host(http.raw)} fail, and the CT logs show no unexpired certificate covering it`,
+    );
+  }
   const best = certs.reduce((a, b) => (b.daysToExpiry > a.daysToExpiry ? b : a));
-  if (best.daysToExpiry < 0) {
+  if (best.daysToExpiry < 0 && !healthy) {
     return match("tls_expiry", "high", [cert.id], `The newest certificate for ${cert.raw.hostname} expired ${-best.daysToExpiry} day(s) ago`);
   }
-  if (best.daysToExpiry <= CERT_WARN_DAYS && http && allOk(http.raw.samples)) {
+  if (http && healthy && best.daysToExpiry >= 0 && best.daysToExpiry <= CERT_WARN_DAYS) {
     return match(
       "tls_expiry",
       "medium",
@@ -171,8 +186,8 @@ function providerOutage({ http, dns, status }: Evidence): Match | null {
   if (!http || !status) return null;
   const failing = http.raw.samples.some((s) => s.stop === "error" || (s.status ?? 0) >= 500);
   if (!failing) return null;
-  for (const { provider, via } of fingerprint(http.raw, dns?.raw)) {
-    const active = status.raw.providers[provider]?.active ?? [];
+  for (const { provider, via } of fingerprint(http.raw.headers, dns?.raw.cnameChain ?? [])) {
+    const active = (status.raw.providers[provider]?.active ?? []).filter(isSignificant);
     if (active.length === 0) continue;
     const ids = [http.id, status.id, ...(via === "dns" && dns ? [dns.id] : [])];
     const name = active[0]!.name.replace(/\s+/g, " ").slice(0, 80);
@@ -227,15 +242,6 @@ function inconclusive({ http, dns, cert, status }: Evidence): Match {
 
 function match(category: Category, confidence: Confidence, ids: string[], text: string): Match {
   return { category, confidence, ids, cause: `${text} ${ids.map((id) => `[${id}]`).join(" ")}.` };
-}
-
-function fingerprint(http: HttpRaw, dns: DnsRaw | undefined): { provider: Provider; via: "http" | "dns" }[] {
-  const out: { provider: Provider; via: "http" | "dns" }[] = [];
-  if (/cloudflare/i.test(http.headers.server ?? "") || http.headers["cf-ray"]) out.push({ provider: "cloudflare", via: "http" });
-  const cnames = dns?.cnameChain ?? [];
-  if (cnames.some((c) => c.endsWith(".github.io"))) out.push({ provider: "github", via: "dns" });
-  if (cnames.some((c) => c.includes("amazonaws"))) out.push({ provider: "aws", via: "dns" });
-  return out;
 }
 
 const statuses = (samples: Sample[]) => samples.flatMap((s) => (s.status === null ? [] : [s.status]));

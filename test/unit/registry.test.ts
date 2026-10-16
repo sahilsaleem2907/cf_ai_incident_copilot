@@ -18,7 +18,7 @@ describe("registry", () => {
 
   it("exposes OpenAI-style tool definitions with optional defaults", () => {
     const tools = llmTools();
-    expect(tools.map((t) => t.function.name)).toEqual(["dns_lookup", "http_probe", "submit_findings"]);
+    expect(tools.map((t) => t.function.name)).toEqual(["dns_lookup", "http_probe", "cert_info", "provider_status", "submit_findings"]);
     const dns = tools[0]!.function.parameters as { required: string[]; properties: Record<string, unknown> };
     expect(dns.required).toEqual(["hostname"]);
     expect(dns.properties).toHaveProperty("types");

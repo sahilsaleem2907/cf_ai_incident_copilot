@@ -120,7 +120,7 @@ const goodAsset = { url: "https://shop.example.com/static/app.js", status: 200, 
 describe("classify: one fixture per category", () => {
   const cases: [string, ToolResult[], { category: string; confidence: string; evidence: string[] }][] = [
     ["dns_failure (NXDOMAIN)", [dns({ rcode: ["NXDOMAIN", "NXDOMAIN"], addresses: [[], []] }), http({ statuses: [null, null, null] })], { category: "dns_failure", confidence: "high", evidence: ["dns-1"] }],
-    ["tls_expiry (expired cert)", [dns(), http(), cert(-3)], { category: "tls_expiry", confidence: "high", evidence: ["cert-1"] }],
+    ["tls_expiry (expired cert, site refusing connections)", [dns(), http({ statuses: [null, null, null], error: "network" }), cert(-3)], { category: "tls_expiry", confidence: "high", evidence: ["cert-1"] }],
     ["redirect_loop", [dns(), http({ stop: "loop" })], { category: "redirect_loop", confidence: "high", evidence: ["http-1"] }],
     ["edge_error", [dns(), http({ statuses: [522, 522, 522], server: "cloudflare" })], { category: "edge_error", confidence: "high", evidence: ["http-1"] }],
     ["provider_outage", [dns(), http({ statuses: [500, 500, 500], server: "cloudflare" }), provider({ cloudflare: ["Elevated 5xx errors in LHR"] })], { category: "provider_outage", confidence: "medium", evidence: ["http-1", "status-1"] }],
@@ -175,6 +175,16 @@ describe("classify: precedence (first match wins)", () => {
     expect(gh).toMatchObject({ category: "provider_outage", evidence: ["http-1", "status-1", "dns-1"] });
     expect(cat([dns({ cname: ["x.s3.amazonaws.com"] }), http({ statuses: [500, 500, 500] }), provider({ aws: ["S3 errors"] })])).toBe("provider_outage");
   });
+  it("only major or critical Statuspage incidents count (Cloudflare nearly always has a minor one open)", () => {
+    const withImpact = (impact: string) => {
+      const p = provider({ cloudflare: ["Dashboard sign up issues"] });
+      p.raw.providers.cloudflare!.active[0]!.impact = impact;
+      return p;
+    };
+    expect(cat([dns(), http({ statuses: [500, 500, 500], server: "cloudflare" }), withImpact("minor")])).toBe("origin_5xx");
+    expect(cat([dns(), http({ statuses: [500, 500, 500], server: "cloudflare" }), withImpact("major")])).toBe("provider_outage");
+    expect(cat([dns(), http({ statuses: [500, 500, 500], server: "cloudflare" }), withImpact("critical")])).toBe("provider_outage");
+  });
   it("provider incident with healthy HTTP is still healthy", () => {
     expect(cat([dns(), http({ server: "cloudflare" }), provider({ cloudflare: ["Outage"] })])).toBe("healthy");
   });
@@ -222,6 +232,22 @@ describe("classify: edge cases", () => {
   });
   it("only certificates that match the hostname count", () => {
     expect(classify([dns(), http(), cert(-3, false)]).category).toBe("healthy");
+  });
+  it("an expired certificate in the CT logs doesn't override a healthy site (CT shows issued, not served, certs)", () => {
+    expect(classify([dns(), http(), cert(-3)]).category).toBe("healthy");
+  });
+  it("HTTPS refusing every connection with no unexpired certificate in the CT logs is tls_expiry medium", () => {
+    const none = { ...cert(30), status: "fail" as const, raw: { hostname: "shop.example.com", certs: [] } };
+    const refused = http({ statuses: [null, null, null], error: "network", message: "internal error; reference = abc" });
+    expect(classify([dns(), refused, none])).toMatchObject({ category: "tls_expiry", confidence: "medium", evidence: ["http-1", "cert-1"] });
+    // Some samples answering means the connection works: not a certificate problem.
+    expect(classify([dns(), http({ statuses: [null, 200, 200], error: "network" }), none]).category).not.toBe("tls_expiry");
+    // A certificate that's valid in the CT logs leaves an opaque error inconclusive.
+    expect(classify([dns(), refused, cert(30)]).category).toBe("inconclusive");
+  });
+  it("an unavailable certificate check is ignored", () => {
+    const down = { ...cert(-3), ok: false, status: "unavailable" as const };
+    expect(classify([dns(), http({ statuses: [null, null, null], error: "network" }), down]).category).toBe("inconclusive");
   });
   it("2 of 3 samples 5xx is origin_5xx with medium confidence; 1 of 3 is inconclusive", () => {
     expect(classify([dns(), http({ statuses: [500, 502, 200] })])).toMatchObject({ category: "origin_5xx", confidence: "medium" });

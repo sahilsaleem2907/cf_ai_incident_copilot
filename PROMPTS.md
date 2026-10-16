@@ -478,3 +478,16 @@ Answers to Claude's questions:
 **Answer:** only follow when at the bottom.
 
 (WP-27c built: the chat scrolls only its own column and only while you're at the bottom, and the page itself can no longer scroll; evidence wraps and stays inside its card; one dashed ring replaces every spinner, including inside buttons; the chat says "Running checks…" then "Writing the diagnosis…" while it works. 604 tests pass. The scroll bug didn't reproduce in a headless browser, so the fix removes the cause rather than a confirmed symptom.)
+
+### 16:11 · WP-21 to WP-23 plan
+
+> Lets build WP-21, 22 and 23 in one plan next.
+
+**Claude asked:** when should the certificate (crt.sh) and provider status checks run on their own?
+**Answer:** only when useful: the certificate check when HTTPS requests fail to connect, provider status when the site is failing and looks hosted on Cloudflare, GitHub Pages or AWS. The AI can still ask for either.
+
+**Claude asked:** how should the postmortem be written?
+**Answer:** facts by code (timeline, impact window, detection), story by AI (summary, root cause, resolution, follow-ups); a template when the AI is off.
+
+**Claude asked:** how should the voice button work?
+**Answer:** click to start, click to stop, auto-stop at 30 s.

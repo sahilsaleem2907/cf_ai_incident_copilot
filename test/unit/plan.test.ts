@@ -134,7 +134,7 @@ describe("diagnose: normal runs", () => {
     expect(h.log.findings).toEqual({ f: expect.objectContaining({ category: "origin_5xx", evidence: ["http-1", "dns-1"] }), mode: "ai" });
     expect(h.log.finish).toEqual({ status: "done", stats: { toolCalls: 2, llmTurns: 2, fallbackTurns: 0, source: "model" } });
     expect(h.requests[0]).toMatchObject({ toolChoice: "required" });
-    expect(offered(h.requests[0]!)).toEqual(["dns_lookup", "http_probe", "submit_findings"]);
+    expect(offered(h.requests[0]!)).toEqual(["dns_lookup", "http_probe", "cert_info", "provider_status", "submit_findings"]);
     expect(h.requests[1]!.messages[0]!.content).toContain("[http-1] http_probe (fail): http_probe ok");
   });
 
@@ -152,6 +152,50 @@ describe("diagnose: normal runs", () => {
     const h = harness({ replies: [{ ...reply(http()), fallback: true }, reply(submit(["http-1"]))] });
     await run(h);
     expect(h.log.finish?.stats).toMatchObject({ fallbackTurns: 1, source: "model" });
+  });
+});
+
+describe("diagnose: automatic cert and provider checks (WP-21)", () => {
+  const refusedHttp = { url: TARGET, samples: [{ status: null, ttfbMs: null, totalMs: 5, stop: "error", error: "network", hops: [] }], headers: { setCookie: false, server: "cloudflare" } };
+  const tool = (name: ToolName, id: string): ToolResult => ({
+    evidenceId: id,
+    tool: name,
+    ok: true,
+    status: "fail",
+    summary: `${name} ok`,
+    digest: "{}",
+    raw: name === "http_probe" ? refusedHttp : name === "dns_lookup" ? { cnameTargets: [] } : {},
+  });
+
+  it("runs cert_info and provider_status after the baseline when HTTPS fails to connect behind Cloudflare", async () => {
+    const h = harness({ replies: [reply(submit(["http-1"]))], tool });
+    await run(h, { baseline: true });
+    expect(h.recorded.map((r) => r.tool)).toEqual(["dns_lookup", "http_probe", "cert_info", "provider_status"]);
+    expect(h.steps.slice(0, 7)).toEqual(["context", "pending-baseline", "tool-dns-1", "tool-http-1", "pending-extras", "tool-http-2", "tool-http-3"]);
+    // The model sees them before its first turn.
+    expect(h.requests[0]!.messages[0]!.content).toContain("cert_info (fail)");
+  });
+
+  it("skips provider_status on the user's own demo, and runs nothing extra for a healthy site", async () => {
+    const demo = harness({ replies: [reply(submit(["http-1"]))], tool, ctx: { isDemo: true } });
+    await run(demo, { baseline: true });
+    expect(demo.recorded.map((r) => r.tool)).toEqual(["dns_lookup", "http_probe", "cert_info"]);
+    const ok = harness({ replies: [reply(submit(["http-1"]))] });
+    await run(ok, { baseline: true });
+    expect(ok.steps).not.toContain("pending-extras");
+  });
+
+  it("runs them on the rule path too", async () => {
+    const h = harness({ ctx: { mode: "rule_based" }, tool });
+    await run(h);
+    expect(h.recorded.map((r) => r.tool)).toEqual(["dns_lookup", "http_probe", "cert_info", "provider_status"]);
+    expect(h.steps).toContain("pending-rules-extras");
+  });
+
+  it("stays within the tool cap", async () => {
+    const h = harness({ ctx: { mode: "rule_based" }, tool });
+    await run(h, { maxTools: 3 });
+    expect(h.recorded.map((r) => r.tool)).toEqual(["dns_lookup", "http_probe", "cert_info"]);
   });
 });
 

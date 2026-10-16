@@ -39,7 +39,8 @@ function planningTurn(system: string, user: string): ChatCompletion {
     ]);
   }
   const category = pickCategory(evidence);
-  const ids = [last(evidence, "http_probe"), last(evidence, "dns_lookup")].flatMap((e) => (e ? [e.evidenceId] : []));
+  const decisive = category === "tls_expiry" ? last(evidence, "cert_info") : category === "provider_outage" ? last(evidence, "provider_status") : undefined;
+  const ids = [last(evidence, "http_probe"), decisive, last(evidence, "dns_lookup")].flatMap((e) => (e ? [e.evidenceId] : []));
   const findings: Findings = {
     category,
     confidence: category === "inconclusive" ? "low" : "high",
@@ -55,6 +56,11 @@ function pickCategory(evidence: EvidenceLine[]): Category {
   const dns = last(evidence, "dns_lookup");
   const http = last(evidence, "http_probe");
   if (dns && /doesn't resolve|No A or AAAA/.test(dns.summary)) return "dns_failure";
+  const cert = last(evidence, "cert_info");
+  const status = last(evidence, "provider_status");
+  const failing = !!http && /^(HTTP 5\d\d|Connection failed|Timed out|TLS error)/.test(http.summary);
+  if (cert?.status === "fail" && failing && !/^HTTP/.test(http!.summary)) return "tls_expiry";
+  if (status?.status === "fail" && failing) return "provider_outage";
   if (http) {
     if (/^(Redirect loop|Too many redirects)/.test(http.summary)) return "redirect_loop";
     if (/^HTTP 5\d\d/.test(http.summary)) return "origin_5xx";

@@ -3,8 +3,10 @@ import { toolParameters } from "../lib/schema";
 import { countingFetch, SubrequestCounter } from "../loop/budget";
 import { submitFindingsTool } from "../loop/findings";
 import { assertInScope, OutOfScopeError, type Scope } from "../safety/origin";
+import { certInput, certQueries, runCertInfo } from "./cert";
 import { dnsInput, runDnsLookup } from "./dns";
 import { HTTP_PROBE_CAP, httpInput, runHttpProbe } from "./http";
+import { providerInput, runProviderStatus } from "./provider";
 import type { ToolContext, ToolName, ToolResult } from "./types";
 
 /** Evidence ID prefixes (TDD §6.4); the incident's agent allocates `n` (WP-08). */
@@ -19,16 +21,9 @@ export function evidenceId(tool: ToolName, n: number): string {
   return `${EVIDENCE_PREFIX[tool]}-${n}`;
 }
 
-const LABEL_FALLBACK: Record<ToolName, string> = {
-  dns_lookup: "DNS lookup",
-  http_probe: "HTTP probe",
-  cert_info: "Certificate",
-  provider_status: "Provider status",
-};
-
-/** Display name for a check; cert/provider tools aren't registered until WP-21. */
+/** Display name for a check. */
 export function toolLabel(tool: ToolName): string {
-  return TOOLS[tool]?.label ?? LABEL_FALLBACK[tool];
+  return TOOLS[tool].label;
 }
 
 type ToolDef<S extends z.ZodType> = {
@@ -65,7 +60,7 @@ function register<S extends z.ZodType>(def: ToolDef<S>): RegisteredTool {
   };
 }
 
-export const TOOLS: Partial<Record<ToolName, RegisteredTool>> = {
+export const TOOLS: Record<ToolName, RegisteredTool> = {
   dns_lookup: register({
     name: "dns_lookup",
     label: "DNS lookup",
@@ -83,6 +78,24 @@ export const TOOLS: Partial<Record<ToolName, RegisteredTool>> = {
     input: httpInput,
     maxSubrequests: () => HTTP_PROBE_CAP,
     run: runHttpProbe,
+  }),
+  cert_info: register({
+    name: "cert_info",
+    label: "Certificate",
+    description:
+      "Look up unexpired TLS certificates for the incident host (or a CNAME target) in certificate-transparency logs (crt.sh). Best effort: it shows certificates that were issued, not necessarily the one being served, and is often slow. Use it when HTTPS connections fail.",
+    input: certInput,
+    maxSubrequests: (i) => certQueries(i.hostname).length,
+    run: runCertInfo,
+  }),
+  provider_status: register({
+    name: "provider_status",
+    label: "Provider status",
+    description:
+      "Check the public status pages of hosting providers (cloudflare, github, aws) for active incidents, to tell whether a failure is the site's or its provider's. Only major or critical incidents count as an outage.",
+    input: providerInput,
+    maxSubrequests: (i) => i.providers.length,
+    run: runProviderStatus,
   }),
 };
 
@@ -109,7 +122,7 @@ export type RunOutcome = { ok: true; result: ToolResult; subrequests: number; ca
  * Invalid or out-of-scope calls come back as `invalid` so the loop can report them to the model (FR-12).
  */
 export async function runTool(name: string, args: unknown, ctx: ToolContext, scope: Scope): Promise<RunOutcome> {
-  const tool = TOOLS[name as ToolName];
+  const tool = Object.hasOwn(TOOLS, name) ? TOOLS[name as ToolName] : undefined;
   if (!tool) return { ok: false, invalid: `Unknown tool ${name}.` };
   const prepared = tool.prepare(args);
   if (!prepared.ok) return { ok: false, invalid: `Invalid arguments for ${name}: ${prepared.error}` };

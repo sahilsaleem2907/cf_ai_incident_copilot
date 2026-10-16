@@ -84,6 +84,41 @@ describe("DiagnosisWorkflow (mock LLM, fake internet)", () => {
     expect(s.category).toBe("dns_failure");
   });
 
+  it("a host refusing HTTPS gets a certificate card; no certificate in the CT logs → tls_expiry (WP-21)", async () => {
+    const { snapshot: s } = await diagnoseRun("tls.example.com is down", "https://tls.example.com/");
+    expect(s.checks.map((c) => [c.evidenceId, c.tool, c.status])).toEqual([
+      ["dns-1", "dns_lookup", "pass"],
+      ["http-1", "http_probe", "fail"],
+      ["cert-1", "cert_info", "fail"],
+    ]);
+    expect(s.checks[2]!.summary).toBe("CT logs (best effort): no unexpired certificate covers tls.example.com.");
+    expect(s.category).toBe("tls_expiry");
+    expect(s.findings?.evidence).toContain("cert-1");
+  });
+
+  it("the rules reach the same tls_expiry without the AI", async () => {
+    const { snapshot: s } = await diagnoseRun("tls.example.com is down", "https://tls.example.com/", "rule_based");
+    expect(s).toMatchObject({ category: "tls_expiry", confidence: "medium", mode: "rule_based" });
+  });
+
+  it("a crt.sh failure shows the certificate check as unavailable", async () => {
+    const { snapshot: s } = await diagnoseRun("crtdown.example.com is down", "https://crtdown.example.com/", "rule_based");
+    const cert = s.checks.find((c) => c.tool === "cert_info")!;
+    expect(cert).toMatchObject({ status: "unavailable", label: "Certificate" });
+    expect(s.category).toBe("inconclusive");
+  });
+
+  it("a failing site behind Cloudflare gets a provider status card; a major incident → provider_outage", async () => {
+    const { snapshot: s } = await diagnoseRun("cf.example.com is down", "https://cf.example.com/", "rule_based");
+    expect(s.checks.map((c) => [c.tool, c.status])).toEqual([
+      ["dns_lookup", "pass"],
+      ["http_probe", "fail"],
+      ["provider_status", "fail"],
+    ]);
+    expect(s.checks[2]).toMatchObject({ evidenceId: "status-1", label: "Provider status", summary: 'Cloudflare: 1 active incident(s), "Elevated 5xx errors".' });
+    expect(s).toMatchObject({ category: "provider_outage", confidence: "medium" });
+  });
+
   it("runs a follow-up as a second Workflow that sees the earlier evidence", async () => {
     const first = await diagnoseRun("why is broken.example.com down?", "https://broken.example.com/");
     const introspector = await introspectWorkflow(env.DIAGNOSIS_WORKFLOW);

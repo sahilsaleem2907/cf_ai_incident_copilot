@@ -29,4 +29,6 @@ export type ToolContext = {
   /** Called before every probe sample; backed by PROBE_LIMIT (`safety/quota.ts`). Returns false when limited. */
   rateLimit?: (host: string) => Promise<boolean>;
   now?: () => number;
+  /** Where crt.sh answers are cached for an hour (WP-21). Defaults to `caches.default`; null turns caching off. */
+  cache?: Pick<Cache, "match" | "put"> | null;
 };
