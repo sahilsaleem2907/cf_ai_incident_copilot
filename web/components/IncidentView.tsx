@@ -177,6 +177,7 @@ export function IncidentView({ id }: { id: string }) {
             disabled={!!state.activeRunId || role === null}
             disabledReason={state.activeRunId ? "Working on it… you can ask a follow-up when this run finishes." : undefined}
             placeholder="Ask a follow-up, e.g. is it still failing?"
+            voice
             notice={
               other ? (
                 <div className="flex flex-wrap items-center gap-2 text-(--cf-fg-muted)">

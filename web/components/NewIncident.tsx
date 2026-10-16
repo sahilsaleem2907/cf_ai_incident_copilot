@@ -53,6 +53,7 @@ export function NewIncident() {
         onChange={setText}
         onSend={send}
         placeholder="e.g. checkout on shop.example.com is returning errors"
+        voice
         notice={error && <p role="alert" className="text-(--cf-fg)">{error}</p>}
       />
     </div>

@@ -27,7 +27,7 @@ A link to an incident opened by someone else is **view-only**: you can watch it 
 |---|---|
 | **LLM** | Workers AI `@cf/openai/gpt-oss-120b`, falling back to `@cf/zai-org/glm-4.7-flash`, both routed through **AI Gateway** (`incident-copilot`) for logs and fallback. A deterministic rule engine takes over when both are unavailable. |
 | **Workflow / coordination** | **Workflows**: `DiagnosisWorkflow` (extends the Agents SDK's `AgentWorkflow`) runs each LLM turn and each check as its own durable, retryable step, then waits for human approval with `waitForApproval`. `WatchWorkflow` confirms a watched endpoint's failure (2 of 3 checks) before opening an incident on its own. |
-| **User input** | A React chat UI (Cloudflare's Kumo design system) served by **Workers Static Assets**, with live updates over a WebSocket straight to the incident's Durable Object. |
+| **User input** | A React chat UI (Cloudflare's Kumo design system) served by **Workers Static Assets**, with live updates over a WebSocket straight to the incident's Durable Object. **Voice:** a mic button records up to 30 s, Workers AI `whisper-large-v3-turbo` transcribes it, and spoken "dot" and "slash" become `.` and `/`. The text lands in the input box for you to check; it's never sent on its own. |
 | **Memory / state** | **Durable Objects** via the Agents SDK: one `IncidentAgent` per incident with its own SQLite (checks, evidence, messages, approvals, timeline). **D1** holds the workspaces, the incident index per workspace (for the sidebar), the watchlist and the daily neuron count. |
 
 Also used: Cron Triggers (the watchlist), Rate Limiting bindings, Service Bindings with RPC (main Worker → demo Worker), Workers Logs, and the `global_fetch_strictly_public` flag.
@@ -174,7 +174,6 @@ The full design for each of these is in the TDD. Day 2 of the build is still in 
 
 | WP | Feature | Design |
 |---|---|---|
-| 23 | Push-to-talk voice via Whisper, normalizing "dot" and "slash" | TDD §8.7 |
 | 24 | `recheck_burst`: re-check every minute for 15 minutes | TDD §8.4 |
 | 25 | Terraform for D1 (and the AI Gateway if supported) | TDD §15 |
 | 26 | Demo GIF of the walkthrough | — |

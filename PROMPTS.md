@@ -491,3 +491,5 @@ Answers to Claude's questions:
 
 **Claude asked:** how should the voice button work?
 **Answer:** click to start, click to stop, auto-stop at 30 s.
+
+(WP-21 to WP-23 built, one commit each: the certificate and provider status checks run on their own only when they help, and only major Cloudflare incidents count as an outage so a broken demo isn't blamed on Cloudflare; the postmortem's timeline comes from the records and the AI writes the story, stored and copyable; the mic button fills the input box and never sends. 684 tests pass; each WP checked in a local browser.)

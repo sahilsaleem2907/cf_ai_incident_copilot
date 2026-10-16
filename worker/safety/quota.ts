@@ -47,12 +47,12 @@ async function burst(binding: RateLimit, key: string, name: string): Promise<boo
   }
 }
 
-/** One D1 window; an error is logged and allows the run (fail open). */
-async function hourly(db: D1Database, key: string, limit: number, now: number): Promise<Quota> {
+/** One D1 window; an error is logged and allows the call (fail open). */
+async function hourly(db: D1Database, key: string, limit: number, now: number, kind: "run" | "voice" = "run"): Promise<Quota> {
   try {
-    return await takeWindow(db, key, "run", limit, HOUR_MS, now);
+    return await takeWindow(db, key, kind, limit, HOUR_MS, now);
   } catch (e) {
-    console.error("run quota (D1) failed; allowing the run", (e as Error).message);
+    console.error(`${kind} quota (D1) failed; allowing it`, (e as Error).message);
     return { ok: true };
   }
 }
@@ -71,6 +71,23 @@ export async function takeRun(env: Pick<Env, "RUN_LIMIT" | "RUN_IP_LIMIT" | "DB"
   const ws = await hourly(env.DB, caller.workspaceId, LIMITS.runsPerHour, now);
   if (!ws.ok) return ws;
   return caller.ip ? hourly(env.DB, caller.ip, LIMITS.runsPerHourPerIp, now) : ws;
+}
+
+/**
+ * The voice quota (WP-23, TDD §5.2): 5 transcriptions a minute (VOICE_LIMIT) and 20 an hour (D1, kind `voice`),
+ * per workspace and per visitor IP, so dropping the cookie doesn't skip it. Fails open, like `takeRun`.
+ */
+export async function takeVoice(env: Pick<Env, "VOICE_LIMIT" | "DB">, caller: Caller, now: number = Date.now()): Promise<Quota> {
+  const minute: Quota = { ok: false, retryAfter: MINUTE_MS / 1000 };
+  for (const key of [caller.workspaceId, caller.ip]) {
+    if (key && !(await burst(env.VOICE_LIMIT, key, "VOICE_LIMIT"))) return minute;
+  }
+  for (const key of [caller.workspaceId, caller.ip]) {
+    if (!key) continue;
+    const q = await hourly(env.DB, key, LIMITS.voicePerHour, now, "voice");
+    if (!q.ok) return q;
+  }
+  return { ok: true };
 }
 
 /**

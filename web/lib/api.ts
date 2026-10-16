@@ -187,3 +187,36 @@ export const DEMO_CHANGED = "demo:changed";
 /** Tells the sidebar to reload after something changed (creation, a status change). Polling is WP-19. */
 export const INCIDENTS_CHANGED = "incidents:changed";
 export const notifyIncidentsChanged = () => window.dispatchEvent(new Event(INCIDENTS_CHANGED));
+
+/** `POST /api/voice` failures the UI explains (WP-23). */
+export type VoiceError = "too_large" | "empty_audio" | "unsupported_type" | "voice_unavailable" | "transcribe_failed" | "rate_limited" | "network" | "server";
+
+export const VOICE_ERROR_TEXT: Record<Exclude<VoiceError, "rate_limited">, string> = {
+  too_large: "That recording is too long. Keep it under 30 seconds.",
+  empty_audio: "Nothing was recorded. Try again.",
+  unsupported_type: "This browser recorded audio the server can't read.",
+  voice_unavailable: "Voice is off for today: the AI budget is used up. Type your question instead.",
+  transcribe_failed: "Couldn't turn that into text. Try again, or type it.",
+  network: "Couldn't reach the server. Check your connection and try again.",
+  server: "Something went wrong on our side. Try again.",
+};
+
+export type TranscribeResult = { ok: true; text: string } | { ok: false; error: "rate_limited"; retryAfter: number } | { ok: false; error: Exclude<VoiceError, "rate_limited"> };
+
+/** Sends one recording for transcription. The text only ever goes into the input box (FR-61). */
+export async function transcribe(audio: Blob, f: Fetch = fetch): Promise<TranscribeResult> {
+  let res: Response;
+  try {
+    res = await f("/api/voice", { method: "POST", headers: { "content-type": audio.type || "audio/webm" }, body: audio });
+  } catch {
+    return { ok: false, error: "network" };
+  }
+  const body = (await res.json().catch(() => ({}))) as { text?: unknown; error?: string; retryAfter?: unknown };
+  if (res.ok && typeof body.text === "string") return { ok: true, text: body.text };
+  if (res.status === 429) {
+    const seconds = typeof body.retryAfter === "number" ? body.retryAfter : Number(res.headers.get("Retry-After"));
+    return { ok: false, error: "rate_limited", retryAfter: Number.isFinite(seconds) && seconds > 0 ? seconds : 60 };
+  }
+  const known = Object.keys(VOICE_ERROR_TEXT) as Exclude<VoiceError, "rate_limited">[];
+  return { ok: false, error: known.find((k) => k === body.error) ?? "server" };
+}
