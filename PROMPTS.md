@@ -531,3 +531,7 @@ Answers to Claude's questions:
 > (pasted `terraform plan` output: a 404 from the Cloudflare API, with the tfvars placeholder used as the account ID)
 
 (Fixed: the account ID was filled into the local, gitignored `terraform.tfvars` from `wrangler whoami`; `variables.tf` now rejects anything that isn't a 32-character account ID with a clear message.)
+
+> looks good now.
+
+(The plan ran clean; no `terraform.tfstate` yet, so apply hasn't run. Board updated.)

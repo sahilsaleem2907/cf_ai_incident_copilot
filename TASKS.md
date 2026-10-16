@@ -398,7 +398,7 @@ The TDD has no standalone UI task. UI work lives inside these WPs, and the check
 <summary><b>WP-25</b> Terraform</summary>
 
 - [x] `infra/` with D1 + AI Gateway (provider ≥ 5.19 supports it), both imported, `prevent_destroy`
-- [ ] One local `apply` (**user**, steps in the README)
+- [ ] One local `apply` (**user**, steps in the README). `terraform plan` run by the user 2026-10-16: clean ("looks good")
 - [ ] **Done when:** `terraform validate` passes in CI (next PR; passes locally) and apply has run once
 </details>
 
