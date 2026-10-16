@@ -513,3 +513,33 @@ Answers to Claude's questions:
 
 **Claude asked:** add the live URL to the README now?
 **Answer:** yes.
+
+> couple of questions:
+> - what does the terraform do and will it not recreate or delete existsing infra?
+> - if i dont run the terraform plan locally its fine right, this is just to test correct?
+
+(Explained: the Terraform files describe the D1 database and the AI Gateway and adopt the existing ones through imports; `prevent_destroy` makes any plan that would delete or replace them fail; `plan` changes nothing. Not running it doesn't affect the app; it only means the "applied once" part of WP-25 isn't done.)
+
+> what are the exact terraform steps
+
+(Gave the exact steps: install Terraform, create a D1 + AI Gateway edit token, set the account ID in a gitignored tfvars, init, plan (expect 2 to import, nothing else), apply, check the outputs.)
+
+> can i reuse the old token we generated?
+
+(Answered: yes if the value was saved somewhere, after adding AI Gateway permission to it in the dashboard; GitHub won't show the secret back.)
+
+> (pasted `terraform plan` output: a 404 from the Cloudflare API, with the tfvars placeholder used as the account ID)
+
+(Fixed: the account ID was filled into the local, gitignored `terraform.tfvars` from `wrangler whoami`; `variables.tf` now rejects anything that isn't a 32-character account ID with a clear message.)
+
+> looks good now.
+
+(The plan ran clean; no `terraform.tfstate` yet, so apply hasn't run. Board updated.)
+
+> all done.
+
+(Checked: Terraform state holds both resources and its outputs match `wrangler.jsonc`; CI validated `infra/` on PR #9; the AWS fix is live. Recorded the walkthrough on the live site and made `docs/demo.gif` (34 s, 6.7 MB); the README now has the GIF and the live URL. WP-25 and WP-26 marked done: every WP in the plan is built.)
+
+> Great make sure everything is pushed and @TASKS.md ARE COMPLETED.
+
+(Everything was already pushed. The one open item, the Day 2 transcript export, is done: 6 sessions plus the last Day 1 session re-exported in full, secrets redacted (the token found as an upper-case GitHub secret name, the account ID in any case) and checked. TASKS.md has no open items left.)

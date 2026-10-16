@@ -1,6 +1,11 @@
 variable "account_id" {
   description = "Cloudflare account ID (wrangler whoami). Set it in terraform.tfvars, which is gitignored."
   type        = string
+
+  validation {
+    condition     = can(regex("^[0-9a-f]{32}$", var.account_id))
+    error_message = "account_id must be your 32-character account ID from `npx wrangler whoami`; terraform.tfvars still holds the placeholder."
+  }
 }
 
 variable "d1_name" {
