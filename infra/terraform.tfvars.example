@@ -1,0 +1,2 @@
+# Copy to terraform.tfvars (gitignored) and fill in. The API token comes from CLOUDFLARE_API_TOKEN instead.
+account_id = "<your Cloudflare account ID, from `npx wrangler whoami`>"

@@ -897,6 +897,7 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
   - The main Worker's HTTP routes stayed ≤ 8 ms.
   - Inside the Durable Object and the Workflow, CPU went above 10 ms: `narrate` 182 ms (streaming), the Workflow `run` 49 ms, agent init and snapshot calls up to 41 ms, `afterAction` 21 ms, a monitor alarm 13 ms. Nothing failed, but `narrate` is the hottest path; watch it if Error 1102 ever shows up.
 - **Terraform (`infra/`, local state, gitignored):** Cloudflare provider v5 with `cloudflare_d1_database`, plus the AI Gateway resource if the provider supports it. Otherwise the gateway is created in the dashboard and the README says so (R1). The `database_id` output is copied into `wrangler.jsonc` once. Wrangler owns everything else (§5.1).
+  - *As built (WP-25):* `versions.tf` (Terraform ≥ 1.6, `cloudflare/cloudflare ~> 5.19`, the first version with `cloudflare_ai_gateway`, so R1 is settled), `variables.tf` (`account_id` from a gitignored `terraform.tfvars`; names and the D1 ID default to `wrangler.jsonc`'s), `main.tf`, `outputs.tf`. Both resources already existed, so each has an `import` block (`<account_id>/<id>`) and `prevent_destroy`; the gateway's settings match the dashboard's (logs on, no cache, no rate limit). The provider reads `CLOUDFLARE_API_TOKEN` from the environment. `fmt -check` and `validate` pass with Terraform 1.16.6 and provider 5.28.0; `apply` is run by the user (user decision), steps in the README.
 
 ## 16. LLM eval (`eval/run.ts`)
 

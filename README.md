@@ -163,10 +163,17 @@ pnpm dev                         # http://localhost:5173
 
 | Owner | Resources | Why |
 |---|---|---|
-| **Terraform** (planned, local state, D15) | Long-lived account resources: the D1 database, and the AI Gateway if the provider supports it | Created once and rarely changed |
+| **Terraform** ([`infra/`](infra/), local state, D15) | Long-lived account resources: the D1 database and the AI Gateway | Created once and rarely changed |
 | **wrangler** (`wrangler.jsonc`) | Worker code, every binding, Durable Object migrations, Workflows, Static Assets, D1 schema migrations | Changes with every deploy, and some bindings (Rate Limiting) exist only in wrangler |
 
-Today, Terraform isn't built (WP-25, below the cut line). D1 was created with `wrangler d1 create`, and the AI Gateway in the dashboard (only a gateway named `default` is created automatically). Whether the Terraform provider can manage AI Gateway is still an open question (PRD R1). CI's Terraform steps switch on by themselves once `infra/*.tf` exists.
+D1 was first created with `wrangler d1 create` and the AI Gateway in the dashboard (only a gateway named `default` is created automatically). `infra/` **imports** both, so Terraform adopts them without creating or changing anything; the Cloudflare provider manages AI Gateway since v5.19, which settles PRD R1. Both have `prevent_destroy`. CI runs `terraform fmt -check` and `validate` on every PR; `apply` is run by hand (D15), with state kept locally and gitignored.
+
+**Apply once:**
+1. Install Terraform: `brew tap hashicorp/tap && brew install hashicorp/tap/terraform`.
+2. Create an API token with **Account › D1 › Edit** and **Account › AI Gateway › Edit**, then `export CLOUDFLARE_API_TOKEN=…` (it's read from the environment, never from a file).
+3. `cd infra && cp terraform.tfvars.example terraform.tfvars`, and put your account ID in it (`npx wrangler whoami`).
+4. `terraform init`, then `terraform plan`. Expect **2 to import, 0 to add, 0 to change, 0 to destroy**. If it wants to change or replace anything, stop and adjust `main.tf` to match the live settings first.
+5. `terraform apply`.
 
 ## Designed, not built (yet)
 
@@ -174,7 +181,6 @@ The full design for each of these is in the TDD. Day 2 of the build is still in 
 
 | WP | Feature | Design |
 |---|---|---|
-| 25 | Terraform for D1 (and the AI Gateway if supported) | TDD §15 |
 | 26 | Demo GIF of the walkthrough | — |
 
 ## Repository layout
@@ -185,6 +191,7 @@ worker/       main Worker: api/ (Hono routes), agent/ (IncidentAgent, state, tra
               tools/, safety/ (SSRF, reader, origin pin, target parser), llm/, diagnosis/ (rules), actions/
 web/          React client: components/, hooks/, lib/
 demo-service/ the breakable demo Worker (modes, DemoState DO, DemoAdmin RPC)
+infra/        Terraform: imports the D1 database and the AI Gateway (local state)
 migrations/   D1 schema
 scripts/      smoke.ts
 eval/         LLM eval: cases.ts (cases + scoring), run.ts, results.md
