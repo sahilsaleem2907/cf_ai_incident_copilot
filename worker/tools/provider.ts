@@ -61,18 +61,27 @@ export function parseStatuspage(body: string): ProviderIncident[] | null {
   }
 }
 
-type AwsEvent = { service_name?: string; summary?: string; region_name?: string; status?: string };
-const AWS_EVENT = /"region_name"\s*:\s*"([^"]*)"\s*,\s*"status"\s*:\s*"([^"]*)"\s*,\s*"service"\s*:\s*"[^"]*"\s*,\s*"service_name"\s*:\s*"([^"]*)"\s*,\s*"summary"\s*:\s*"([^"]*)"/g;
+type AwsEvent = { date?: string; service_name?: string; summary?: string; region_name?: string; status?: string };
+/** AWS lists long-running regional events for months (two Middle East ones since March in the WP-26 recording). */
+export const AWS_RECENT_MS = 24 * 3_600_000;
+const AWS_EVENT = /"date"\s*:\s*"(\d*)"\s*,\s*"arn"\s*:\s*"[^"]*"\s*,\s*"region_name"\s*:\s*"([^"]*)"\s*,\s*"status"\s*:\s*"([^"]*)"\s*,\s*"service"\s*:\s*"[^"]*"\s*,\s*"service_name"\s*:\s*"([^"]*)"\s*,\s*"summary"\s*:\s*"([^"]*)"/g;
 
 /**
  * AWS's current events, best effort. The whole feed parses when it fits the read cap; otherwise the events are
  * picked out of the part that was read (each event's first fields come before its long `event_log`).
  */
-export function parseAws(body: string, truncated: boolean): ProviderIncident[] | null {
-  const toIncident = (e: AwsEvent): ProviderIncident => ({
-    name: clip(`${e.service_name ?? "AWS"}: ${e.summary ?? "event"}${e.region_name ? ` (${e.region_name})` : ""}`),
-    ...(e.status ? { status: e.status } : {}),
-  });
+export function parseAws(body: string, truncated: boolean, now: number = Date.now()): ProviderIncident[] | null {
+  // AWS gives no impact and no way to tell which region a site uses, so only events that began in the last 24 hours
+  // count as an outage; older ones are listed as "ongoing" (WP-26 fix).
+  const toIncident = (e: AwsEvent): ProviderIncident => {
+    const began = Number(e.date) * 1000;
+    const recent = !e.date || !Number.isFinite(began) || now - began <= AWS_RECENT_MS;
+    return {
+      name: clip(`${e.service_name ?? "AWS"}: ${e.summary ?? "event"}${e.region_name ? ` (${e.region_name})` : ""}`),
+      ...(e.status ? { status: e.status } : {}),
+      ...(recent ? {} : { impact: "ongoing" }),
+    };
+  };
   const text = body.trim();
   if (!truncated) {
     try {
@@ -83,12 +92,13 @@ export function parseAws(body: string, truncated: boolean): ProviderIncident[] |
     }
   }
   if (!text.startsWith("[")) return null;
-  return [...text.matchAll(AWS_EVENT)].map((m) => toIncident({ region_name: m[1], status: m[2], service_name: m[3], summary: m[4] }));
+  return [...text.matchAll(AWS_EVENT)].map((m) => toIncident({ date: m[1], region_name: m[2], status: m[3], service_name: m[4], summary: m[5] }));
 }
 
 type Answer = { provider: Provider; active: ProviderIncident[] | null };
 
 async function check(ctx: ToolContext, provider: Provider, now: () => number): Promise<Answer> {
+  // (`now` times the request; the AWS feed's event ages use the same clock.)
   const aws = provider === "aws";
   const res = await readOnce(ctx.fetch, STATUS_URLS[provider], "GET", {
     readCap: aws ? AWS_CAP : STATUSPAGE_CAP,
@@ -97,7 +107,7 @@ async function check(ctx: ToolContext, provider: Provider, now: () => number): P
     ...(aws ? { decode: decodeText } : {}),
   });
   if (!res.ok || res.status !== 200) return { provider, active: null };
-  return { provider, active: aws ? parseAws(res.body, res.truncated) : parseStatuspage(res.body) };
+  return { provider, active: aws ? parseAws(res.body, res.truncated, now()) : parseStatuspage(res.body) };
 }
 
 /**
@@ -141,7 +151,7 @@ function judge(raw: ProviderRaw, asked: Provider[]): { status: CheckStatus; summ
     const active = raw.providers[p]!.active;
     const major = active.filter(isSignificant);
     if (major.length) return `${NAMES[p]}: ${major.length} active incident(s), "${major[0]!.name}"`;
-    if (active.length) return `${NAMES[p]}: no outage (${active.length} minor incident(s))`;
+    if (active.length) return `${NAMES[p]}: no outage (${active.length} minor or long-running incident(s))`;
     return `${NAMES[p]}: no active incidents`;
   });
   if (raw.unavailable?.length) parts.push(`${raw.unavailable.map((p) => NAMES[p]).join(", ")}: no answer`);

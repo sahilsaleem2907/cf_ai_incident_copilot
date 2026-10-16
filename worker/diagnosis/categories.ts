@@ -98,5 +98,6 @@ export type ProviderRaw = {
  * dashboard sign-ups), so only major or critical ones count; incidents without an impact (AWS) always do.
  */
 export function isSignificant(i: ProviderIncident): boolean {
+  // AWS events older than a day are marked impact "ongoing" by provider.ts, so they don't count either.
   return i.impact === undefined || i.impact === "major" || i.impact === "critical";
 }
