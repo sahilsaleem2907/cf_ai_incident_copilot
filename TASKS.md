@@ -22,8 +22,8 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 
 ## Now
 
-- **Current:** WP-22 Postmortem (🔄 since 16:30; plan: WP-21, 22, 23 in a row, one commit each). WP-21 is done (`33b8467`). WP-27c (scroll and evidence bugs, dashed loader) is done (`0a225a0`). WP-27 UI polish and WP-27b follow-ups are done (`f21232b`, `a2f4461`). **Everything above the cut line is done** (WP-01 to WP-20). WP-20's eval passed 5/5 locally. WP-17 to WP-19 are done (not deployed yet); the user tested the demo watch walkthrough and it worked. **Before webhooks work live:** the user sets `WEBHOOK_KEY` (`openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`) **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
-- **Next:** WP-23 Voice (below the cut line)
+- **Current:** WP-23 Voice (🔄 since 16:38; plan: WP-21, 22, 23 in a row, one commit each). WP-21 (`33b8467`) and WP-22 (`944a87c`) are done. WP-27c (scroll and evidence bugs, dashed loader) is done (`0a225a0`). WP-27 UI polish and WP-27b follow-ups are done (`f21232b`, `a2f4461`). **Everything above the cut line is done** (WP-01 to WP-20). WP-20's eval passed 5/5 locally. WP-17 to WP-19 are done (not deployed yet); the user tested the demo watch walkthrough and it worked. **Before webhooks work live:** the user sets `WEBHOOK_KEY` (`openssl rand -base64 32 | npx wrangler secret put WEBHOOK_KEY`) **All Musts are done (WP-01 to WP-16)**: the minimum to submit (PRD §12) is met
+- **Next:** WP-24 `recheck_burst` (below the cut line)
 - **Hours today:** 2.93 / 14.75 h (Day 1) on WPs, plus about 0.3 h review setup
 - **Review status (WP-01 to WP-05):**
   - Sift workflows (`sift-review.yml`, `sift-feedback.yml`) are on `main` (`f5707d2`); the zip upload is gone. `main` was merged into `dev` (`bf4ea92`).
@@ -75,8 +75,8 @@ Live progress tracker for the 2-day build. The plan itself lives in [`TDD.md` §
 | 27c | Bugs: page scroll past footer, evidence overflow; dashed loader everywhere + chat working row | — | 27b | ✅ | 03:21 | 03:29 | `0a225a0`. 604 tests pass (+3). The scroll bug didn't reproduce in headless Chrome (page never taller than the window, wheel included), so the fix is structural: no `scrollIntoView`, page locked, `overscroll-contain`. Evidence capped at 320 px and wraps (400-char line stays inside the card at 390 px). Working row seen: Running checks… → Writing the diagnosis… → text |
 | — | **✂️ CUT LINE**: anything below that isn't built goes into the README "designed, not built" list | | | | | | |
 | 21 | `cert_info` + `provider_status` | 1.0 | 09 | ✅ | 16:11 | 16:29 | `33b8467`. 0.3 h vs 1.0 est. 644 tests pass (+40), 3 runs in a row. Real crt.sh in the local browser: cert card on a refused HTTPS host; Cache API hit on repeat |
-| 22 | Postmortem | 0.5 | 12 | 🔄 | 16:30 | | |
-| 23 | Voice | 0.75 | 17 | ⬜ | | | |
+| 22 | Postmortem | 0.5 | 12 | ✅ | 16:30 | 16:38 | `944a87c`. 665 tests pass (+21), 3 runs in a row. Local browser walkthrough step 6: stored, copied, survives a reload |
+| 23 | Voice | 0.75 | 17 | 🔄 | 16:38 | | |
 | 24 | `recheck_burst` | 0.25 | 12 | ⬜ | | | |
 | 25 | Terraform (local apply) | 0.5 | — | ⬜ | | | |
 | 26 | Demo GIF | 0.25 | 13 | ⬜ | | | |
