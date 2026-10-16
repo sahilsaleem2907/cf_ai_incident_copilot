@@ -2,7 +2,7 @@ import { CATEGORY_INFO, type Category, type Findings } from "../diagnosis/catego
 import { renderTemplate } from "../diagnosis/template";
 import type { ToolResult } from "../tools/types";
 import { LlmUnavailable, toResult, type ChatCompletion, type LlmRequest, type LlmResult } from "./models";
-import type { EvidenceLine } from "./prompts";
+import { POSTMORTEM_MARKER, type EvidenceLine } from "./prompts";
 
 /**
  * `LLM_MODE=mock` (TDD §7.4): scripted turns in the recorded chat-completions shape, run through the real
@@ -17,6 +17,7 @@ export function mockCall(req: LlmRequest): LlmResult {
   const user = req.messages.map((m) => m.content).join("\n");
   if (user.includes("#llm-down")) throw new LlmUnavailable("failed", "mock: #llm-down");
   if (req.tools?.length) return toResult(MOCK_MODEL, planningTurn(req.system, user));
+  if (req.system.startsWith(POSTMORTEM_MARKER)) return { text: postmortem(user), toolCalls: [], usage: { in: 0, out: 0, neurons: 0 }, model: MOCK_MODEL, fallback: false };
   return { text: narration(user), toolCalls: [], usage: { in: 0, out: 0, neurons: 0 }, model: MOCK_MODEL, fallback: false };
 }
 
@@ -81,6 +82,23 @@ function narration(user: string): string {
   const cause = /\[[a-z]+-\d+\]/.test(findings.cause) ? findings.cause : `${findings.cause.replace(/\.$/, "")} ${cites}.`;
   const results = parseEvidence(user).map((e) => ({ ...e, ok: true, raw: null }) as ToolResult);
   return renderTemplate({ ...findings, cause }, results);
+}
+
+/** The four postmortem sections, built from the prompt's findings (WP-22). */
+function postmortem(user: string): string {
+  const json = /^Findings: (.*)$/m.exec(user)?.[1];
+  const f = json ? (JSON.parse(json) as Pick<Findings, "cause" | "next_steps"> | null) : null;
+  const ended = /^How it ended: (.*)$/m.exec(user)?.[1] ?? "It was resolved.";
+  return [
+    "## Summary",
+    "Mock postmortem: the endpoint failed, was diagnosed and recovered. Set LLM_MODE=live for a written one.",
+    "## Root cause",
+    f?.cause ?? "Unknown.",
+    "## Resolution",
+    ended,
+    "## Follow-ups",
+    ...(f?.next_steps ?? ["Review the evidence."]).map((s) => `- ${s}`),
+  ].join("\n");
 }
 
 export function parseEvidence(text: string): EvidenceLine[] {

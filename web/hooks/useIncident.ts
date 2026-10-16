@@ -51,6 +51,10 @@ export function useIncident(id: string) {
   const decide = useCallback(async (approvalId: string, decision: "approve" | "reject") => agent.call(decision, [approvalId]), [agent]);
   const resolve = useCallback(async () => agent.call("resolve"), [agent]);
   const markRead = useCallback(async () => agent.call("markRead"), [agent]);
+  const generatePostmortem = useCallback(async () => (await agent.call("generatePostmortem")) as { markdown: string }, [agent]);
+  const getPostmortem = useCallback(async () => (await agent.call("getPostmortem")) as { markdown: string; generatedAt: number } | null, [agent]);
+  /** The postmortem's live text while the AI writes it (WP-22). */
+  const postmortemStream = streams.postmortem && !streams.postmortem.done ? streams.postmortem.text : null;
 
-  return { state, feed, role, notFound, send, getEvidence, decide, resolve, markRead };
+  return { state, feed, role, notFound, send, getEvidence, decide, resolve, markRead, generatePostmortem, getPostmortem, postmortemStream };
 }

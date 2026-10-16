@@ -1,5 +1,5 @@
 import { Badge, Banner, Button } from "@cloudflare/kumo";
-import { CheckCircleIcon, EyeIcon, InfoIcon, PulseIcon, RobotIcon } from "@phosphor-icons/react";
+import { CheckCircleIcon, EyeIcon, FileTextIcon, InfoIcon, PulseIcon, RobotIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useIncident } from "../hooks/useIncident";
@@ -8,14 +8,16 @@ import { useRateLimitToast } from "../hooks/useRateLimitToast";
 import { MONITOR_PASSES } from "../../worker/agent/monitor";
 import { createIncident, DEMO_CHANGED, ERROR_TEXT, notifyIncidentsChanged, parseRateLimited } from "../lib/api";
 import { otherHost, runNote } from "../lib/incident";
+import { postmortemButton } from "../lib/postmortem";
 import { ChatPane } from "./ChatPane";
 import { loadingProps } from "./CtaButton";
 import { DashedLoader } from "./DashedLoader";
 import { Composer } from "./Composer";
+import { PostmortemDialog } from "./PostmortemDialog";
 import { CategoryPill, IncidentStatusBadge } from "./StatusBadge";
 
 export function IncidentView({ id }: { id: string }) {
-  const { state, feed, role, notFound, send, getEvidence, decide, resolve, markRead } = useIncident(id);
+  const { state, feed, role, notFound, send, getEvidence, decide, resolve, markRead, generatePostmortem, getPostmortem, postmortemStream } = useIncident(id);
   const [, navigate] = useLocation();
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +28,7 @@ export function IncidentView({ id }: { id: string }) {
   const status = state?.status;
 
   const [resolving, setResolving] = useState(false);
+  const [postmortemOpen, setPostmortemOpen] = useState(false);
   const rateLimited = useRateLimitToast();
 
   // Seen it (FR-50): the owner marks the incident read on open and whenever new activity arrives while the tab
@@ -62,6 +65,7 @@ export function IncidentView({ id }: { id: string }) {
 
   const viewer = role === "viewer";
   const note = runNote(state.timeline);
+  const pm = postmortemButton(role, state.status, state.hasPostmortem);
 
   const onSend = async (message: string) => {
     setError(null);
@@ -93,27 +97,46 @@ export function IncidentView({ id }: { id: string }) {
           <h1 className="min-w-0 truncate font-mono text-base">{state.target}</h1>
           <IncidentStatusBadge status={state.status} />
           {state.category && <CategoryPill category={state.category} />}
-          {viewer && (
-            <Badge variant="neutral" icon={<EyeIcon aria-hidden size={14} />} className="ml-auto">
-              View only
-            </Badge>
-          )}
-          {role === "owner" && state.status !== "resolved" && (
-            <Button
-              size="sm"
-              variant="secondary"
-              {...loadingProps(resolving, CheckCircleIcon)}
-              className="ml-auto"
-              onClick={() => {
-                setResolving(true);
-                resolve()
-                  .catch(() => setError("Couldn't resolve the incident. Try again."))
-                  .finally(() => setResolving(false));
-              }}
-            >
-              Resolve
-            </Button>
-          )}
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {viewer && (
+              <Badge variant="neutral" icon={<EyeIcon aria-hidden size={14} />}>
+                View only
+              </Badge>
+            )}
+            {role === "owner" && state.status !== "resolved" && (
+              <Button
+                size="sm"
+                variant="secondary"
+                {...loadingProps(resolving, CheckCircleIcon)}
+                onClick={() => {
+                  setResolving(true);
+                  resolve()
+                    .catch(() => setError("Couldn't resolve the incident. Try again."))
+                    .finally(() => setResolving(false));
+                }}
+              >
+                Resolve
+              </Button>
+            )}
+            {pm.show && (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={FileTextIcon}
+                disabled={!!pm.disabledReason}
+                title={pm.disabledReason ?? undefined}
+                aria-describedby={pm.disabledReason ? "postmortem-reason" : undefined}
+                onClick={() => setPostmortemOpen(true)}
+              >
+                {pm.label}
+              </Button>
+            )}
+            {pm.disabledReason && (
+              <span id="postmortem-reason" className="sr-only">
+                {pm.disabledReason}
+              </span>
+            )}
+          </div>
         </div>
         {state.monitor && (
           <p className="mx-auto mt-1 flex max-w-3xl items-center gap-1.5 text-sm text-(--cf-fg-muted)" aria-live="polite">
@@ -130,6 +153,16 @@ export function IncidentView({ id }: { id: string }) {
         )}
         {note && !state.activeRunId && <Banner variant="secondary" icon={<InfoIcon aria-hidden />} description={note} />}
       </div>
+
+      <PostmortemDialog
+        open={postmortemOpen}
+        onOpenChange={setPostmortemOpen}
+        canWrite={role === "owner"}
+        hasPostmortem={state.hasPostmortem}
+        streaming={postmortemStream}
+        generate={generatePostmortem}
+        load={getPostmortem}
+      />
 
       <div className="flex-1">
         <ChatPane feed={feed} knownIds={knownIds} getEvidence={getEvidence} working={!!state.activeRunId} {...(role === "owner" ? { onDecide: decide } : {})} />

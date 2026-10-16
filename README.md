@@ -17,6 +17,7 @@ It comes with a **demo service** you can break on purpose (500 errors, slowness,
 3. In the **Demo service** panel, switch on **500 errors**.
 4. Ask "what's wrong with my demo service?". You get an `origin_5xx` diagnosis citing `[http-1]`, plus an approval card: **Restore the demo service to healthy**.
 5. Click **Approve**. The demo is restored, a re-check passes, and the incident goes to `mitigated`, then to `resolved` after two more passing checks.
+6. Click **Postmortem**. A markdown write-up appears, ready to copy: the impact window, detection and timeline come straight from the incident's records, and the AI writes the summary, root cause (with evidence IDs), resolution and follow-ups. It's stored on the incident.
 
 A link to an incident opened by someone else is **view-only**: you can watch it live, but you can't send messages or approve anything.
 
@@ -173,7 +174,6 @@ The full design for each of these is in the TDD. Day 2 of the build is still in 
 
 | WP | Feature | Design |
 |---|---|---|
-| 22 | Postmortem: streamed markdown summary of a resolved incident | TDD §8.7 |
 | 23 | Push-to-talk voice via Whisper, normalizing "dot" and "slash" | TDD §8.7 |
 | 24 | `recheck_burst`: re-check every minute for 15 minutes | TDD §8.4 |
 | 25 | Terraform for D1 (and the AI Gateway if supported) | TDD §15 |

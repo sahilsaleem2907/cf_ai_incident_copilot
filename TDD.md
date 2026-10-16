@@ -304,6 +304,7 @@ markRead() · getEvidence(evidenceId)
 - **Callables without decorator syntax:** `@callable()` only records the method in the SDK's registry (the decorator context is unused), so `IncidentAgent.ts` registers `sendMessage`, `resolve`, `markRead` and `getEvidence` with `callable()(fn)` after the class. That avoids the Babel decorator transform and the ES2021 target the SDK otherwise needs in Vite and Vitest.
 - **Typed stub:** `agent/stub.ts` `incidentAgent(env, id)` wraps `getAgentByName`, whose type only accepts agents with `unknown` state.
 - **Deferred to their WPs:** the Workflow launch (WP-09, marked in `startRun`); `proposeAction`, `recordApprovalOutcome`, `afterAction`, approve/reject and the monitor (WP-12); quotas (WP-17); `reportWatchCheck` (WP-18); `generatePostmortem` (WP-22).
+- *WP-22:* `generatePostmortem()` (owner) and `getPostmortem()` (anyone who can open the incident, read-only) are callables.
 
 ### 7.3 Tool contracts (`tools/registry.ts`). Inputs use zod. Outputs are `ToolResult {evidenceId, ok, status, summary, digest, raw}`.
 
@@ -418,6 +419,8 @@ The canonical order is `DEMO_MODES` order, for example `["slow", "errors"]`. The
 *As built (WP-18), user decision:* `add_to_watchlist` is also a **rule action** for a broken real (non-demo) site, so the card appears even when the model leaves it out. `pickAction` always prefers `restore_demo_service` when it fits (a fix beats watching), then the model's actions, then the rule actions. `proposable` needs `watchable`: the incident has no watch yet, and `canWatch` says the workspace can add this URL. Approving creates a watch **linked to the incident** (`open_incident_id`, `incident.watch_id`), so cron's passing checks resolve it. There's nothing to re-check, so `afterAction` skips the verify check, stores `outcome.done`, and the incident goes back to `investigating`; the card says "Approved and done".
 | `recheck_burst` | `{}` | No monitor active | Agent `monitor(kind:"burst")` | Ticks |
 | `generate_postmortem` | `{}` | status = `resolved` | `generatePostmortem()` | None |
+
+*As built (WP-22):* `generate_postmortem` is the one card a resolved incident can get (a follow-up such as "write a postmortem"), only when the model names it and no postmortem is stored yet (`ProposeContext.hasPostmortem`). The status doesn't change. Approving runs the agent's own writer without a quota charge (the card was approved), and `afterAction` takes the same "done, nothing to re-check" path as `add_to_watchlist`.
 
 The Workflow drops any action that isn't proposable. At most one action per run.
 
@@ -583,6 +586,12 @@ The client puts the text in the input box and never sends it automatically.
 
 **Postmortem:** `generatePostmortem()` checks the role and status `resolved`, then the quota. It streams from the timeline, findings and checks, using sections fixed by the template (summary, impact window, detection, timeline, root cause with `[ids]`, resolution, follow-ups). The result is stored. In rule-based mode the template is filled in deterministically.
 
+*As built (WP-22), user decision "facts by code, story by AI":*
+- **`agent/postmortem.ts` (pure):** `postmortemFacts` builds the impact window (opened → resolved, with its duration), detection (the chat question, or the failed watch check) and a UTC timeline from the **full** timeline table (the synced state keeps only 100 rows): opened, diagnosis, proposals and decisions, the action, verify, status changes; monitor and watch checks in a row collapse into one line with a count. How it ended (`resolvedBy`): an approved action, passing checks, by hand, or healthy at its first check.
+- **The AI writes four `##` sections** (Summary, Root cause, Resolution, Follow-ups; `postmortemSystem`/`postmortemUser` in `llm/prompts.ts`, 1,200 tokens), streamed as `postmortem` frames. `parseProse` takes the sections it finds (heading variants accepted, `【id】` normalised, unknown IDs dropped); any missing one comes from `templateProse`. `citeRootCause` adds the findings' evidence IDs when the root cause cites none. A cut-off or failed stream keeps what it got; junk is all template.
+- **Cost:** a stored postmortem is returned for free. A new one that uses the AI is charged to the run quota (D14) before it starts; with the budget guard on it's the template, free. A second click while one is being written waits for it (one in-flight promise). The timeline gets a `postmortem` event with its source (`llm`, `partial`, `template`).
+- **Mock:** `LLM_MODE=mock` answers the postmortem prompt with canned sections.
+
 ## 9. Agent loop rules
 
 ### 9.1 Prompts (`llm/prompts.ts`)
@@ -744,6 +753,7 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
   | Grey | quiet / done / not yet | Mitigated | Pending, Unavailable | Not checked yet | Rejected, expired, replaced | | Inconclusive |
 
   A pending approval card's border is purple, to match.
+- **`PostmortemDialog`** (WP-22): a Kumo `Dialog` (`xl`). On first open the owner's click writes it (dashed loader, then the live text), later opens load the stored one. The markdown shows in a wrapped, scrolling `<pre>` (Kumo's code block has no markdown mode) with a **Copy markdown** button ("Copied" for 2 s). Header button (`web/lib/postmortem.ts` `postmortemButton`): the owner always sees **Postmortem**, disabled with the reason in words until the incident is resolved; a viewer sees **View postmortem** once one exists. Escape closes it.
 - **`CtaButton` / `CtaLinkButton`** (WP-27): Kumo's primary button (orange) as a pill; same props as Kumo's. Used for New incident, Send, Approve, Watch and Save webhook. Labels are centred.
 - **Kumo `Tooltip`:** always pass `render` (the element that triggers it). Without it Kumo wraps the children in its own `<button>`, which nests buttons when the child is a button or switch.
 
@@ -826,6 +836,7 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | | `target.test.ts` | URL, then hostname, then "demo", then need_target; "dot" normalization |
 | | `dns.test.ts`, `http.test.ts` | DoH JSON parsing and the mismatch flag; samples, hops, loop detection, header picks, asset extraction, read cap |
 | | `classify.test.ts`, `template.test.ts` | One fixture per category plus precedence between rules; the four template sections, with every evidence bullet cited |
+| | `postmortem.test.ts` (unit, WP-22), `web/postmortem.test.ts` | Facts from a timeline fixture (impact window, detection, UTC lines, collapsed checks, watch incidents, unresolved), durations, the template per ending, AI sections parsed (variants, citations, missing → template), root cause cited, fixed order; the header button per role and status, error text |
 | | `cert.test.ts`, `provider.test.ts`, `extras.test.ts` (WP-21) | crt.sh queries (`*.parent`), SAN matching, cut-off JSON, 20-entry cap, sort/dedupe, ≤ 7 days, no match, crt.sh errors → `unavailable`, cache hit and a broken cache; Statuspage and AWS parsing (UTF-16 both orders, partial feed), minor vs major, one provider down, all down; when the automatic checks run (HTTPS connect failure, fingerprinted failing site, never the demo's provider, nothing twice) |
 | | `citations.test.ts` | Unknown IDs and uncited factual sentences are removed; `【id】`; well-formed check |
 | | `llm-client.test.ts`, `stream.test.ts`, `findings.test.ts`, `mock.test.ts`, `prompts.test.ts` | Mapper on every recorded fixture, fallback rules with a fake `ai`, SSE parsing of both recorded streams, the `submit_findings` schema (rejects the spike's sentence evidence), mock turns, prompt content |
@@ -843,6 +854,7 @@ Every factual sentence must cite an `[id]`. It must never mention action IDs, si
 | Unit | `plan.test.ts` | The driver with a fake `io`: happy path, invalid once/twice, origin pin, LLM down, tool cap, turn cap, budget, deadline, throwing check, unexpected failure, rule-based mode |
 | | `approval.test.ts` | Propose → approve → `setModes(["healthy"])` called → verify → `mitigated` → 2 ticks → `resolved`. Reject → `investigating`. Timeout (`forceEventTimeout("wait-for-approval")`) → expired. Approve twice, a viewer, resolving by hand, a duplicate follow-up, a retried proposal. The demo stub's default `fetch` serves `/w/<ws>/` by mode, and the fake internet routes the test demo host to it. Supersede itself is covered at the agent level: with one proposable action, it can't happen end to end yet. |
 | | `cron.test.ts` | Due-watch query (oldest first, LIMIT 6, unexpired); the tick's subrequest budget defers the rest; failure starts WatchWorkflow `watch-<id>-<minute>`; duplicate ID ignored; an open incident gets `reportWatchCheck`; expired watches deleted |
+| | `postmortem.test.ts` (WP-22) | Not resolved → refused; the owner gets streamed, stored markdown in the fixed section order, charged once (a second call is free); a viewer can read but not write; the budget guard → template, free, no stream; a `generate_postmortem` card on a resolved incident → approve → written, then not offered again |
 | | `watch-workflow.test.ts`, `watches-api.test.ts`, `watch-agent.test.ts` | Confirm → open a linked watch incident; a blip opens nothing; no second incident; a deleted watch. The API: validation (IP literal, localhost, port), demo every 60 s, 5–60 min otherwise, 3 per workspace, 30 global, one per URL, own deletes only. The agent: watch passes → mitigated → resolved and release; a failure reopens; a pending card is untouched; the `add_to_watchlist` card end to end (approve → linked watch → passes resolve); no card at the cap |
 | Demo (`@cloudflare/vitest-plugin`, demo Worker) | `demo.test.ts` | Every mode's status, headers and timing, through `exports.default` and the `DemoAdmin` RPC; per-workspace state; bad input; no admin route |
 

@@ -17,6 +17,21 @@ export type Category = (typeof CATEGORIES)[number];
 export const CONFIDENCES = ["high", "medium", "low"] as const;
 export type Confidence = (typeof CONFIDENCES)[number];
 
+/** Display names (the UI's diagnosis pill, the postmortem). */
+export const CATEGORY_LABEL: Record<Category, string> = {
+  dns_failure: "DNS failure",
+  dns_mismatch: "DNS mismatch",
+  tls_expiry: "TLS / certificate",
+  origin_5xx: "Origin 5xx",
+  edge_error: "Edge error",
+  high_latency: "High latency",
+  redirect_loop: "Redirect loop",
+  cache_misconfiguration: "Cache misconfiguration",
+  provider_outage: "Provider outage",
+  healthy: "Healthy",
+  inconclusive: "Inconclusive",
+};
+
 /** One-line definitions; the planning prompt lists these (TDD §9.1). */
 export const CATEGORY_INFO: Record<Category, string> = {
   dns_failure: "The name doesn't resolve: NXDOMAIN/SERVFAIL from both resolvers, or no A/AAAA records.",
